@@ -18,8 +18,16 @@ on:
   workflow_dispatch:
 
 jobs:
-  # pre-commit is run by default, so we just print done
+  # for now the repo is private, so pre-commit won't run automatically
   pre-commit:
+    name: pre-commit
+    runs-on: ubuntu-latest
     steps:
-      name: Run pre-commit
-      run: echo "Done"
+      - name: Checkout Code
+        uses: actions/setup-checkout@v2.4.0
+
+      - name: Install Python
+        uses: actions/setup-python@v2
+
+      - name: Run pre-commit hooks
+        uses: pre-commit/action@v2.0.3
