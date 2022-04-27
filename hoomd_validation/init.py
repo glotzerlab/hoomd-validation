@@ -7,7 +7,7 @@ from config import all_validation_tests, test_project_dict
 for project_name_str, project_class in test_project_dict.items():
     global_project_job = all_validation_tests.open_job(
         dict(project_name=project_name_str,
-             path=test_project.root_directory())
+             path=project_class.root_directory())
     )
     if global_project_job not in all_validation_tests:
         global_project_job.init()
@@ -17,15 +17,16 @@ for project_name_str, project_class in test_project_dict.items():
 for _, project_class in test_project_dict.items():
 
     # get the signac project for this validation test
-    pr = project_class.signac_project
+    pr = project_class
 
     # add all the jobs to the validation test project
     job_sps = project_class.job_statepoints
     for job_sp in job_sps:
         job = pr.open_job(job_sp)
-        if job not in pr
+        if job not in pr:
+            job.init()
 
         # initialize job document parameters for this validation test job
-        for param, default in project_class.job_document_parameters:
+        for param, default in project_class.job_document_params:
             if param not in job.doc:
-                job.doc.param = default
+                setattr(job.doc, param, default)

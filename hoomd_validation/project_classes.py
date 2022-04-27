@@ -1,10 +1,24 @@
 import signac
 
+from abc import abstractmethod
+from flow import FlowProject
 
-class LJFluid:
 
-    def __init__(self, signac_project_path):
-        self._pr_path = signac_project_path
+class ValidationTestProject(FlowProject):
+
+    @property
+    @abstractmethod
+    def job_document_params(self):
+        pass
+
+    @property
+    @abstractmethod
+    def job_statepoints(self):
+        pass
+
+
+
+class LJFluid(ValidationTestProject):
 
     @property
     def job_statepoints(self):
@@ -17,17 +31,9 @@ class LJFluid:
         return job_sps
 
     @property
-    def job_document_parameters(self):
+    def job_document_params(self):
         params_list = []
         params_list.append(
-            ('random_seeds': [123, 456, 6789])
+            ('random_seeds', [123, 456, 6789])
         )
         return params_list
-
-    @property
-    def project_file_name(self):
-        return "lj_fluid.py"
-
-    @property
-    def signac_project(self):
-        return signac.get_project(self._pr_path)
