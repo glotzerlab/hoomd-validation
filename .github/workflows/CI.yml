@@ -20,5 +20,6 @@ on:
 jobs:
   # pre-commit is run by default, so we just print done
   pre-commit:
-    name: Run pre-commit
-    run: echo "Done"
+    steps:
+      name: Run pre-commit
+      run: echo "Done"
