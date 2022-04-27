@@ -1,6 +1,6 @@
 ---
 name: Feature request
-about: Suggest a new hoomd-benchmarks feature
+about: Suggest a new hoomd-validation feature
 title: ''
 labels: 'enhancement'
 assignees: ''
@@ -9,7 +9,7 @@ assignees: ''
 
 ## Description
 
-<!-- What new capability would you like in hoomd-benchmarks? -->
+<!-- What new capability would you like in hoomd-validation? -->
 
 ## Proposed solution
 

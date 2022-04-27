@@ -1,6 +1,6 @@
 ---
 name: Bug report
-about: Report a problem with hoomd-benchmarks
+about: Report a problem with hoomd-validation
 title: ''
 labels: 'bug'
 assignees: ''
