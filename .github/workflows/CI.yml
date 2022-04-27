@@ -1,0 +1,24 @@
+name: CI
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+on:
+  # Trigger on pull requests.
+  pull_request:
+
+  # Trigger on pushes to the mainline branches. This prevents building commits twice when the pull
+  # request source branch is in the same repository.
+  push:
+    branches:
+      - "main"
+
+  # Trigger on request.
+  workflow_dispatch:
+
+jobs:
+  # pre-commit is run by default, so we just print done
+  pre-commit:
+    name: Run pre-commit
+    run: echo "Done"
