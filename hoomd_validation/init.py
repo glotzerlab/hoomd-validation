@@ -1,32 +1,25 @@
 from config import all_validation_tests, test_project_dict
 
-# TODO make sure directories exists for each of the projects
-
-# make the statepoint of the global project jobs be names and paths to valiation
-# test projects
+# initialize jobs for the manager project
 for project_name_str, project_class in test_project_dict.items():
-    global_project_job = all_validation_tests.open_job(
+    manager_project_job = all_validation_tests.open_job(
         dict(project_name=project_name_str,
              path=project_class.root_directory())
     )
-    if global_project_job not in all_validation_tests:
-        global_project_job.init()
+    if manager_project_job not in all_validation_tests:
+        manager_project_job.init()
 
-
-# open jobs for all projects corresponding to validation test suites
+# initialize jobs for validation test projects
 for _, project_class in test_project_dict.items():
 
-    # get the signac project for this validation test
-    pr = project_class
-
-    # add all the jobs to the validation test project
+    # add all the jobs to the project
     job_sps = project_class.job_statepoints
     for job_sp in job_sps:
-        job = pr.open_job(job_sp)
-        if job not in pr:
+        job = project_class.open_job(job_sp)
+        if job not in project_class:
             job.init()
 
-        # initialize job document parameters for this validation test job
+        # initialize job document parameters for this job
         for param, default in project_class.job_document_params:
             if param not in job.doc:
                 setattr(job.doc, param, default)
