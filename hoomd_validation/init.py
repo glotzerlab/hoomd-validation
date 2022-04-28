@@ -9,8 +9,7 @@ from config import all_validation_tests, test_project_dict
 for project_name_str, project_class in test_project_dict.items():
     manager_project_job = all_validation_tests.open_job(
         dict(project_name=project_name_str,
-             path=project_class.root_directory())
-    )
+             path=project_class.root_directory()))
     if manager_project_job not in all_validation_tests:
         manager_project_job.init()
 
