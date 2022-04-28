@@ -9,24 +9,19 @@ should be able to:
 1. Run a set of validation test workflows on a variety of hardware setups
 
 2. Choose specific validation workflows to run, and be able to select subsets of
-the jobs in one workflow to run
+the operations in one workflow to run
 
-3.
+3. Visualize the validation test output and analysis using signac-dashboard
 
 ## Implementation
 
 Each validation test workflow is defined in a separate signac project. There is
-one global project `AllValidationTests` for which the statepoint parameters are
-the name of the individual validation test as well as the path to the project
+one manager project `AllValidationTests` for which the statepoint parameters are
+the name of the individual validation tests as well as the path to their project
 directories.
 
-## Initialization
+Each validation test project must have a class defined in `project_classes.py`
+which defines the job statepoints and job document parameters for that
+validation test. Each validation test must also write the test workflow in a
+corresponding file in the `hoomd_validation` directory.
 
-1. Run the shell script (still need to make this) to initialize the project
-directories.
-
-2. Run `init.py` to populate the project directories with jobs and initialize
-job documents
-
-3. Use the python files in `hoomd_validation` to run specific validation
-test workflows

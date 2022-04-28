@@ -5,20 +5,30 @@ from flow import FlowProject
 
 
 class ValidationTestProject(FlowProject):
+    """Base class for all validation test projects."""
 
     @property
     @abstractmethod
     def job_document_params(self):
+        """list(dict): List of dictionaries containing statepoint parameters
+        for the jobs in this project."""
         pass
 
     @property
     @abstractmethod
     def job_statepoints(self):
+        """list(tuple): List of pairs (parameter, default) giving the job
+        document parameters and their default values."""
         pass
 
 
 
 class LJFluid(ValidationTestProject):
+    """Lennard Jones Fluid Phase Behavior Validation Test.
+
+    Right now this class only provides dummy statepoint and job document
+    parameters so we can test the project skeleton.
+    """
 
     @property
     def job_statepoints(self):
