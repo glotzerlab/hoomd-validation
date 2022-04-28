@@ -25,7 +25,11 @@ class ValidationTestProject(FlowProject):
 
 
 class LJFluid(ValidationTestProject):
-    """FlowProject class for the Lennard Jones fluid validation test."""
+    """FlowProject class for the Lennard Jones fluid validation test.
+
+    Right now this class only provides dummy statepoint and job document
+    parameters so we can test the project skeleton.
+    """
 
     @property
     def job_statepoints(self):
