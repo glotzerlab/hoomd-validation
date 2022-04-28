@@ -1,3 +1,6 @@
+# Copyright (c) 2022 The Regents of the University of Michigan.
+# Part of HOOMD-blue, released under the BSD 3-Clause License.
+
 from flow import FlowProject
 from config import all_validation_tests, test_project_dict
 

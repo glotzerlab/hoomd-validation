@@ -1,3 +1,6 @@
+# Copyright (c) 2022 The Regents of the University of Michigan.
+# Part of HOOMD-blue, released under the BSD 3-Clause License.
+
 from config import all_validation_tests, test_project_dict
 
 # TODO make sure directories exists for each of the projects
@@ -7,11 +10,9 @@ from config import all_validation_tests, test_project_dict
 for project_name_str, project_class in test_project_dict.items():
     global_project_job = all_validation_tests.open_job(
         dict(project_name=project_name_str,
-             path=project_class.root_directory())
-    )
+             path=project_class.root_directory()))
     if global_project_job not in all_validation_tests:
         global_project_job.init()
-
 
 # open jobs for all projects corresponding to validation test suites
 for _, project_class in test_project_dict.items():
