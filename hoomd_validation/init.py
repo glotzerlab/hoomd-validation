@@ -1,9 +1,9 @@
 # Copyright (c) 2022 The Regents of the University of Michigan.
 # Part of HOOMD-blue, released under the BSD 3-Clause License.
 
-from config import all_validation_tests, test_project_dict
+"""Populate signac projects with jobs and job document parameters."""
 
-# TODO make sure directories exists for each of the projects
+from config import all_validation_tests, test_project_dict
 
 # make the statepoint of the global project jobs be names and paths to valiation
 # test projects
