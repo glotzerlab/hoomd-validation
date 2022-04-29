@@ -4,11 +4,6 @@ Contributions are welcomed via [pull requests][pulls]. Contact the **HOOMD-blue*
 starting work to ensure it meshes well with the planned development direction and standards set for
 the project.
 
-## Implement functionality in a general and flexible fashion
-
-New features should be applicable to a variety of use-cases. The **HOOMD-blue** developers can
-assist you in designing flexible interfaces.
-
 ## Base your work off the correct branch
 
 All new work should be based on `main`.
