@@ -14,7 +14,7 @@ class ValidationTestProject(FlowProject):
     @abstractmethod
     def job_statepoints(self):
         """list(dict): A list of statepoints for this project.
-        
+
         Used to instantiate jobs for subclassed projects.
         """
         pass
@@ -37,11 +37,8 @@ class LJFluid(ValidationTestProject):
     @property
     def job_statepoints(self):
         """list(dict): A list of statepoints for this project."""
-        pressures = [0.1, 0.2, 0.5, 1.0]
-        job_sps = []
-        for press in pressures:
-            job_sps.append({'kT': 1.0, 'N': 2000, 'V': 400, 'P': press})
-        return [{"kT": 1.0, "N": 200, "V": 400, "P": P for P in (0.1, 0.2, 0.5, 1.0)]
+        return [{"kT": 1.0, "N": 200, "V": 400, "P": P}
+                for P in (0.1, 0.2, 0.5, 1.0)]
 
     @property
     def job_document_params(self):
