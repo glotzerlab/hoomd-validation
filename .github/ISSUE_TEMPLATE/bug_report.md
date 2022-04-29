@@ -38,7 +38,7 @@ Platform:
 - GPU
 - CPU
 
-Installation method:
+**HOOMD-blue** Installation method:
 - Conda package
 - Compiled from source
 - glotzerlab-software container

@@ -20,7 +20,7 @@ repos:
   hooks:
   - id: fix-license-header
     name: Fix license headers (Python)
-    types_or: [python, cython]
+    types_or: [python]
     args:
     - --license-file=LICENSE
     - --add=Part of HOOMD-blue, released under the BSD 3-Clause License.
