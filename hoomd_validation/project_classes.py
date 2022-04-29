@@ -37,8 +37,12 @@ class LJFluid(ValidationTestProject):
     @property
     def job_statepoints(self):
         """list(dict): A list of statepoints for this project."""
-        return [{"kT": 1.0, "N": 200, "V": 400, "P": P}
-                for P in (0.1, 0.2, 0.5, 1.0)]
+        return [{
+            "kT": 1.0,
+            "N": 200,
+            "V": 400,
+            "P": P
+        } for P in (0.1, 0.2, 0.5, 1.0)]
 
     @property
     def job_document_params(self):
