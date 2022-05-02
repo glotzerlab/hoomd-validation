@@ -6,7 +6,9 @@
 from flow import FlowProject
 from config import all_validation_tests, test_project_dict
 
-import lj_fluid  # noqa F401
+import lj_fluid
+
+__all__ = ["lj_fluid"]
 
 
 class AllValidationTests(FlowProject):
