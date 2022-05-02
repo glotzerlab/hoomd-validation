@@ -1,3 +1,8 @@
+# Copyright (c) 2022 The Regents of the University of Michigan.
+# Part of HOOMD-blue, released under the BSD 3-Clause License.
+
+"""Initialize signac projects and create global variables."""
+
 import signac
 import project_classes
 from pathlib import Path
@@ -9,10 +14,9 @@ test_project_dict = dict()
 project_root = Path(__file__).parent.parent
 
 # initialize manager project
-all_validation_tests = signac.init_project(
-    name="AllValidationTests",
-    root=str(project_root / "AllValidationTests")
-)
+all_validation_tests = signac.init_project(name="AllValidationTests",
+                                           root=str(project_root
+                                                    / "AllValidationTests"))
 
 # initialize validation test projects
 for project_name_str in test_project_name_list:
@@ -21,4 +25,3 @@ for project_name_str in test_project_name_list:
             name=project_name_str,
             root=str(project_root / project_name_str)
         )
-

@@ -24,4 +24,3 @@ Each validation test project must have a class defined in `project_classes.py`
 which defines the job statepoints and job document parameters for that
 validation test. Each validation test must also write the test workflow in a
 corresponding file in the `hoomd_validation` directory.
-

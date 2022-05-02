@@ -1,0 +1,33 @@
+name: CI
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+on:
+  # Trigger on pull requests.
+  pull_request:
+
+  # Trigger on pushes to the mainline branches. This prevents building commits twice when the pull
+  # request source branch is in the same repository.
+  push:
+    branches:
+      - "main"
+
+  # Trigger on request.
+  workflow_dispatch:
+
+jobs:
+  # for now the repo is private, so pre-commit won't run automatically
+  pre-commit:
+    name: pre-commit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v2.4.0
+
+      - name: Install Python
+        uses: actions/setup-python@v2
+
+      - name: Run pre-commit hooks
+        uses: pre-commit/action@v2.0.3
