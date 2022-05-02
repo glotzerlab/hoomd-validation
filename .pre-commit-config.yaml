@@ -26,13 +26,6 @@ repos:
     - --add=Part of HOOMD-blue, released under the BSD 3-Clause License.
     - --keep-before=#!
   - id: fix-license-header
-    name: Fix license headers (C)
-    types_or: [c]
-    args:
-    - --license-file=LICENSE
-    - --add=Part of HOOMD-blue, released under the BSD 3-Clause License.
-    - --comment-prefix=//
-  - id: fix-license-header
     name: Fix license headers (reStructuredText)
     types_or: [rst]
     args:
