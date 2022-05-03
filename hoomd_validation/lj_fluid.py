@@ -57,6 +57,7 @@ def run_nvt_simulation(job):
     nlist_params = ???
     kT = ???
     tau = ???
+    delta_t = ???
     run_steps = ???  # 1.1e6 is what the lammps study did
     r_cut = sigma * r_cut_coeff
 
@@ -72,7 +73,7 @@ def run_nvt_simulation(job):
     lj.shift_mode = shift_mode
 
     # integration method
-    nvt = md.methods.NVT(kT=kT, tau=tau)
+    nvt = md.methods.NVT(hoomd.filter.All(), kT=kT, tau=tau)
 
     # integrator
     integrator = md.Integrator(dt=delta_t, methods=[nvt], forces=[lj])
@@ -131,13 +132,89 @@ def compute_nvt_pressure(job):
     plt.close()
 
 
+class ComputeNumberDensity:
+    """Compute the number density of particles in the system."""
+
+    def __init__(self, sim, num_particles):
+        self._sim = sim
+        self._num_particles = num_particles
+
+    @hoomd.logging.log(requires_run=True)
+    def density(self):
+        vol = None
+        with self._sim.cpu_local_snapshot as snap:
+            vol = snap.global_box.volume
+        return self._num_particles / vol
+
+
 @LJFluid.operation
 @LJFluid.pre.isfile('initial_state.gsd')
+@LJFluid.pre(lambda job: job.doc.nvt_pressure != 0.0)
 @LJFluid.pre.after(create_initial_state)
 @LJFluid.post.isfile('npt_sim.gsd')
 def run_npt_simulation(job):
     """Run an npt simulation at the pressure computed by the NVT simulation."""
-    pass
+    import hoomd
+    from hoomd import md
+
+    epsilon = ???
+    sigma = ???
+    r_cut_coeff = ???
+    shift_mode = ???
+    seed = ???
+    nlist_params = ???
+    kT = ???
+    tau = ???
+    nvt_pressure = ???
+    tauS = ???
+    delta_t = ???
+    run_steps = ???  # 1.1e6 is what the lammps study did
+    r_cut = sigma * r_cut_coeff
+
+    device = hoomd.device.CPU()
+    sim = hoomd.Simulation(device)
+    sim.create_state_from_gsd(job.fn('initial_state.gsd'))
+    sim.seed = seed
+
+    # pair force
+    nlist = md.nlist.Cell(**nlist_params)
+    lj = md.pair.LJ(default_r_cut=r_cut, nlist=nlist)
+    lj.params[('A', 'A')] = dict(sigma=sigma, epsilon=epsilon)
+    lj.shift_mode = shift_mode
+
+    # integration method
+    p = nvt_pressure
+    npt = md.methods.NPT(hoomd.filter.All(), kT=kT, tau=tau,
+                         S=[p, p, p, 0, 0, 0],
+                         tauS=tauS,
+                         couple='xyz')
+
+    # integrator
+    integrator = md.Integrator(dt=delta_t, methods=[npt], forces=[lj])
+    sim.operations.integrator = integrator
+
+    # compute pressure
+    thermo = md.thermo.ThermodynamicQuantities()
+    sim.operations.add(thermo)
+
+    # log quantities
+    density_compute = ComputeNumberDensity(sim, num_particles)
+    logger = hoomd.logging.Logger()
+    logger.add(thermo, quantities=['pressure'])
+    logger.add(density_compute, quantities=['density'])
+
+    # write data to gsd file
+    gsd_writer = hoomd.write.GSD(filename=job.fn('npt_sim.gsd'),
+                                 trigger=hoomd.trigger.Periodic(1000),
+                                 mode='wb',
+                                 log=logger)
+    sim.operations.add(gsd_writer)
+
+    # thermoalize momenta
+    sim.state.thermalize_particle_momenta(hoomd.filter.All(), kT)
+
+    # run
+    sim.run(run_steps)
 
 
 @LJFluid.operation
@@ -146,7 +223,36 @@ def run_npt_simulation(job):
 @LJFluid.post(lambda job: job.doc.npt_density != 0.0)
 def compute_npt_density(job):
     """Compute the density to cross-validate with earlier NVT simulations."""
-    pass
+    import gsd.hoomd
+    import matplotlib.pyplot as plt
+
+    traj = gsd.hoomd.open(job.fn('npt_sim.gsd'))
+
+    # TODO only use equilibrated part of trajectory
+    traj = traj[:]
+
+    # create array of pressures
+    pressures = np.zeros(len(traj))
+    densities = np.zeros(len(traj))
+    for i, frame in enumerate(traj):
+        pressures[i] = frame.log['md/compute/ThermoDynamicQuantities/pressure']
+        densities[i] = frame.log['ComputeNumberDensity/density']
+
+    # save the average value in a job doc parameter
+    job.doc.npt_density = np.average(densities)
+
+    # make plots for visual inspection
+    plt.plot(pressures)
+    plt.title('Pressure vs. time')
+    plt.ylabel('$P \\sigma^3 / \\epsilon$')
+    plt.savefig(job.fn('npt_pressure_vs_time.png'), bbox_inches='tight')
+    plt.close()
+
+    plt.plot(densities)
+    plt.title('Number Density vs. time')
+    plt.ylabel('$\\rho \\sigma^3$')
+    plt.savefig(job.fn('npt_density_vs_time.png'), bbox_inches='tight')
+    plt.close()
 
 
 def run_mc_simulation(job):
