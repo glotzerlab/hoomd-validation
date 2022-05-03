@@ -57,7 +57,7 @@ def run_nvt_simulation(job):
     nlist_params = ???
     kT = ???
     tau = ???
-    run_steps = ???
+    run_steps = ???  # 1.1e6 is what the lammps study did
     r_cut = sigma * r_cut_coeff
 
     device = hoomd.device.CPU()
@@ -104,9 +104,31 @@ def run_nvt_simulation(job):
 @LJFluid.pre.isfile('nvt_sim.gsd')
 @LJFluid.pre.after(run_nvt_simulation)
 @LJFluid.post(lambda job: job.doc.nvt_pressure != 0.0)
+@LJFluid.post.isfile('nvt_pressure_vs_time.png')
 def compute_nvt_pressure(job):
     """Compute the pressure for use in NPT simulations to cross-validate."""
-    pass
+    import gsd.hoomd
+    import matplotlib.pyplot as plt
+
+    traj = gsd.hoomd.open(job.fn('nvt_sim.gsd'))
+
+    # TODO only use equilibrated part of trajectory
+    traj = traj[:]
+
+    # create array of pressures
+    pressures = np.zeros(len(traj))
+    for i, frame in enumerate(traj):
+        pressures[i] = frame.log['md/compute/ThermoDynamicQuantities/pressure']
+
+    # save the average value in a job doc parameter
+    job.doc.nvt_pressure = np.average(pressures)
+
+    # make a plot for visual inspection
+    plt.plot(pressures)
+    plt.title('Pressure vs. time')
+    plt.ylabel('$P$')
+    plt.savefig(job.fn('nvt_pressure_vs_time.png'), bbox_inches='tight')
+    plt.close()
 
 
 @LJFluid.operation
