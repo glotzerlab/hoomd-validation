@@ -24,6 +24,6 @@ for _, project_class in test_project_dict.items():
             job.init()
 
         # initialize job document parameters for this job
-        for param, default in project_class.job_document_params:
+        for param, default in project_class.job_document_params(job):
             if param not in job.doc:
                 setattr(job.doc, param, default)

@@ -6,6 +6,9 @@
 
 """
 
+import hoomd
+import numpy as np
+
 from config import test_project_dict
 from project_classes import LJFluid
 
@@ -17,21 +20,22 @@ def create_initial_state(job):
     import gsd.hoomd
     import itertools
 
-    density = ???
-    num_particles = ???
+    sp = job.sp()
+    doc = job.doc()
 
-    box_volume = num_particles / density
+    particle_volume = sp["num_particles"] * 4 / 3 * np.pi * 0.5**3
+    box_volume = particle_volume / sp["density"]
     L = box_volume**(1/3.)
 
-    N = int(np.ceil(num_particles ** (1./3.)))
+    N = int(np.ceil(sp["num_particles"] ** (1./3.)))
     x = np.linspace(-L / 2, L / 2, N, endpoint=False)
-    position = list(itertools.product(x, repeat=3))[:num_particles]
+    position = list(itertools.product(x, repeat=3))[:sp["num_particles"]]
 
     # create snapshot
     snap = gsd.hoomd.Snapshot()
-    snap.particles.N = num_particles
+    snap.particles.N = sp["num_particles"]
     snap.particles.position = position
-    snap.particles.typeid = [0] * num_particles
+    snap.particles.typeid = [0] * sp["num_particles"]
     snap.particles.types = ['A']
 
     snap.configuration.box = [L, L, L, 0, 0, 0]
@@ -43,154 +47,153 @@ def create_initial_state(job):
 @LJFluid.operation
 @LJFluid.pre.isfile('initial_state.gsd')
 @LJFluid.pre.after(create_initial_state)
-@LJFluid.post.isfile('nvt_sim.gsd')
-def run_nvt_simulation(job):
-    """Run the simulation in NVT."""
+@LJFluid.post.isfile('nvt_md_sim.gsd')
+def run_nvt_md_sim(job):
+    """Run the MD simulation in NVT."""
     import hoomd
     from hoomd import md
 
-    epsilon = ???
-    sigma = ???
-    r_cut_coeff = ???
-    shift_mode = ???
-    seed = ???
-    nlist_params = ???
-    kT = ???
-    tau = ???
-    delta_t = ???
-    run_steps = ???  # 1.1e6 is what the lammps study did
-    r_cut = sigma * r_cut_coeff
+    sp = job.sp()
+    doc = job.doc()
 
     device = hoomd.device.CPU()
     sim = hoomd.Simulation(device)
     sim.create_state_from_gsd(job.fn('initial_state.gsd'))
-    sim.seed = seed
+    sim.seed = doc["nvt_md"]["seed"]
 
     # pair force
-    nlist = md.nlist.Cell(**nlist_params)
-    lj = md.pair.LJ(default_r_cut=r_cut, nlist=nlist)
-    lj.params[('A', 'A')] = dict(sigma=sigma, epsilon=epsilon)
-    lj.shift_mode = shift_mode
+    nlist = md.nlist.Cell(buffer=0.2)
+    lj = md.pair.LJ(default_r_cut=2.5, nlist=nlist)
+    lj.params[('A', 'A')] = dict(sigma=1, epsilon=1)
+    lj.shift_mode = 'xplor'
 
     # integration method
-    nvt = md.methods.NVT(hoomd.filter.All(), kT=kT, tau=tau)
+    nvt = md.methods.NVT(hoomd.filter.All(), kT=sp["kT"], tau=0.1)
 
     # integrator
-    integrator = md.Integrator(dt=delta_t, methods=[nvt], forces=[lj])
+    integrator = md.Integrator(dt=0.005, methods=[nvt], forces=[lj])
     sim.operations.integrator = integrator
 
     # compute pressure
-    thermo = md.thermo.ThermodynamicQuantities()
+    thermo = md.compute.ThermodynamicQuantities(hoomd.filter.All())
     sim.operations.add(thermo)
 
     # log the pressure
     logger = hoomd.logging.Logger()
-    logger.add(thermo, quantities=['pressure'])
+    logger.add(thermo, quantities=['pressure', 'potential_energy'])
 
     # write data to gsd file
-    gsd_writer = hoomd.write.GSD(filename=job.fn('nvt_sim.gsd'),
+    gsd_writer = hoomd.write.GSD(filename=job.fn('nvt_md_sim.gsd'),
                                  trigger=hoomd.trigger.Periodic(1000),
                                  mode='wb',
                                  log=logger)
     sim.operations.add(gsd_writer)
 
+    # write to terminal
+    logger_table = hoomd.logging.Logger()
+    logger_table.add(sim, quantities=['timestep', 'final_timestep', 'tps'])
+    table_writer = hoomd.write.Table(hoomd.trigger.Periodic(1000), logger_table)
+    sim.operations.add(table_writer)
+
     # thermoalize momenta
-    sim.state.thermalize_particle_momenta(hoomd.filter.All(), kT)
+    sim.state.thermalize_particle_momenta(hoomd.filter.All(), sp["kT"])
 
     # run
-    sim.run(run_steps)
+    sim.run(1.1e6)
 
 
 @LJFluid.operation
-@LJFluid.pre.isfile('nvt_sim.gsd')
-@LJFluid.pre.after(run_nvt_simulation)
-@LJFluid.post(lambda job: job.doc.nvt_pressure != 0.0)
-@LJFluid.post.isfile('nvt_pressure_vs_time.png')
-def compute_nvt_pressure(job):
+@LJFluid.pre.isfile('nvt_md_sim.gsd')
+@LJFluid.pre.after(run_nvt_md_sim)
+@LJFluid.post(lambda job: job.doc.nvt_md.pressure != 0.0)
+@LJFluid.post.isfile('nvt_md_pressure_vs_time.png')
+def analyze_nvt_md_sim(job):
     """Compute the pressure for use in NPT simulations to cross-validate."""
     import gsd.hoomd
     import matplotlib.pyplot as plt
 
     traj = gsd.hoomd.open(job.fn('nvt_sim.gsd'))
 
-    # TODO only use equilibrated part of trajectory
-    traj = traj[:]
+    # the LAMMPS study used only the last 1e6 time steps to compute their
+    # pressures, which we replicate here
+    traj = traj[100:]
 
-    # create array of pressures
+    # create array of data points
     pressures = np.zeros(len(traj))
+    potential_energies = np.zeros(len(traj))
     for i, frame in enumerate(traj):
         pressures[i] = frame.log['md/compute/ThermoDynamicQuantities/pressure']
+        potential_energies[i] = frame.log['md/compute/ThermoDynamicQuantities/potential_energy']
 
     # save the average value in a job doc parameter
-    job.doc.nvt_pressure = np.average(pressures)
+    job.doc.nvt_md.pressure = np.average(pressures)
+    job.doc.nvt_md.potential_energy = np.average(potential_energies)
 
-    # make a plot for visual inspection
+    # make plots for visual inspection
     plt.plot(pressures)
     plt.title('Pressure vs. time')
     plt.ylabel('$P$')
-    plt.savefig(job.fn('nvt_pressure_vs_time.png'), bbox_inches='tight')
+    plt.savefig(job.fn('nvt_md_pressure_vs_time.png'), bbox_inches='tight')
+    plt.close()
+
+    plt.plot(potential_energies)
+    plt.title('Potential Energy vs. time')
+    plt.ylabel('$U$')
+    plt.savefig(job.fn('nvt_md_potential_energy_vs_time.png'), bbox_inches='tight')
     plt.close()
 
 
-class ComputeNumberDensity:
-    """Compute the number density of particles in the system."""
+class ComputeDensity:
+    """Compute the density of particles in the system.
+
+    This calculation assumes particles are spheres of diameter 1.
+    """
 
     def __init__(self, sim, num_particles):
         self._sim = sim
-        self._num_particles = num_particles
+        self._total_particle_volume = num_particles * 4 / 3 * np.pi * 0.5**3
 
     @hoomd.logging.log(requires_run=True)
     def density(self):
         vol = None
         with self._sim.cpu_local_snapshot as snap:
             vol = snap.global_box.volume
-        return self._num_particles / vol
+        return self._total_particle_volume / vol
 
 
 @LJFluid.operation
 @LJFluid.pre.isfile('initial_state.gsd')
-@LJFluid.pre(lambda job: job.doc.nvt_pressure != 0.0)
+@LJFluid.pre(lambda job: job.doc.nvt_md.pressure != 0.0)
 @LJFluid.pre.after(create_initial_state)
-@LJFluid.post.isfile('npt_sim.gsd')
-def run_npt_simulation(job):
+@LJFluid.post.isfile('npt_md_sim.gsd')
+def run_npt_md_sim(job):
     """Run an npt simulation at the pressure computed by the NVT simulation."""
     import hoomd
     from hoomd import md
 
-    epsilon = ???
-    sigma = ???
-    r_cut_coeff = ???
-    shift_mode = ???
-    seed = ???
-    nlist_params = ???
-    kT = ???
-    tau = ???
-    nvt_pressure = ???
-    tauS = ???
-    delta_t = ???
-    run_steps = ???  # 1.1e6 is what the lammps study did
-    r_cut = sigma * r_cut_coeff
+    sp = job.sp()
+    doc = job.doc()
 
     device = hoomd.device.CPU()
     sim = hoomd.Simulation(device)
     sim.create_state_from_gsd(job.fn('initial_state.gsd'))
-    sim.seed = seed
+    sim.seed = doc["npt_md"]["seed"]
 
     # pair force
-    nlist = md.nlist.Cell(**nlist_params)
-    lj = md.pair.LJ(default_r_cut=r_cut, nlist=nlist)
-    lj.params[('A', 'A')] = dict(sigma=sigma, epsilon=epsilon)
-    lj.shift_mode = shift_mode
+    nlist = md.nlist.Cell(buffer=0.2)
+    lj = md.pair.LJ(default_r_cut=2.5, nlist=nlist)
+    lj.params[('A', 'A')] = dict(sigma=1, epsilon=1)
+    lj.shift_mode = 'xplor'
 
     # integration method
-    p = nvt_pressure
-    npt = md.methods.NPT(hoomd.filter.All(), kT=kT, tau=tau,
+    p = doc["nvt_md"]["pressure"]
+    npt = md.methods.NPT(hoomd.filter.All(), kT=sp["kT"], tau=0.1,
                          S=[p, p, p, 0, 0, 0],
-                         tauS=tauS,
+                         tauS=0.1,
                          couple='xyz')
 
     # integrator
-    integrator = md.Integrator(dt=delta_t, methods=[npt], forces=[lj])
+    integrator = md.Integrator(dt=0.005, methods=[npt], forces=[lj])
     sim.operations.integrator = integrator
 
     # compute pressure
@@ -198,67 +201,312 @@ def run_npt_simulation(job):
     sim.operations.add(thermo)
 
     # log quantities
-    density_compute = ComputeNumberDensity(sim, num_particles)
+    density_compute = ComputeDensity(sim, sp["num_particles"])
     logger = hoomd.logging.Logger()
-    logger.add(thermo, quantities=['pressure'])
+    logger.add(thermo, quantities=['pressure', 'potential_energy'])
     logger.add(density_compute, quantities=['density'])
 
     # write data to gsd file
-    gsd_writer = hoomd.write.GSD(filename=job.fn('npt_sim.gsd'),
+    gsd_writer = hoomd.write.GSD(filename=job.fn('npt_md_sim.gsd'),
                                  trigger=hoomd.trigger.Periodic(1000),
                                  mode='wb',
                                  log=logger)
     sim.operations.add(gsd_writer)
 
     # thermoalize momenta
-    sim.state.thermalize_particle_momenta(hoomd.filter.All(), kT)
+    sim.state.thermalize_particle_momenta(hoomd.filter.All(), sp["kT"])
 
     # run
-    sim.run(run_steps)
+    sim.run(1.1e6)
 
 
 @LJFluid.operation
-@LJFluid.pre.isfile('npt_sim.gsd')
-@LJFluid.pre.after(run_npt_simulation)
-@LJFluid.post(lambda job: job.doc.npt_density != 0.0)
+@LJFluid.pre.isfile('npt_md_sim.gsd')
+@LJFluid.pre.after(run_npt_md_sim)
+@LJFluid.post(lambda job: job.doc.npt_md.density != 0.0)
 def compute_npt_density(job):
     """Compute the density to cross-validate with earlier NVT simulations."""
     import gsd.hoomd
     import matplotlib.pyplot as plt
 
-    traj = gsd.hoomd.open(job.fn('npt_sim.gsd'))
+    traj = gsd.hoomd.open(job.fn('npt_md_sim.gsd'))
 
-    # TODO only use equilibrated part of trajectory
-    traj = traj[:]
+    # the LAMMPS study used only the last 1e6 time steps to compute their
+    # pressures, which we replicate here
+    traj = traj[100:]
 
     # create array of pressures
     pressures = np.zeros(len(traj))
+    potential_energies = np.zeros(len(traj))
     densities = np.zeros(len(traj))
     for i, frame in enumerate(traj):
         pressures[i] = frame.log['md/compute/ThermoDynamicQuantities/pressure']
-        densities[i] = frame.log['ComputeNumberDensity/density']
+        potential_energies[i] = frame.log['md/compute/ThermoDynamicQuantities/potential_energy']
+        densities[i] = frame.log['ComputeDensity/density']
 
     # save the average value in a job doc parameter
-    job.doc.npt_density = np.average(densities)
+    job.doc.npt_md.density = np.average(densities)
+    job.doc.npt_md.potential_energy = np.average(potential_energies)
 
     # make plots for visual inspection
     plt.plot(pressures)
     plt.title('Pressure vs. time')
     plt.ylabel('$P \\sigma^3 / \\epsilon$')
-    plt.savefig(job.fn('npt_pressure_vs_time.png'), bbox_inches='tight')
+    plt.savefig(job.fn('npt_md_pressure_vs_time.png'), bbox_inches='tight')
+    plt.close()
+
+    plt.plot(potential_energies)
+    plt.title('Potential Energy vs. time')
+    plt.ylabel('$U / \\epsilon$')
+    plt.savefig(job.fn('npt_md_potential_energy_vs_time.png'), bbox_inches='tight')
     plt.close()
 
     plt.plot(densities)
     plt.title('Number Density vs. time')
     plt.ylabel('$\\rho \\sigma^3$')
-    plt.savefig(job.fn('npt_density_vs_time.png'), bbox_inches='tight')
+    plt.savefig(job.fn('npt_md_density_vs_time.png'), bbox_inches='tight')
     plt.close()
 
 
-def run_mc_simulation(job):
-    """There was talk of running MC simulations to further cross-validate the
-    NVT/PT results. Not sure if its really necessary at this point."""
-    pass
+@LJFluid.operation
+@LJFluid.pre.isfile('initial_state.gsd')
+@LJFluid.pre.after(create_initial_state)
+@LJFluid.post.isfile('nvt_mc_sim.gsd')
+def run_nvt_mc_sim(job):
+    """Run MC sim in NVT."""
+    import hoomd
+    from hoomd import hpmc
+
+    sp = job.sp()
+    doc = job.doc()
+
+    # simulation
+    dev = hoomd.device.CPU()
+    sim = hoomd.Simulation(dev)
+    sim.create_state_from_gsd(job.fn('initial_state.gsd'))
+    sim.seed = doc["nvt_mc"]["seed"]
+
+    # integrator
+    mc = hpmc.integrate.Sphere()
+    mc.shape[('A', 'A')] = dict(diameter=0.0001)
+    sim.operations.integrator = mc
+
+    # pair potential
+    epsilon = 1 / sp["kT"]
+    lj_str = """float rsq = dot(r_ij, r_ij);
+                float rsqinv = 1 / rsq;
+                float r6inv = rsqinv * rsqinv * rsqinv;
+                float r12inv = r6inv * r6inv;
+                return 4 * {epsilon} * (r12inv - r6inv);
+             """
+    patch = hpmc.pair.user.CPPPotential(r_cut=2.5, code=lj_str, param_array=[])
+    mc.pair_potential = patch
+
+    # compute sdf
+    sdf = hpmc.compute.SDF(xmax=0.02, dx=1e-4)
+    sim.operations.add(sdf)
+
+    # move size tuner
+    mstuner = hpmc.tune.MoveSize.scale_solver(
+        moves=['a', 'd'],
+        target=0.2,
+        trigger=hoomd.trigger.And([
+            hoomd.trigger.Periodic(1000),
+            hoomd.trigger.Before(100000)
+        ])
+    )
+    sim.operations.add(mstuner)
+
+    # log to gsd
+    logger_gsd = hoomd.logging.Logger()
+    logger_gsd.add(mc, quantities=['type_shapes'])
+    logger_gsd.add(sdf, quantities=['betaP'])
+    logger_gsd.add(patch, quantities=['energy'])
+
+    gsd_writer = hoomd.write.GSD(
+        filename=job.fn('nvt_mc_sim.gsd'),
+        trigger=hoomd.trigger.Periodic(1000),
+        mode='wb',
+        log=logger_gsd
+    )
+    sim.operations.add(gsd_writer)
+
+    # make sure we have a valid initial state
+    sim.run(0)
+    if mc.overlaps > 0:
+        raise RuntimeError("Initial configuration has overlaps!")
+
+    # run
+    sim.run(1.1e6)
+
+
+@LJFluid.operation
+@LJFluid.pre.isfile('nvt_mc_sim.gsd')
+@LJFluid.pre.after(run_nvt_mc_sim)
+@LJFluid.post(lambda job: job.doc.nvt_mc.pressure != 0.0)
+@LJFluid.post.isfile('nvt_mc_pressure_vs_time.png')
+def analyze_nvt_mc_sim(job):
+    """Compute the pressure for use in NPT simulations to cross-validate."""
+    import gsd.hoomd
+    import matplotlib.pyplot as plt
+
+    traj = gsd.hoomd.open(job.fn('nvt_mc_sim.gsd'))
+
+    # the LAMMPS study used only the last 1e6 time steps to compute their
+    # pressures, which we replicate here
+    traj = traj[100:]
+
+    # create array of data points
+    pressures = np.zeros(len(traj))
+    potential_energies = np.zeros(len(traj))
+    for i, frame in enumerate(traj):
+        pressures[i] = frame.log['hpmc/compute/SDF/betaP'] * sp["kT"]
+        potential_energies[i] = frame.log['hpmc/pair/user/CPPPotential/energy']
+
+    # save the average value in a job doc parameter
+    job.doc.nvt_mc.pressure = np.average(pressures)
+    job.doc.nvt_mc.potential_energy = np.average(potential_energies)
+
+    # make plots for visual inspection
+    plt.plot(pressures)
+    plt.title('Pressure vs. time')
+    plt.ylabel('$P$')
+    plt.savefig(job.fn('nvt_mc_pressure_vs_time.png'), bbox_inches='tight')
+    plt.close()
+
+    plt.plot(potential_energies)
+    plt.title('Potential Energy vs. time')
+    plt.ylabel('$U$')
+    plt.savefig(job.fn('nvt_mc_potential_energy_vs_time.png'), bbox_inches='tight')
+    plt.close()
+
+
+@LJFluid.operation
+@LJFluid.pre.isfile('initial_state.gsd')
+@LJFluid.pre.after(run_nvt_mc_sim)
+@LJFluid.pre(lambda job: job.doc.nvt_mc.pressure > 0.0)
+@LJFluid.post.isfile('npt_mc_sim.gsd')
+def run_npt_mc_sim(job):
+    """Run MC sim in NPT."""
+    import hoomd
+    from hoomd import hpmc
+
+    sp = job.sp()
+    doc = job.doc()
+
+    # simulation
+    dev = hoomd.device.CPU()
+    sim = hoomd.Simulation(dev)
+    sim.create_state_from_gsd(job.fn('initial_state.gsd'))
+    sim.seed = doc["npt_mc"]["seed"]
+
+    # integrator
+    mc = hpmc.integrate.Sphere()
+    mc.shape[('A', 'A')] = dict(diameter=0.0001)
+    sim.operations.integrator = mc
+
+    # pair potential
+    epsilon = 1 / sp["kT"]
+    lj_str = """float rsq = dot(r_ij, r_ij);
+                float rsqinv = 1 / rsq;
+                float r6inv = rsqinv * rsqinv * rsqinv;
+                float r12inv = r6inv * r6inv;
+                return 4 * {epsilon} * (r12inv - r6inv);
+             """
+    patch = hpmc.pair.user.CPPPotential(r_cut=2.5, code=lj_str, param_array=[])
+    mc.pair_potential = patch
+
+    # compute sdf
+    sdf = hpmc.compute.SDF(xmax=0.02, dx=1e-4)
+    sim.operations.add(sdf)
+
+    # update box
+    boxmc = hpmc.update.BoxMC(betaP=doc["nvt_mc"]["pressure"] / sp["kT"],
+                              trigger=hoomd.trigger.Periodic(10))
+    sim.operations.add(boxmc)
+
+    # move size tuner
+    mstuner = hpmc.tune.MoveSize.scale_solver(
+        moves=['a', 'd'],
+        target=0.2,
+        trigger=hoomd.trigger.And([
+            hoomd.trigger.Periodic(1000),
+            hoomd.trigger.Before(100000)
+        ])
+    )
+    sim.operations.add(mstuner)
+
+    # log to gsd
+    compute_density = ComputeNumberDensity(sim, sp["num_particles"])
+    logger_gsd = hoomd.logging.Logger()
+    logger_gsd.add(mc, quantities=['type_shapes'])
+    logger_gsd.add(sdf, quantities=['betaP'])
+    logger_gsd.add(patch, quantities=['energy'])
+    logger_gsd.add(compute_density, quantitites=['density'])
+
+    gsd_writer = hoomd.write.GSD(
+        filename=job.fn('npt_mc_sim.gsd'),
+        trigger=hoomd.trigger.Periodic(1000),
+        mode='wb',
+        log=logger_gsd
+    )
+    sim.operations.add(gsd_writer)
+
+    # make sure we have a valid initial state
+    sim.run(0)
+    if mc.overlaps > 0:
+        raise RuntimeError("Initial configuration has overlaps!")
+
+    # run
+    sim.run(1.1e6)
+
+
+@LJFluid.operation
+@LJFluid.pre.isfile('npt_mc_sim.gsd')
+@LJFluid.pre.after(run_npt_mc_sim)
+@LJFluid.post(lambda job: job.doc.npt_mc.density != 0.0)
+def analyze_npt_mc_sim(job):
+    """Compute the density to cross-validate with earlier NVT simulations."""
+    import gsd.hoomd
+    import matplotlib.pyplot as plt
+
+    traj = gsd.hoomd.open(job.fn('npt_mc_sim.gsd'))
+
+    # the LAMMPS study used only the last 1e6 time steps to compute their
+    # pressures, which we replicate here
+    traj = traj[100:]
+
+    # create array of pressures
+    pressures = np.zeros(len(traj))
+    potential_energies = np.zeros(len(traj))
+    densities = np.zeros(len(traj))
+    for i, frame in enumerate(traj):
+        pressures[i] = frame.log['hpmc/compute/SDF/betaP'] * sp["kT"]
+        potential_energies[i] = frame.log['hpmc/pair/user/CPPPotential/energy']
+        densities[i] = frame.log['ComputeDensity/density']
+
+    # save the average value in a job doc parameter
+    job.doc.npt_mc.density = np.average(densities)
+    job.doc.npt_mc.potential_energy = np.average(potential_energies)
+
+    # make plots for visual inspection
+    plt.plot(pressures)
+    plt.title('Pressure vs. time')
+    plt.ylabel('$P \\sigma^3 / \\epsilon$')
+    plt.savefig(job.fn('npt_mc_pressure_vs_time.png'), bbox_inches='tight')
+    plt.close()
+
+    plt.plot(potential_energies)
+    plt.title('Potential Energy vs. time')
+    plt.ylabel('$U / \\epsilon$')
+    plt.savefig(job.fn('npt_mc_potential_energy_vs_time.png'), bbox_inches='tight')
+    plt.close()
+
+    plt.plot(densities)
+    plt.title('Number Density vs. time')
+    plt.ylabel('$\\rho \\sigma^3$')
+    plt.savefig(job.fn('npt_mc_density_vs_time.png'), bbox_inches='tight')
+    plt.close()
 
 
 if __name__ == "__main__":
