@@ -1,10 +1,7 @@
 # Copyright (c) 2022 The Regents of the University of Michigan.
 # Part of HOOMD-blue, released under the BSD 3-Clause License.
 
-"""Lennard Jones phase behavior validation test.
-
-
-"""
+"""Lennard Jones phase behavior validation test."""
 
 import hoomd
 import numpy as np
@@ -21,13 +18,12 @@ def create_initial_state(job):
     import itertools
 
     sp = job.sp()
-    doc = job.doc()
 
     particle_volume = sp["num_particles"] * 4 / 3 * np.pi * 0.5**3
     box_volume = particle_volume / sp["density"]
-    L = box_volume**(1/3.)
+    L = box_volume**(1 / 3.)
 
-    N = int(np.ceil(sp["num_particles"] ** (1./3.)))
+    N = int(np.ceil(sp["num_particles"]**(1. / 3.)))
     x = np.linspace(-L / 2, L / 2, N, endpoint=False)
     position = list(itertools.product(x, repeat=3))[:sp["num_particles"]]
 
@@ -123,7 +119,8 @@ def analyze_nvt_md_sim(job):
     potential_energies = np.zeros(len(traj))
     for i, frame in enumerate(traj):
         pressures[i] = frame.log['md/compute/ThermoDynamicQuantities/pressure']
-        potential_energies[i] = frame.log['md/compute/ThermoDynamicQuantities/potential_energy']
+        potential_energies[i] = frame.log[
+            'md/compute/ThermoDynamicQuantities/potential_energy']
 
     # save the average value in a job doc parameter
     job.doc.nvt_md.pressure = np.average(pressures)
@@ -139,7 +136,8 @@ def analyze_nvt_md_sim(job):
     plt.plot(potential_energies)
     plt.title('Potential Energy vs. time')
     plt.ylabel('$U$')
-    plt.savefig(job.fn('nvt_md_potential_energy_vs_time.png'), bbox_inches='tight')
+    plt.savefig(job.fn('nvt_md_potential_energy_vs_time.png'),
+                bbox_inches='tight')
     plt.close()
 
 
@@ -155,6 +153,7 @@ class ComputeDensity:
 
     @hoomd.logging.log(requires_run=True)
     def density(self):
+        """float: The density of the system."""
         vol = None
         with self._sim.cpu_local_snapshot as snap:
             vol = snap.global_box.volume
@@ -187,7 +186,9 @@ def run_npt_md_sim(job):
 
     # integration method
     p = doc["nvt_md"]["pressure"]
-    npt = md.methods.NPT(hoomd.filter.All(), kT=sp["kT"], tau=0.1,
+    npt = md.methods.NPT(hoomd.filter.All(),
+                         kT=sp["kT"],
+                         tau=0.1,
                          S=[p, p, p, 0, 0, 0],
                          tauS=0.1,
                          couple='xyz')
@@ -241,7 +242,8 @@ def compute_npt_density(job):
     densities = np.zeros(len(traj))
     for i, frame in enumerate(traj):
         pressures[i] = frame.log['md/compute/ThermoDynamicQuantities/pressure']
-        potential_energies[i] = frame.log['md/compute/ThermoDynamicQuantities/potential_energy']
+        potential_energies[i] = frame.log[
+            'md/compute/ThermoDynamicQuantities/potential_energy']
         densities[i] = frame.log['ComputeDensity/density']
 
     # save the average value in a job doc parameter
@@ -258,7 +260,8 @@ def compute_npt_density(job):
     plt.plot(potential_energies)
     plt.title('Potential Energy vs. time')
     plt.ylabel('$U / \\epsilon$')
-    plt.savefig(job.fn('npt_md_potential_energy_vs_time.png'), bbox_inches='tight')
+    plt.savefig(job.fn('npt_md_potential_energy_vs_time.png'),
+                bbox_inches='tight')
     plt.close()
 
     plt.plot(densities)
@@ -292,7 +295,7 @@ def run_nvt_mc_sim(job):
     sim.operations.integrator = mc
 
     # pair potential
-    epsilon = 1 / sp["kT"]
+    epsilon = 1 / sp["kT"]  # noqa F841
     lj_str = """float rsq = dot(r_ij, r_ij);
                 float rsqinv = 1 / rsq;
                 float r6inv = rsqinv * rsqinv * rsqinv;
@@ -307,14 +310,12 @@ def run_nvt_mc_sim(job):
     sim.operations.add(sdf)
 
     # move size tuner
-    mstuner = hpmc.tune.MoveSize.scale_solver(
-        moves=['a', 'd'],
-        target=0.2,
-        trigger=hoomd.trigger.And([
-            hoomd.trigger.Periodic(1000),
-            hoomd.trigger.Before(100000)
-        ])
-    )
+    mstuner = hpmc.tune.MoveSize.scale_solver(moves=['a', 'd'],
+                                              target=0.2,
+                                              trigger=hoomd.trigger.And([
+                                                  hoomd.trigger.Periodic(1000),
+                                                  hoomd.trigger.Before(100000)
+                                              ]))
     sim.operations.add(mstuner)
 
     # log to gsd
@@ -323,12 +324,10 @@ def run_nvt_mc_sim(job):
     logger_gsd.add(sdf, quantities=['betaP'])
     logger_gsd.add(patch, quantities=['energy'])
 
-    gsd_writer = hoomd.write.GSD(
-        filename=job.fn('nvt_mc_sim.gsd'),
-        trigger=hoomd.trigger.Periodic(1000),
-        mode='wb',
-        log=logger_gsd
-    )
+    gsd_writer = hoomd.write.GSD(filename=job.fn('nvt_mc_sim.gsd'),
+                                 trigger=hoomd.trigger.Periodic(1000),
+                                 mode='wb',
+                                 log=logger_gsd)
     sim.operations.add(gsd_writer)
 
     # make sure we have a valid initial state
@@ -349,6 +348,8 @@ def analyze_nvt_mc_sim(job):
     """Compute the pressure for use in NPT simulations to cross-validate."""
     import gsd.hoomd
     import matplotlib.pyplot as plt
+
+    sp = job.sp()
 
     traj = gsd.hoomd.open(job.fn('nvt_mc_sim.gsd'))
 
@@ -377,7 +378,8 @@ def analyze_nvt_mc_sim(job):
     plt.plot(potential_energies)
     plt.title('Potential Energy vs. time')
     plt.ylabel('$U$')
-    plt.savefig(job.fn('nvt_mc_potential_energy_vs_time.png'), bbox_inches='tight')
+    plt.savefig(job.fn('nvt_mc_potential_energy_vs_time.png'),
+                bbox_inches='tight')
     plt.close()
 
 
@@ -406,7 +408,7 @@ def run_npt_mc_sim(job):
     sim.operations.integrator = mc
 
     # pair potential
-    epsilon = 1 / sp["kT"]
+    epsilon = 1 / sp["kT"]  # noqa F841
     lj_str = """float rsq = dot(r_ij, r_ij);
                 float rsqinv = 1 / rsq;
                 float r6inv = rsqinv * rsqinv * rsqinv;
@@ -426,30 +428,26 @@ def run_npt_mc_sim(job):
     sim.operations.add(boxmc)
 
     # move size tuner
-    mstuner = hpmc.tune.MoveSize.scale_solver(
-        moves=['a', 'd'],
-        target=0.2,
-        trigger=hoomd.trigger.And([
-            hoomd.trigger.Periodic(1000),
-            hoomd.trigger.Before(100000)
-        ])
-    )
+    mstuner = hpmc.tune.MoveSize.scale_solver(moves=['a', 'd'],
+                                              target=0.2,
+                                              trigger=hoomd.trigger.And([
+                                                  hoomd.trigger.Periodic(1000),
+                                                  hoomd.trigger.Before(100000)
+                                              ]))
     sim.operations.add(mstuner)
 
     # log to gsd
-    compute_density = ComputeNumberDensity(sim, sp["num_particles"])
+    compute_density = ComputeDensity(sim, sp["num_particles"])
     logger_gsd = hoomd.logging.Logger()
     logger_gsd.add(mc, quantities=['type_shapes'])
     logger_gsd.add(sdf, quantities=['betaP'])
     logger_gsd.add(patch, quantities=['energy'])
     logger_gsd.add(compute_density, quantitites=['density'])
 
-    gsd_writer = hoomd.write.GSD(
-        filename=job.fn('npt_mc_sim.gsd'),
-        trigger=hoomd.trigger.Periodic(1000),
-        mode='wb',
-        log=logger_gsd
-    )
+    gsd_writer = hoomd.write.GSD(filename=job.fn('npt_mc_sim.gsd'),
+                                 trigger=hoomd.trigger.Periodic(1000),
+                                 mode='wb',
+                                 log=logger_gsd)
     sim.operations.add(gsd_writer)
 
     # make sure we have a valid initial state
@@ -469,6 +467,8 @@ def analyze_npt_mc_sim(job):
     """Compute the density to cross-validate with earlier NVT simulations."""
     import gsd.hoomd
     import matplotlib.pyplot as plt
+
+    sp = job.sp()
 
     traj = gsd.hoomd.open(job.fn('npt_mc_sim.gsd'))
 
@@ -499,7 +499,8 @@ def analyze_npt_mc_sim(job):
     plt.plot(potential_energies)
     plt.title('Potential Energy vs. time')
     plt.ylabel('$U / \\epsilon$')
-    plt.savefig(job.fn('npt_mc_potential_energy_vs_time.png'), bbox_inches='tight')
+    plt.savefig(job.fn('npt_mc_potential_energy_vs_time.png'),
+                bbox_inches='tight')
     plt.close()
 
     plt.plot(densities)
