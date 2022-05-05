@@ -6,6 +6,7 @@
 import hoomd
 import numpy as np
 
+from flow import directives
 from config import test_project_dict
 from project_classes import LJFluid
 
@@ -41,6 +42,7 @@ def create_initial_state(job):
 
 
 @LJFluid.operation
+#@directives(walltime=48, nranks=8)
 @LJFluid.pre.isfile('initial_state.gsd')
 @LJFluid.pre.after(create_initial_state)
 @LJFluid.post.isfile('nvt_md_sim.gsd')
@@ -75,7 +77,7 @@ def run_nvt_md_sim(job):
     sim.operations.add(thermo)
 
     # log the pressure
-    logger = hoomd.logging.Logger()
+    logger = hoomd.logging.Logger(categories=['scalar'])
     logger.add(thermo, quantities=['pressure', 'potential_energy'])
 
     # write data to gsd file
@@ -86,7 +88,7 @@ def run_nvt_md_sim(job):
     sim.operations.add(gsd_writer)
 
     # write to terminal
-    logger_table = hoomd.logging.Logger()
+    logger_table = hoomd.logging.Logger(categories=['scalar'])
     logger_table.add(sim, quantities=['timestep', 'final_timestep', 'tps'])
     table_writer = hoomd.write.Table(hoomd.trigger.Periodic(1000), logger_table)
     sim.operations.add(table_writer)
@@ -108,7 +110,7 @@ def analyze_nvt_md_sim(job):
     import gsd.hoomd
     import matplotlib.pyplot as plt
 
-    traj = gsd.hoomd.open(job.fn('nvt_sim.gsd'))
+    traj = gsd.hoomd.open(job.fn('nvt_md_sim.gsd'))
 
     # the LAMMPS study used only the last 1e6 time steps to compute their
     # pressures, which we replicate here
@@ -118,9 +120,9 @@ def analyze_nvt_md_sim(job):
     pressures = np.zeros(len(traj))
     potential_energies = np.zeros(len(traj))
     for i, frame in enumerate(traj):
-        pressures[i] = frame.log['md/compute/ThermoDynamicQuantities/pressure']
+        pressures[i] = frame.log['md/compute/ThermodynamicQuantities/pressure']
         potential_energies[i] = frame.log[
-            'md/compute/ThermoDynamicQuantities/potential_energy']
+            'md/compute/ThermodynamicQuantities/potential_energy']
 
     # save the average value in a job doc parameter
     job.doc.nvt_md.pressure = np.average(pressures)
