@@ -218,6 +218,12 @@ def run_npt_md_sim(job):
                                  log=logger)
     sim.operations.add(gsd_writer)
 
+    # write to terminal
+    logger_table = hoomd.logging.Logger(categories=['scalar'])
+    logger_table.add(sim, quantities=['timestep', 'final_timestep', 'tps'])
+    table_writer = hoomd.write.Table(hoomd.trigger.Periodic(1000), logger_table)
+    sim.operations.add(table_writer)
+
     # thermoalize momenta
     sim.state.thermalize_particle_momenta(hoomd.filter.All(), sp["kT"])
 
