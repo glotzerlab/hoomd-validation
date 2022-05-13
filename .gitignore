@@ -1,2 +1,4 @@
 AllValidationTests
 LJFluid
+
+hoomd_validation/slurm-*.out
