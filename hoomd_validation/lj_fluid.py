@@ -20,8 +20,7 @@ def create_initial_state(job):
 
     sp = job.sp()
 
-    particle_volume = sp["num_particles"] * 4 / 3 * np.pi * 0.5**3
-    box_volume = particle_volume / sp["density"]
+    box_volume = sp["num_particles"] / sp["density"]
     L = box_volume**(1 / 3.)
 
     N = int(np.ceil(sp["num_particles"]**(1. / 3.)))
@@ -42,7 +41,7 @@ def create_initial_state(job):
 
 
 @LJFluid.operation
-#@directives(walltime=48, nranks=8)
+@directives(walltime=48)#, nranks=8)
 @LJFluid.pre.isfile('initial_state.gsd')
 @LJFluid.pre.after(create_initial_state)
 @LJFluid.post.isfile('nvt_md_sim.gsd')
@@ -143,15 +142,15 @@ def analyze_nvt_md_sim(job):
     plt.close()
 
 
-class ComputeDensity:
+class ComputeDensity(hoomd.custom.Action):
     """Compute the density of particles in the system.
 
-    This calculation assumes particles are spheres of diameter 1.
+    The density computed is a number density.
     """
 
     def __init__(self, sim, num_particles):
         self._sim = sim
-        self._total_particle_volume = num_particles * 4 / 3 * np.pi * 0.5**3
+        self._num_particles = num_particles
 
     @hoomd.logging.log(requires_run=True)
     def density(self):
@@ -159,7 +158,10 @@ class ComputeDensity:
         vol = None
         with self._sim.cpu_local_snapshot as snap:
             vol = snap.global_box.volume
-        return self._total_particle_volume / vol
+        return self._num_particles / vol
+
+    def act(self, timestep):
+        pass
 
 
 @LJFluid.operation
@@ -200,7 +202,7 @@ def run_npt_md_sim(job):
     sim.operations.integrator = integrator
 
     # compute pressure
-    thermo = md.thermo.ThermodynamicQuantities()
+    thermo = md.compute.ThermodynamicQuantities(hoomd.filter.All())
     sim.operations.add(thermo)
 
     # log quantities
