@@ -165,6 +165,7 @@ class ComputeDensity(hoomd.custom.Action):
 
 
 @LJFluid.operation
+@directives(walltime=48)#, nranks=8)
 @LJFluid.pre.isfile('initial_state.gsd')
 @LJFluid.pre(lambda job: job.doc.nvt_md.pressure != 0.0)
 @LJFluid.pre.after(create_initial_state)
@@ -235,7 +236,7 @@ def run_npt_md_sim(job):
 @LJFluid.pre.isfile('npt_md_sim.gsd')
 @LJFluid.pre.after(run_npt_md_sim)
 @LJFluid.post(lambda job: job.doc.npt_md.density != 0.0)
-def compute_npt_density(job):
+def analyze_npt_md_sim(job):
     """Compute the density to cross-validate with earlier NVT simulations."""
     import gsd.hoomd
     import matplotlib.pyplot as plt
