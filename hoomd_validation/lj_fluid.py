@@ -312,8 +312,8 @@ def run_nvt_mc_sim(job):
                 float rsqinv = 1 / rsq;
                 float r6inv = rsqinv * rsqinv * rsqinv;
                 float r12inv = r6inv * r6inv;
-                return 4 * {epsilon} * (r12inv - r6inv);
-             """
+                return 4 * {} * (r12inv - r6inv);
+             """.format(epsilon)
     patch = hpmc.pair.user.CPPPotential(r_cut=2.5, code=lj_str, param_array=[])
     mc.pair_potential = patch
 
@@ -341,6 +341,12 @@ def run_nvt_mc_sim(job):
                                  mode='wb',
                                  log=logger_gsd)
     sim.operations.add(gsd_writer)
+
+    # write to terminal
+    logger_table = hoomd.logging.Logger(categories=['scalar'])
+    logger_table.add(sim, quantities=['timestep', 'final_timestep', 'tps'])
+    table_writer = hoomd.write.Table(hoomd.trigger.Periodic(1000), logger_table)
+    sim.operations.add(table_writer)
 
     # make sure we have a valid initial state
     sim.run(0)
