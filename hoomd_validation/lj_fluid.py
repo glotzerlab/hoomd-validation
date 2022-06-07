@@ -152,11 +152,11 @@ class ComputeDensity(hoomd.custom.Action):
         self._sim = sim
         self._num_particles = num_particles
 
-    @hoomd.logging.log(requires_run=True)
+    @hoomd.logging.log
     def density(self):
         """float: The density of the system."""
         vol = None
-        with self._sim.cpu_local_snapshot as snap:
+        with self._sim.state.cpu_local_snapshot as snap:
             vol = snap.global_box.volume
         return self._num_particles / vol
 
@@ -283,6 +283,7 @@ def analyze_npt_md_sim(job):
 
 
 @LJFluid.operation
+@directives(walltime=48)#, nranks=8)
 @LJFluid.pre.isfile('initial_state.gsd')
 @LJFluid.pre.after(create_initial_state)
 @LJFluid.post.isfile('nvt_mc_sim.gsd')
