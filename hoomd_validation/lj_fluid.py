@@ -3,6 +3,7 @@
 
 """Lennard Jones phase behavior validation test."""
 
+import os
 import hoomd
 import numpy as np
 
@@ -282,8 +283,14 @@ def analyze_npt_md_sim(job):
     plt.close()
 
 
-@LJFluid.operation
-@directives(walltime=48)#, nranks=8)
+@LJFluid.operation.with_directives(
+    directives=dict(walltime=48,
+                    executable="singularity exec {} python".format(
+                            os.environ["PROJECT"] + "/software.sif"
+                        ),
+                    nranks=16
+                    )
+)
 @LJFluid.pre.isfile('initial_state.gsd')
 @LJFluid.pre.after(create_initial_state)
 @LJFluid.post.isfile('nvt_mc_sim.gsd')
