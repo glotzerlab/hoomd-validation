@@ -255,7 +255,7 @@ def analyze_npt_md_sim(job):
         pressures[i] = frame.log['md/compute/ThermodynamicQuantities/pressure']
         potential_energies[i] = frame.log[
             'md/compute/ThermodynamicQuantities/potential_energy']
-        densities[i] = frame.log['ComputeDensity/density']
+        densities[i] = frame.log['__main__/ComputeDensity/density']
 
     # save the average value in a job doc parameter
     job.doc.npt_md.density = np.average(densities)
