@@ -42,7 +42,7 @@ def create_initial_state(job):
 
 
 @LJFluid.operation
-@directives(walltime=48)#, nranks=8)
+@directives(walltime=48)  # , nranks=8)
 @LJFluid.pre.isfile('initial_state.gsd')
 @LJFluid.pre.after(create_initial_state)
 @LJFluid.post.isfile('nvt_md_sim.gsd')
@@ -162,11 +162,12 @@ class ComputeDensity(hoomd.custom.Action):
         return self._num_particles / vol
 
     def act(self, timestep):
+        """Dummy act method."""
         pass
 
 
 @LJFluid.operation
-@directives(walltime=48)#, nranks=8)
+@directives(walltime=48)  # , nranks=8)
 @LJFluid.pre.isfile('initial_state.gsd')
 @LJFluid.pre(lambda job: job.doc.nvt_md.pressure != 0.0)
 @LJFluid.pre.after(create_initial_state)
@@ -283,14 +284,11 @@ def analyze_npt_md_sim(job):
     plt.close()
 
 
-@LJFluid.operation.with_directives(
-    directives=dict(walltime=48,
-                    executable="singularity exec {} python".format(
-                            os.environ["PROJECT"] + "/software.sif"
-                        ),
-                    nranks=16
-                    )
-)
+@LJFluid.operation.with_directives(directives=dict(
+    walltime=48,
+    executable="singularity exec {} python".format(os.environ["PROJECT"]
+                                                   + "/software.sif"),
+    nranks=16))
 @LJFluid.pre.isfile('initial_state.gsd')
 @LJFluid.pre.after(create_initial_state)
 @LJFluid.post.isfile('nvt_mc_sim.gsd')
