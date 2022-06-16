@@ -412,7 +412,11 @@ def analyze_nvt_mc_sim(job):
     plt.close()
 
 
-@LJFluid.operation
+@LJFluid.operation.with_directives(directives=dict(
+    walltime=48,
+    executable="singularity exec {} python".format(os.environ["PROJECT"]
+                                                   + "/software.sif"),
+    nranks=16))
 @LJFluid.pre.isfile('initial_state.gsd')
 @LJFluid.pre.after(run_nvt_mc_sim)
 @LJFluid.pre(lambda job: job.doc.nvt_mc.pressure > 0.0)
@@ -442,8 +446,8 @@ def run_npt_mc_sim(job):
                 float rsqinv = 1 / rsq;
                 float r6inv = rsqinv * rsqinv * rsqinv;
                 float r12inv = r6inv * r6inv;
-                return 4 * {epsilon} * (r12inv - r6inv);
-             """
+                return 4 * {} * (r12inv - r6inv);
+             """.format(epsilon)
     patch = hpmc.pair.user.CPPPotential(r_cut=2.5, code=lj_str, param_array=[])
     mc.pair_potential = patch
 
