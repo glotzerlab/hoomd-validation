@@ -284,11 +284,12 @@ def analyze_npt_md_sim(job):
     plt.close()
 
 
-@LJFluid.operation.with_directives(directives=dict(
-    walltime=48,
-    executable="singularity exec {} python".format(os.environ["PROJECT"]
-                                                   + "/software.sif"),
-    nranks=16))
+@LJFluid.operation
+#@LJFluid.operation.with_directives(directives=dict(
+#    walltime=48,
+#    executable="singularity exec {} python".format(os.environ["PROJECT"]
+#                                                   + "/software.sif"),
+#    nranks=16))
 @LJFluid.pre.isfile('initial_state.gsd')
 @LJFluid.pre.after(create_initial_state)
 @LJFluid.post.isfile('nvt_mc_sim.gsd')
@@ -365,10 +366,11 @@ def run_nvt_mc_sim(job):
 @LJFluid.operation
 @LJFluid.pre.isfile('nvt_mc_sim.gsd')
 @LJFluid.pre.after(run_nvt_mc_sim)
-@LJFluid.post(lambda job: job.doc.nvt_mc.pressure != 0.0)
-@LJFluid.post.isfile('nvt_mc_pressure_vs_time.png')
+#@LJFluid.post(lambda job: job.doc.nvt_mc.pressure != 0.0)
+#@LJFluid.post.isfile('nvt_mc_pressure_vs_time.png')
 def analyze_nvt_mc_sim(job):
     """Compute the pressure for use in NPT simulations to cross-validate."""
+    from mc_pressure import LJForce, MCPressureContinuous
     import gsd.hoomd
     import matplotlib.pyplot as plt
 
@@ -383,12 +385,16 @@ def analyze_nvt_mc_sim(job):
     # create array of data points
     pressures = np.zeros(len(traj))
     potential_energies = np.zeros(len(traj))
+    force_eval = LJForce(sigma=1, epsilon=1 / sp["kT"], r_cut=2.5)
+    pressure_compute = MCPressureContinuous(force_eval)
     for i, frame in enumerate(traj):
-        pressures[i] = frame.log['hpmc/compute/SDF/betaP'] * sp["kT"]
+        pressures[i] = pressure_compute.compute(frame.particles.position,
+                                                frame.configuration.box,
+                                                sp["kT"])
         potential_energies[i] = frame.log['hpmc/pair/user/CPPPotential/energy']
 
     # save the average value in a job doc parameter
-    job.doc.nvt_mc.pressure = np.average(pressures)
+    #job.doc.nvt_mc.pressure = np.average(pressures)
     job.doc.nvt_mc.potential_energy = np.average(potential_energies)
 
     # make plots for visual inspection
