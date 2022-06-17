@@ -323,10 +323,6 @@ def run_nvt_mc_sim(job):
     patch = hpmc.pair.user.CPPPotential(r_cut=2.5, code=lj_str, param_array=[])
     mc.pair_potential = patch
 
-    # compute sdf
-    sdf = hpmc.compute.SDF(xmax=0.02, dx=1e-4)
-    sim.operations.add(sdf)
-
     # move size tuner
     mstuner = hpmc.tune.MoveSize.scale_solver(moves=['a', 'd'],
                                               target=0.2,
@@ -339,7 +335,6 @@ def run_nvt_mc_sim(job):
     # log to gsd
     logger_gsd = hoomd.logging.Logger()
     logger_gsd.add(mc, quantities=['type_shapes'])
-    logger_gsd.add(sdf, quantities=['betaP'])
     logger_gsd.add(patch, quantities=['energy'])
 
     gsd_writer = hoomd.write.GSD(filename=job.fn('nvt_mc_sim.gsd'),
@@ -370,7 +365,7 @@ def run_nvt_mc_sim(job):
 #@LJFluid.post.isfile('nvt_mc_pressure_vs_time.png')
 def analyze_nvt_mc_sim(job):
     """Compute the pressure for use in NPT simulations to cross-validate."""
-    from mc_pressure import LJForce, MCPressureContinuous
+    from mc_pressure import LJForce, PressureCompute
     import gsd.hoomd
     import matplotlib.pyplot as plt
 
@@ -386,7 +381,7 @@ def analyze_nvt_mc_sim(job):
     pressures = np.zeros(len(traj))
     potential_energies = np.zeros(len(traj))
     force_eval = LJForce(sigma=1, epsilon=1 / sp["kT"], r_cut=2.5)
-    pressure_compute = MCPressureContinuous(force_eval)
+    pressure_compute = PressureCompute(force_eval)
     for i, frame in enumerate(traj):
         pressures[i] = pressure_compute.compute(frame.particles.position,
                                                 frame.configuration.box,
@@ -412,11 +407,12 @@ def analyze_nvt_mc_sim(job):
     plt.close()
 
 
-@LJFluid.operation.with_directives(directives=dict(
-    walltime=48,
-    executable="singularity exec {} python".format(os.environ["PROJECT"]
-                                                   + "/software.sif"),
-    nranks=16))
+@LJFluid.operation
+#@LJFluid.operation.with_directives(directives=dict(
+#    walltime=48,
+#    executable="singularity exec {} python".format(os.environ["PROJECT"]
+#                                                   + "/software.sif"),
+#    nranks=16))
 @LJFluid.pre.isfile('initial_state.gsd')
 @LJFluid.pre.after(run_nvt_mc_sim)
 @LJFluid.pre(lambda job: job.doc.nvt_mc.pressure > 0.0)
@@ -451,10 +447,6 @@ def run_npt_mc_sim(job):
     patch = hpmc.pair.user.CPPPotential(r_cut=2.5, code=lj_str, param_array=[])
     mc.pair_potential = patch
 
-    # compute sdf
-    sdf = hpmc.compute.SDF(xmax=0.02, dx=1e-4)
-    sim.operations.add(sdf)
-
     # update box
     boxmc = hpmc.update.BoxMC(betaP=doc["nvt_mc"]["pressure"] / sp["kT"],
                               trigger=hoomd.trigger.Periodic(10))
@@ -473,7 +465,6 @@ def run_npt_mc_sim(job):
     compute_density = ComputeDensity(sim, sp["num_particles"])
     logger_gsd = hoomd.logging.Logger()
     logger_gsd.add(mc, quantities=['type_shapes'])
-    logger_gsd.add(sdf, quantities=['betaP'])
     logger_gsd.add(patch, quantities=['energy'])
     logger_gsd.add(compute_density, quantitites=['density'])
 
@@ -498,6 +489,7 @@ def run_npt_mc_sim(job):
 @LJFluid.post(lambda job: job.doc.npt_mc.density != 0.0)
 def analyze_npt_mc_sim(job):
     """Compute the density to cross-validate with earlier NVT simulations."""
+    from mc_pressure import LJForce, PressureCompute
     import gsd.hoomd
     import matplotlib.pyplot as plt
 
@@ -513,8 +505,12 @@ def analyze_npt_mc_sim(job):
     pressures = np.zeros(len(traj))
     potential_energies = np.zeros(len(traj))
     densities = np.zeros(len(traj))
+    force_eval = LJForce(sigma=1, epsilon=1 / sp["kT"], r_cut=2.5)
+    pressure_compute = PressureCompute(force_eval)
     for i, frame in enumerate(traj):
-        pressures[i] = frame.log['hpmc/compute/SDF/betaP'] * sp["kT"]
+        pressures[i] = pressure_compute.compute(frame.particles.position,
+                                                frame.configuration.box,
+                                                sp["kT"])
         potential_energies[i] = frame.log['hpmc/pair/user/CPPPotential/energy']
         densities[i] = frame.log['ComputeDensity/density']
 
