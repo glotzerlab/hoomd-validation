@@ -3,12 +3,11 @@
 
 """Lennard Jones phase behavior validation test."""
 
-import os
 import hoomd
 import numpy as np
 
 from flow import directives
-from config import test_project_dict
+from config import test_project_dict, CONTAINER_IMAGE_PATH
 from project_classes import LJFluid
 
 
@@ -284,12 +283,10 @@ def analyze_npt_md_sim(job):
     plt.close()
 
 
-@LJFluid.operation
-#@LJFluid.operation.with_directives(directives=dict(
-#    walltime=48,
-#    executable="singularity exec {} python".format(os.environ["PROJECT"]
-#                                                   + "/software.sif"),
-#    nranks=16))
+@LJFluid.operation.with_directives(directives=dict(
+    walltime=48,
+    executable="singularity exec {} python".format(CONTAINER_IMAGE_PATH),
+    nranks=16))
 @LJFluid.pre.isfile('initial_state.gsd')
 @LJFluid.pre.after(create_initial_state)
 @LJFluid.post.isfile('nvt_mc_sim.gsd')
@@ -361,8 +358,8 @@ def run_nvt_mc_sim(job):
 @LJFluid.operation
 @LJFluid.pre.isfile('nvt_mc_sim.gsd')
 @LJFluid.pre.after(run_nvt_mc_sim)
-#@LJFluid.post(lambda job: job.doc.nvt_mc.pressure != 0.0)
-#@LJFluid.post.isfile('nvt_mc_pressure_vs_time.png')
+@LJFluid.post(lambda job: job.doc.nvt_mc.pressure != 0.0)
+@LJFluid.post.isfile('nvt_mc_pressure_vs_time.png')
 def analyze_nvt_mc_sim(job):
     """Compute the pressure for use in NPT simulations to cross-validate."""
     from mc_pressure import LJForce, PressureCompute
@@ -389,7 +386,7 @@ def analyze_nvt_mc_sim(job):
         potential_energies[i] = frame.log['hpmc/pair/user/CPPPotential/energy']
 
     # save the average value in a job doc parameter
-    #job.doc.nvt_mc.pressure = np.average(pressures)
+    job.doc.nvt_mc.pressure = np.average(pressures)
     job.doc.nvt_mc.potential_energy = np.average(potential_energies)
 
     # make plots for visual inspection
@@ -407,12 +404,10 @@ def analyze_nvt_mc_sim(job):
     plt.close()
 
 
-@LJFluid.operation
-#@LJFluid.operation.with_directives(directives=dict(
-#    walltime=48,
-#    executable="singularity exec {} python".format(os.environ["PROJECT"]
-#                                                   + "/software.sif"),
-#    nranks=16))
+@LJFluid.operation.with_directives(directives=dict(
+    walltime=48,
+    executable="singularity exec {} python".format(CONTAINER_IMAGE_PATH),
+    nranks=16))
 @LJFluid.pre.isfile('initial_state.gsd')
 @LJFluid.pre.after(run_nvt_mc_sim)
 @LJFluid.pre(lambda job: job.doc.nvt_mc.pressure > 0.0)
