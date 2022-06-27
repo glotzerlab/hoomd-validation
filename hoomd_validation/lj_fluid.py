@@ -523,7 +523,7 @@ def analyze_npt_mc_sim(job):
                                                 frame.configuration.box,
                                                 sp["kT"])
         potential_energies[i] = frame.log['hpmc/pair/user/CPPPotential/energy']
-        densities[i] = frame.log['ComputeDensity/density']
+        densities[i] = frame.log['__main__/ComputeDensity/density']
 
     # save the average value in a job doc parameter
     job.doc.npt_mc.density = np.average(densities)
