@@ -8,7 +8,7 @@ import project_classes
 from pathlib import Path
 
 # path to container image for simulations
-CONTAINER_IMAGE_PATH = "/ocean/projects/dmr170059/tomwalt/software.sif"
+CONTAINER_IMAGE_PATH = "/ocean/projects/dmr170059p/tomwalt/software.sif"
 
 # global variables for validation test projects
 test_project_name_list = ['LJFluid']

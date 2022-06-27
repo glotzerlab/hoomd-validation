@@ -411,7 +411,7 @@ def analyze_nvt_mc_sim(job):
 @LJFluid.pre.isfile('initial_state.gsd')
 @LJFluid.pre.after(run_nvt_mc_sim)
 @LJFluid.pre(lambda job: job.doc.nvt_mc.pressure > 0.0)
-@LJFluid.post.isfile('npt_mc_sim.gsd')
+#@LJFluid.post.isfile('npt_mc_sim.gsd')
 def run_npt_mc_sim(job):
     """Run MC sim in NPT."""
     import hoomd
@@ -445,15 +445,25 @@ def run_npt_mc_sim(job):
     # update box
     boxmc = hpmc.update.BoxMC(betaP=doc["nvt_mc"]["pressure"] / sp["kT"],
                               trigger=hoomd.trigger.Periodic(10))
+    boxmc.volume = dict(weight=1.0, mode='standard', delta=25)
     sim.operations.add(boxmc)
+
+    trigger_tuners = hoomd.trigger.And([hoomd.trigger.Periodic(1000),
+                                        hoomd.trigger.Before(100000)])
+
+    # tune box updates
+    mstuner_boxmc = hpmc.tune.BoxMCMoveSize(boxmc=boxmc,
+                                            trigger=trigger_tuners,
+                                            moves=['volume'],
+                                            target=0.2,
+                                            solver=hoomd.tune.SecantSolver(),
+                                            max_move_size=dict(volume=50.0))
+    sim.operations.add(mstuner_boxmc)
 
     # move size tuner
     mstuner = hpmc.tune.MoveSize.scale_solver(moves=['a', 'd'],
                                               target=0.2,
-                                              trigger=hoomd.trigger.And([
-                                                  hoomd.trigger.Periodic(1000),
-                                                  hoomd.trigger.Before(100000)
-                                              ]))
+                                              trigger=trigger_tuners)
     sim.operations.add(mstuner)
 
     # log to gsd
@@ -461,13 +471,19 @@ def run_npt_mc_sim(job):
     logger_gsd = hoomd.logging.Logger()
     logger_gsd.add(mc, quantities=['type_shapes'])
     logger_gsd.add(patch, quantities=['energy'])
-    logger_gsd.add(compute_density, quantitites=['density'])
+    logger_gsd.add(compute_density, quantities=['density'])
 
     gsd_writer = hoomd.write.GSD(filename=job.fn('npt_mc_sim.gsd'),
                                  trigger=hoomd.trigger.Periodic(1000),
                                  mode='wb',
                                  log=logger_gsd)
     sim.operations.add(gsd_writer)
+
+    # write to terminal
+    logger_table = hoomd.logging.Logger(categories=['scalar'])
+    logger_table.add(sim, quantities=['timestep', 'final_timestep', 'tps'])
+    table_writer = hoomd.write.Table(hoomd.trigger.Periodic(1000), logger_table)
+    sim.operations.add(table_writer)
 
     # make sure we have a valid initial state
     sim.run(0)
