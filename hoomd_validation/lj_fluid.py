@@ -213,7 +213,7 @@ def run_npt_md_sim(job):
     sim.state.thermalize_particle_momenta(hoomd.filter.All(), sp["kT"])
 
     # run
-    sim.run(1.1e6)
+    sim.run(2e6)
 
 
 @LJFluid.operation.with_directives(directives=dict(
@@ -229,9 +229,8 @@ def analyze_npt_md_sim(job):
 
     traj = gsd.hoomd.open(job.fn('npt_md_sim.gsd'))
 
-    # the LAMMPS study used only the last 1e6 time steps to compute their
-    # pressures, which we replicate here
-    traj = traj[100:]
+    # analyze over the last 1000 frame (1e6 timesteps)
+    traj = traj[-1000:]
 
     # create array of pressures
     pressures = np.zeros(len(traj))
@@ -337,7 +336,7 @@ def run_nvt_mc_sim(job):
         raise RuntimeError("Initial configuration has overlaps!")
 
     # run
-    sim.run(1.1e6)
+    sim.run(2e6)
 
 
 @LJFluid.operation.with_directives(directives=dict(
@@ -357,9 +356,8 @@ def analyze_nvt_mc_sim(job):
 
     traj = gsd.hoomd.open(job.fn('nvt_mc_sim.gsd'))
 
-    # the LAMMPS study used only the last 1e6 time steps to compute their
-    # pressures, which we replicate here
-    traj = traj[100:]
+    # analyze over the last 1000 frame (1e6 timesteps)
+    traj = traj[-1000:]
 
     # create array of data points
     pressures = np.zeros(len(traj))
@@ -479,7 +477,7 @@ def run_npt_mc_sim(job):
         raise RuntimeError("Initial configuration has overlaps!")
 
     # run
-    sim.run(1.1e6)
+    sim.run(2e6)
 
 
 @LJFluid.operation.with_directives(directives=dict(
@@ -498,9 +496,8 @@ def analyze_npt_mc_sim(job):
 
     traj = gsd.hoomd.open(job.fn('npt_mc_sim.gsd'))
 
-    # the LAMMPS study used only the last 1e6 time steps to compute their
-    # pressures, which we replicate here
-    traj = traj[100:]
+    # analyze over the last 1000 frame (1e6 timesteps)
+    traj = traj[-1000:]
 
     # create array of pressures
     pressures = np.zeros(len(traj))
