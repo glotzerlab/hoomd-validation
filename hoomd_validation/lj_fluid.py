@@ -3,15 +3,15 @@
 
 """Lennard Jones phase behavior validation test."""
 
-import hoomd
 import numpy as np
-
 from flow import directives
 from config import test_project_dict, CONTAINER_IMAGE_PATH
 from project_classes import LJFluid
 
 
-@LJFluid.operation
+@LJFluid.operation.with_directives(directives=dict(
+    executable="singularity exec {} python".format(CONTAINER_IMAGE_PATH)
+))
 @LJFluid.post.isfile('initial_state.gsd')
 def create_initial_state(job):
     """Create initial system configuration."""
@@ -40,8 +40,10 @@ def create_initial_state(job):
         traj.append(snap)
 
 
-@LJFluid.operation
-@directives(walltime=48)  # , nranks=8)
+@LJFluid.operation.with_directives(directives=dict(
+    walltime=48,
+    executable="singularity exec {} python".format(CONTAINER_IMAGE_PATH),
+    nranks=8))
 @LJFluid.pre.isfile('initial_state.gsd')
 @LJFluid.pre.after(create_initial_state)
 @LJFluid.post.isfile('nvt_md_sim.gsd')
@@ -96,10 +98,12 @@ def run_nvt_md_sim(job):
     sim.state.thermalize_particle_momenta(hoomd.filter.All(), sp["kT"])
 
     # run
-    sim.run(1.1e6)
+    sim.run(2e6)
 
 
-@LJFluid.operation
+@LJFluid.operation.with_directives(directives=dict(
+    executable="singularity exec {} python".format(CONTAINER_IMAGE_PATH)
+))
 @LJFluid.pre.isfile('nvt_md_sim.gsd')
 @LJFluid.pre.after(run_nvt_md_sim)
 @LJFluid.post(lambda job: job.doc.nvt_md.pressure != 0.0)
@@ -111,9 +115,8 @@ def analyze_nvt_md_sim(job):
 
     traj = gsd.hoomd.open(job.fn('nvt_md_sim.gsd'))
 
-    # the LAMMPS study used only the last 1e6 time steps to compute their
-    # pressures, which we replicate here
-    traj = traj[100:]
+    # analyze over the last 1000 frame (1e6 timesteps)
+    traj = traj[-1000:]
 
     # create array of data points
     pressures = np.zeros(len(traj))
@@ -142,31 +145,10 @@ def analyze_nvt_md_sim(job):
     plt.close()
 
 
-class ComputeDensity(hoomd.custom.Action):
-    """Compute the density of particles in the system.
-
-    The density computed is a number density.
-    """
-
-    def __init__(self, sim, num_particles):
-        self._sim = sim
-        self._num_particles = num_particles
-
-    @hoomd.logging.log
-    def density(self):
-        """float: The density of the system."""
-        vol = None
-        with self._sim.state.cpu_local_snapshot as snap:
-            vol = snap.global_box.volume
-        return self._num_particles / vol
-
-    def act(self, timestep):
-        """Dummy act method."""
-        pass
-
-
-@LJFluid.operation
-@directives(walltime=48)  # , nranks=8)
+@LJFluid.operation.with_directives(directives=dict(
+    walltime=48,
+    executable="singularity exec {} python".format(CONTAINER_IMAGE_PATH),
+    nranks=8))
 @LJFluid.pre.isfile('initial_state.gsd')
 @LJFluid.pre(lambda job: job.doc.nvt_md.pressure != 0.0)
 @LJFluid.pre.after(create_initial_state)
@@ -175,6 +157,7 @@ def run_npt_md_sim(job):
     """Run an npt simulation at the pressure computed by the NVT simulation."""
     import hoomd
     from hoomd import md
+    from custom_actions import ComputeDensity
 
     sp = job.sp()
     doc = job.doc()
@@ -233,7 +216,9 @@ def run_npt_md_sim(job):
     sim.run(1.1e6)
 
 
-@LJFluid.operation
+@LJFluid.operation.with_directives(directives=dict(
+    executable="singularity exec {} python".format(CONTAINER_IMAGE_PATH)
+))
 @LJFluid.pre.isfile('npt_md_sim.gsd')
 @LJFluid.pre.after(run_npt_md_sim)
 @LJFluid.post(lambda job: job.doc.npt_md.density != 0.0)
@@ -256,7 +241,7 @@ def analyze_npt_md_sim(job):
         pressures[i] = frame.log['md/compute/ThermodynamicQuantities/pressure']
         potential_energies[i] = frame.log[
             'md/compute/ThermodynamicQuantities/potential_energy']
-        densities[i] = frame.log['__main__/ComputeDensity/density']
+        densities[i] = frame.log['custom_actions/ComputeDensity/density']
 
     # save the average value in a job doc parameter
     job.doc.npt_md.density = np.average(densities)
@@ -355,7 +340,9 @@ def run_nvt_mc_sim(job):
     sim.run(1.1e6)
 
 
-@LJFluid.operation
+@LJFluid.operation.with_directives(directives=dict(
+    executable="singularity exec {} python".format(CONTAINER_IMAGE_PATH)
+))
 @LJFluid.pre.isfile('nvt_mc_sim.gsd')
 @LJFluid.pre.after(run_nvt_mc_sim)
 @LJFluid.post(lambda job: job.doc.nvt_mc.pressure != 0.0)
@@ -411,11 +398,12 @@ def analyze_nvt_mc_sim(job):
 @LJFluid.pre.isfile('initial_state.gsd')
 @LJFluid.pre.after(run_nvt_mc_sim)
 @LJFluid.pre(lambda job: job.doc.nvt_mc.pressure > 0.0)
-#@LJFluid.post.isfile('npt_mc_sim.gsd')
+@LJFluid.post.isfile('npt_mc_sim.gsd')
 def run_npt_mc_sim(job):
     """Run MC sim in NPT."""
     import hoomd
     from hoomd import hpmc
+    from custom_actions import ComputeDensity
 
     sp = job.sp()
     doc = job.doc()
@@ -494,7 +482,9 @@ def run_npt_mc_sim(job):
     sim.run(1.1e6)
 
 
-@LJFluid.operation
+@LJFluid.operation.with_directives(directives=dict(
+    executable="singularity exec {} python".format(CONTAINER_IMAGE_PATH)
+))
 @LJFluid.pre.isfile('npt_mc_sim.gsd')
 @LJFluid.pre.after(run_npt_mc_sim)
 @LJFluid.post(lambda job: job.doc.npt_mc.density != 0.0)
