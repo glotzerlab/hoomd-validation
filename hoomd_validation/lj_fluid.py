@@ -4,14 +4,12 @@
 """Lennard Jones phase behavior validation test."""
 
 import numpy as np
-from flow import directives
 from config import test_project_dict, CONTAINER_IMAGE_PATH
 from project_classes import LJFluid
 
 
 @LJFluid.operation.with_directives(directives=dict(
-    executable="singularity exec {} python".format(CONTAINER_IMAGE_PATH)
-))
+    executable="singularity exec {} python".format(CONTAINER_IMAGE_PATH)))
 @LJFluid.post.isfile('initial_state.gsd')
 def create_initial_state(job):
     """Create initial system configuration."""
@@ -102,8 +100,7 @@ def run_nvt_md_sim(job):
 
 
 @LJFluid.operation.with_directives(directives=dict(
-    executable="singularity exec {} python".format(CONTAINER_IMAGE_PATH)
-))
+    executable="singularity exec {} python".format(CONTAINER_IMAGE_PATH)))
 @LJFluid.pre.isfile('nvt_md_sim.gsd')
 @LJFluid.pre.after(run_nvt_md_sim)
 @LJFluid.post(lambda job: job.doc.nvt_md.pressure != 0.0)
@@ -217,8 +214,7 @@ def run_npt_md_sim(job):
 
 
 @LJFluid.operation.with_directives(directives=dict(
-    executable="singularity exec {} python".format(CONTAINER_IMAGE_PATH)
-))
+    executable="singularity exec {} python".format(CONTAINER_IMAGE_PATH)))
 @LJFluid.pre.isfile('npt_md_sim.gsd')
 @LJFluid.pre.after(run_npt_md_sim)
 @LJFluid.post(lambda job: job.doc.npt_md.density != 0.0)
@@ -340,8 +336,7 @@ def run_nvt_mc_sim(job):
 
 
 @LJFluid.operation.with_directives(directives=dict(
-    executable="singularity exec {} python".format(CONTAINER_IMAGE_PATH)
-))
+    executable="singularity exec {} python".format(CONTAINER_IMAGE_PATH)))
 @LJFluid.pre.isfile('nvt_mc_sim.gsd')
 @LJFluid.pre.after(run_nvt_mc_sim)
 @LJFluid.post(lambda job: job.doc.nvt_mc.pressure != 0.0)
@@ -434,8 +429,9 @@ def run_npt_mc_sim(job):
     boxmc.volume = dict(weight=1.0, mode='standard', delta=25)
     sim.operations.add(boxmc)
 
-    trigger_tuners = hoomd.trigger.And([hoomd.trigger.Periodic(1000),
-                                        hoomd.trigger.Before(100000)])
+    trigger_tuners = hoomd.trigger.And(
+        [hoomd.trigger.Periodic(1000),
+         hoomd.trigger.Before(100000)])
 
     # tune box updates
     mstuner_boxmc = hpmc.tune.BoxMCMoveSize(boxmc=boxmc,
@@ -481,8 +477,7 @@ def run_npt_mc_sim(job):
 
 
 @LJFluid.operation.with_directives(directives=dict(
-    executable="singularity exec {} python".format(CONTAINER_IMAGE_PATH)
-))
+    executable="singularity exec {} python".format(CONTAINER_IMAGE_PATH)))
 @LJFluid.pre.isfile('npt_mc_sim.gsd')
 @LJFluid.pre.after(run_npt_mc_sim)
 @LJFluid.post(lambda job: job.doc.npt_mc.density != 0.0)

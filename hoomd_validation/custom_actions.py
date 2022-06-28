@@ -1,7 +1,9 @@
-import hoomd
-
+# Copyright (c) 2022 The Regents of the University of Michigan.
+# Part of HOOMD-blue, released under the BSD 3-Clause License.
 
 """This file contains all custom actions needed for this project."""
+
+import hoomd
 
 
 class ComputeDensity(hoomd.custom.Action):
@@ -25,5 +27,3 @@ class ComputeDensity(hoomd.custom.Action):
     def act(self, timestep):
         """Dummy act method."""
         pass
-
-
