@@ -19,9 +19,8 @@ class ValidationTestProject(FlowProject):
         """
         pass
 
-    @property
     @abstractmethod
-    def job_document_params(self):
+    def job_document_params(self, job):
         """list(tuple): A list of tuples (param, default) giving the job \
         document parameters and default values for this project."""
         pass
@@ -39,14 +38,17 @@ class LJFluid(ValidationTestProject):
         """list(dict): A list of statepoints for this project."""
         list_sps = []
         num_particles = 10000
+        replicate_indices = range(4)
         params_list = [(0.75, 0.05), (0.75, 0.8), (1.0, 0.2), (1.0, 0.4),
                        (1.5, 0.6), (1.5, 0.7)]
         for kT, density in params_list:
-            list_sps.append({
-                "kT": kT,
-                "density": density,
-                "num_particles": num_particles
-            })
+            for idx in replicate_indices:
+                list_sps.append({
+                    "kT": kT,
+                    "density": density,
+                    "num_particles": num_particles,
+                    "replicate_idx": idx
+                })
         return list_sps
 
     def job_document_params(self, job):
