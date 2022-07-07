@@ -59,8 +59,8 @@ def run_nvt_md_sim(job):
     sim.seed = doc["nvt_md"]["seed"]
 
     # pair force
-    nlist = md.nlist.Cell(buffer=0.2)
-    lj = md.pair.LJ(default_r_cut=2.5, nlist=nlist)
+    nlist = md.nlist.Cell(buffer=0.3)
+    lj = md.pair.LJ(default_r_cut=2.5, default_r_on=2.0, nlist=nlist)
     lj.params[('A', 'A')] = dict(sigma=1, epsilon=1)
     lj.shift_mode = 'xplor'
 
@@ -291,13 +291,45 @@ def run_nvt_mc_sim(job):
 
     # pair potential
     epsilon = 1 / sp["kT"]  # noqa F841
-    lj_str = """float rsq = dot(r_ij, r_ij);
+    r_on = 2.0
+    r_cut = 2.5
+
+    # the potential will have xplor smoothing with r_on=2
+    lj_str = """// standard lj energy with sigma set to 1
+                float rsq = dot(r_ij, r_ij);
                 float rsqinv = 1 / rsq;
                 float r6inv = rsqinv * rsqinv * rsqinv;
                 float r12inv = r6inv * r6inv;
-                return 4 * {} * (r12inv - r6inv);
-             """.format(epsilon)
-    patch = hpmc.pair.user.CPPPotential(r_cut=2.5, code=lj_str, param_array=[])
+                float energy = 4 * {} * (r12inv - r6inv);
+
+                // apply xplor smoothing
+                float r_on = {};
+                float r_cut = {};
+                float r = sqrt(rsq);
+                if (r > r_on && r < r_cut)
+                {
+                    // computing denominator for the shifting factor
+                    float r_onsq = r_on * r_on;
+                    float r_cutsq = r_cut * r_cut;
+                    float diff = r_cutsq - r_onsq;
+                    float denom = diff * diff * diff;
+
+                    // compute second term for the shift
+                    float second_term = diff - r_onsq - r_onsq;
+                    float second_term += (2 * rsq);
+
+                    // compute first term for the shift
+                    float first_term = r_cutsq - rsq;
+                    first_term = first_term * first_term;
+
+                    float smoothing = first_term * second_term / denom;
+                    energy = energy * smoothing;
+                }
+
+                return energy;
+             """.format(epsilon, r_on, r_cut)
+
+    patch = hpmc.pair.user.CPPPotential(r_cut=r_cut, code=lj_str, param_array=[])
     mc.pair_potential = patch
 
     # move size tuner
