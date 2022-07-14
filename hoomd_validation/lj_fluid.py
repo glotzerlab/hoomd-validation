@@ -6,6 +6,7 @@
 import numpy as np
 from config import test_project_dict, CONTAINER_IMAGE_PATH
 from project_classes import LJFluid
+from flow import aggregator
 
 
 @LJFluid.operation.with_directives(directives=dict(
@@ -97,6 +98,31 @@ def run_nvt_md_sim(job):
 
     # run
     sim.run(2e6)
+
+
+@aggregator.groupby(['kT', 'density'])
+@LJFluid.operation.with_directives(directives=dict(
+    executable="singularity exec {} python".format(CONTAINER_IMAGE_PATH)))
+@LJFluid.pre.after(run_nvt_md_sim)
+def analyze_potential_energies(*jobs):
+    """Plot standard error of the mean of the potential energies.
+
+    This will average the potential energy value reported in the replicates.
+    """
+    import matplotlib.pyplot as plt
+
+    energies = []
+    for jb in jobs:
+        energies.append(jb.doc.nvt_md.potential_energy)
+    energies = np.array(energies)
+
+    avg_energy = np.average(energies)
+    std_energy = np.std(energies)
+    stderr_energy = 2 * std_energy / np.sqrt(len(energies))
+
+    plt.errorbar([0], [avg_energy], yerr=[stderr_energy])
+    #plt.show()
+    plt.close()
 
 
 @LJFluid.operation.with_directives(directives=dict(
