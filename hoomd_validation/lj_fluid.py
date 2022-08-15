@@ -100,7 +100,9 @@ def run_nvt_md_sim(job):
     sim.run(2e6)
 
 
-@aggregator.groupby(['kT', 'density'])
+# @aggregator.groupby(['kT', 'density'])
+@aggregator(select=lambda job: job.sp.kT == 1.0 and job.sp.density == 0.4
+            )  # eventually move this is a groupby
 @LJFluid.operation.with_directives(directives=dict(
     executable="singularity exec {} python".format(CONTAINER_IMAGE_PATH)))
 @LJFluid.pre.after(run_nvt_md_sim)
@@ -111,17 +113,29 @@ def analyze_potential_energies(*jobs):
     """
     import matplotlib.pyplot as plt
 
-    energies = []
+    simulation_modes = ['nvt_md', 'nvt_mc']
+
+    energies = {mode: [] for mode in simulation_modes}
     for jb in jobs:
-        energies.append(jb.doc.nvt_md.potential_energy)
-    energies = np.array(energies)
+        for sim_mode in simulation_modes:
+            energies[sim_mode].append(
+                getattr(getattr(jb.doc, sim_mode), 'potential_energy'))
 
-    avg_energy = np.average(energies)
-    std_energy = np.std(energies)
-    stderr_energy = 2 * std_energy / np.sqrt(len(energies))
+    avg_energy = {
+        sim_mode: np.average(np.array(energies[sim_mode]))
+        for sim_mode in simulation_modes
+    }
+    stderr_energy = {
+        sim_mode:
+        2 * np.std(energies[sim_mode]) / np.sqrt(len(energies[sim_mode]))
+        for sim_mode in simulation_modes
+    }
 
-    plt.errorbar([0], [avg_energy], yerr=[stderr_energy])
-    #plt.show()
+    plt.bar(range(len(simulation_modes)),
+            height=[avg_energy['nvt_md'], avg_energy['nvt_mc']],
+            yerr=[stderr_energy['nvt_md'], stderr_energy['nvt_mc']])
+    plt.xticklabels(simulation_modes)
+    # plt.show()
     plt.close()
 
 
@@ -353,7 +367,9 @@ def run_nvt_mc_sim(job):
                 return energy;
             """.format(epsilon=epsilon, r_on=r_on, r_cut=r_cut)
 
-    patch = hpmc.pair.user.CPPPotential(r_cut=r_cut, code=lj_str, param_array=[])
+    patch = hpmc.pair.user.CPPPotential(r_cut=r_cut,
+                                        code=lj_str,
+                                        param_array=[])
     mc.pair_potential = patch
 
     # move size tuner
