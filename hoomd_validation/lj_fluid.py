@@ -102,7 +102,7 @@ def run_nvt_md_sim(job):
 
 # @aggregator.groupby(['kT', 'density'])
 @aggregator(select=lambda job: job.sp.kT == 1.0 and job.sp.density == 0.4
-            )  # eventually move this is a groupby
+            )  # eventually move this to a groupby
 @LJFluid.operation.with_directives(directives=dict(
     executable="singularity exec {} python".format(CONTAINER_IMAGE_PATH)))
 @LJFluid.pre.after(run_nvt_md_sim)
@@ -115,12 +115,14 @@ def analyze_potential_energies(*jobs):
 
     simulation_modes = ['nvt_md', 'nvt_mc']
 
+    # organize data from jobs
     energies = {mode: [] for mode in simulation_modes}
     for jb in jobs:
         for sim_mode in simulation_modes:
             energies[sim_mode].append(
                 getattr(getattr(jb.doc, sim_mode), 'potential_energy'))
 
+    # compute stats with data
     avg_energy = {
         sim_mode: np.average(np.array(energies[sim_mode]))
         for sim_mode in simulation_modes
@@ -131,11 +133,17 @@ def analyze_potential_energies(*jobs):
         for sim_mode in simulation_modes
     }
 
+    # make plot
     plt.bar(range(len(simulation_modes)),
-            height=[avg_energy['nvt_md'], avg_energy['nvt_mc']],
-            yerr=[stderr_energy['nvt_md'], stderr_energy['nvt_mc']])
-    plt.xticklabels(simulation_modes)
-    # plt.show()
+            height=[avg_energy[mode] for mode in simulation_modes],
+            yerr=[stderr_energy[mode] for mode in simulation_modes],
+            alpha=0.5,
+            ecolor='black',
+            capsize=10)
+    plt.xticks(range(len(simulation_modes)), simulation_modes)
+    plt.title("$kT=1.0$, $\\rho=0.4$, $N=10000$")
+    plt.ylabel("Potential Energy")
+    plt.show()
     plt.close()
 
 
