@@ -8,7 +8,7 @@ import numpy as np
 
 
 class LJForce:
-    """Compute Lennard-Jones Forces.
+    """Compute Lennard-Jones Forces. With Xplor smoothing.
 
     Args:
         sigma (float): The interaction width.
@@ -16,9 +16,10 @@ class LJForce:
         r_cut (float): The interaction cutoff distance.
     """
 
-    def __init__(self, sigma, epsilon, r_cut):
+    def __init__(self, sigma, epsilon, r_cut, r_on):
         self._sigma = sigma
         self._epsilon = epsilon
+        self._r_on = r_on
         self._r_cut = r_cut
 
     @property
@@ -37,12 +38,38 @@ class LJForce:
         """
         distances = np.linalg.norm(rijs, axis=-1)
         uvecs = rijs / distances[:, None]
-        distance_cond = distances > self._r_cut
-        force_mags = -24 * self._epsilon * (2 *
-                                            (self._sigma**12 / distances**13) -
-                                            (self._sigma**6 / distances**7))
-        forces = uvecs * force_mags[:, None]
-        forces[distance_cond, :] *= 0.0
+
+        # different regions of the potential
+        outside_r_cut = distances > self._r_cut
+        smoothing_region = np.logical_and(distances > self._r_on,
+                                          distances < self._r_cut)
+        plain_region = distances < self._r_on
+
+        # array to populated
+        forces = np.zeros_like(rijs)
+
+        # lj potential
+        U = 4 * self._epsilon * ((self._sigma / distances) ** 12 -
+                                 (self._sigma / distances) ** 6)
+
+        # dU/dr
+        dUdr = -24 * self._epsilon * (2 * (self._sigma**12 / distances**13) -
+                                          (self._sigma**6 / distances**7))
+
+        # smoothing function
+        rcutsq = self._r_cut ** 2
+        ronsq = self._r_on ** 2
+        rsq = distances ** 2
+        S = (rcutsq - rsq) * (rcutsq + 2*rsq - 3*ronsq) / (rcutsq - ronsq)
+
+        # derivative of smoothing function
+        r = distances
+        dSdr = 4*r*(rcutsq - rsq) - 2*r*(rcutsq + 2*rsq - 3*ronsq) / (rcutsq - ronsq)
+
+        # set forces
+        forces[plain_region, :] = -1 * uvecs[plain_region] * dUdr[plain_region, None]
+        forces[smoothing_region, :] = -1 * uvecs[smoothing_region] * (S[smoothing_region] * dUdr[smoothing_region] + U[smoothing_region] * dSdr[smoothing_region])[:, None]
+        forces[outside_r_cut, :] = 0.0
         return forces
 
 
@@ -80,12 +107,12 @@ class PressureCompute:
         # compute net force on each particle
         rijs_points = b.wrap(positions[nlist.point_indices]
                              - positions[nlist.query_point_indices])
-        rijs_query_points = b.wrap(positions[nlist.query_point_indices]
-                                   - positions[nlist.point_indices])
+        rijs_query_points = -1 * rijs_points
+        forces_points = self._force_eval(rijs_points)
+        forces_query_points = -1 * forces_points
         forces = np.zeros_like(positions)
-        np.add.at(forces, nlist.point_indices, self._force_eval(rijs_points))
-        np.add.at(forces, nlist.query_point_indices,
-                  self._force_eval(rijs_query_points))
+        np.add.at(forces, nlist.point_indices, forces_points)
+        np.add.at(forces, nlist.query_point_indices, forces_query_points)
 
         # compute pressure
         virial = np.average(np.einsum("ij,ij->i", forces, positions))
