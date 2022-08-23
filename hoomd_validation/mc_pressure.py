@@ -49,26 +49,30 @@ class LJForce:
         forces = np.zeros_like(rijs)
 
         # lj potential
-        U = 4 * self._epsilon * ((self._sigma / distances) ** 12 -
-                                 (self._sigma / distances) ** 6)
+        U = 4 * self._epsilon * ((self._sigma / distances)**12 -
+                                 (self._sigma / distances)**6)
 
         # dU/dr
         dUdr = -24 * self._epsilon * (2 * (self._sigma**12 / distances**13) -
-                                          (self._sigma**6 / distances**7))
+                                      (self._sigma**6 / distances**7))
 
         # smoothing function
-        rcutsq = self._r_cut ** 2
-        ronsq = self._r_on ** 2
-        rsq = distances ** 2
-        S = (rcutsq - rsq) * (rcutsq + 2*rsq - 3*ronsq) / (rcutsq - ronsq)
+        rcutsq = self._r_cut**2
+        ronsq = self._r_on**2
+        rsq = distances**2
+        S = (rcutsq - rsq) * (rcutsq + 2 * rsq - 3 * ronsq) / (rcutsq - ronsq)
 
         # derivative of smoothing function
         r = distances
-        dSdr = 4*r*(rcutsq - rsq) - 2*r*(rcutsq + 2*rsq - 3*ronsq) / (rcutsq - ronsq)
+        dSdr = 4 * r * (rcutsq - rsq) - 2 * r * (rcutsq + 2 * rsq
+                                                 - 3 * ronsq) / (rcutsq - ronsq)
 
         # set forces
-        forces[plain_region, :] = -1 * uvecs[plain_region] * dUdr[plain_region, None]
-        forces[smoothing_region, :] = -1 * uvecs[smoothing_region] * (S[smoothing_region] * dUdr[smoothing_region] + U[smoothing_region] * dSdr[smoothing_region])[:, None]
+        forces[plain_region, :] = -1 * uvecs[plain_region] * dUdr[plain_region,
+                                                                  None]
+        forces[smoothing_region, :] = -1 * uvecs[smoothing_region] * (
+            S[smoothing_region] * dUdr[smoothing_region]
+            + U[smoothing_region] * dSdr[smoothing_region])[:, None]
         forces[outside_r_cut, :] = 0.0
         return forces
 
@@ -94,8 +98,8 @@ class PressureCompute:
                 simulation.
             box (`box_like`): Simulation box. Takes any valid argument to
                 `freud.box.Box.from_box`.
-            kT (float): Thermodynamic temperature of the simulation.
-
+            kT (float): Thermodynamic temperature of the
+                simulation.
         """
         # do freud neighbor search
         b = freud.box.Box.from_box(box)
@@ -107,7 +111,6 @@ class PressureCompute:
         # compute net force on each particle
         rijs_points = b.wrap(positions[nlist.point_indices]
                              - positions[nlist.query_point_indices])
-        rijs_query_points = -1 * rijs_points
         forces_points = self._force_eval(rijs_points)
         forces_query_points = -1 * forces_points
         forces = np.zeros_like(positions)
