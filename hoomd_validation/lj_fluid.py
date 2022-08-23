@@ -439,7 +439,7 @@ def analyze_nvt_mc_sim(job):
     # create array of data points
     pressures = np.zeros(len(traj))
     potential_energies = np.zeros(len(traj))
-    force_eval = LJForce(sigma=1, epsilon=1 / sp["kT"], r_cut=2.5)
+    force_eval = LJForce(sigma=1, epsilon=1 / sp["kT"], r_cut=2.5, r_on=2.0)
     pressure_compute = PressureCompute(force_eval)
     for i, frame in enumerate(traj):
         pressures[i] = pressure_compute.compute(frame.particles.position,
@@ -610,7 +610,7 @@ def analyze_npt_mc_sim(job):
     pressures = np.zeros(len(traj))
     potential_energies = np.zeros(len(traj))
     densities = np.zeros(len(traj))
-    force_eval = LJForce(sigma=1, epsilon=1 / sp["kT"], r_cut=2.5)
+    force_eval = LJForce(sigma=1, epsilon=1 / sp["kT"], r_cut=2.5, r_on=2.0)
     pressure_compute = PressureCompute(force_eval)
     for i, frame in enumerate(traj):
         pressures[i] = pressure_compute.compute(frame.particles.position,
