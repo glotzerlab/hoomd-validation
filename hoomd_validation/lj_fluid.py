@@ -439,7 +439,9 @@ def analyze_nvt_mc_sim(job):
     # create array of data points
     pressures = np.zeros(len(traj))
     potential_energies = np.zeros(len(traj))
-    force_eval = LJForce(sigma=1, epsilon=1 / sp["kT"], r_cut=2.5, r_on=2.0)
+
+    # using epsilon=1 here, so we can compare back to the MD simulations
+    force_eval = LJForce(sigma=1, epsilon=1, r_cut=2.5, r_on=2.0)
     pressure_compute = PressureCompute(force_eval)
     for i, frame in enumerate(traj):
         pressures[i] = pressure_compute.compute(frame.particles.position,
@@ -449,7 +451,10 @@ def analyze_nvt_mc_sim(job):
 
     # save the average value in a job doc parameter
     job.doc.nvt_mc.pressure = np.average(pressures)
-    job.doc.nvt_mc.potential_energy = np.average(potential_energies)
+
+    # need to scale this energy by kT, since the simulation uses epsilon=1/kT,
+    # so we can compare back to the energies of the MD simulations
+    job.doc.nvt_mc.potential_energy = sp["kT"] * np.average(potential_energies)
 
     # make plots for visual inspection
     plt.plot(pressures)
@@ -472,7 +477,7 @@ def analyze_nvt_mc_sim(job):
     nranks=16))
 @LJFluid.pre.isfile('initial_state.gsd')
 @LJFluid.pre.after(run_nvt_mc_sim)
-@LJFluid.pre(lambda job: job.doc.nvt_mc.pressure > 0.0)
+@LJFluid.pre(lambda job: job.doc.nvt_md.pressure > 0.0)
 @LJFluid.post.isfile('npt_mc_sim.gsd')
 def run_npt_mc_sim(job):
     """Run MC sim in NPT."""
@@ -610,18 +615,23 @@ def analyze_npt_mc_sim(job):
     pressures = np.zeros(len(traj))
     potential_energies = np.zeros(len(traj))
     densities = np.zeros(len(traj))
-    force_eval = LJForce(sigma=1, epsilon=1 / sp["kT"], r_cut=2.5, r_on=2.0)
+
+    # using epsilon=1 here, so we can compare back to the MD simulations
+    force_eval = LJForce(sigma=1, epsilon=1, r_cut=2.5, r_on=2.0)
     pressure_compute = PressureCompute(force_eval)
     for i, frame in enumerate(traj):
         pressures[i] = pressure_compute.compute(frame.particles.position,
                                                 frame.configuration.box,
                                                 sp["kT"])
         potential_energies[i] = frame.log['hpmc/pair/user/CPPPotential/energy']
-        densities[i] = frame.log['__main__/ComputeDensity/density']
+        densities[i] = frame.log['custom_actions/ComputeDensity/density']
 
     # save the average value in a job doc parameter
     job.doc.npt_mc.density = np.average(densities)
-    job.doc.npt_mc.potential_energy = np.average(potential_energies)
+
+    # need to scale this energy by kT, since the simulation uses epsilon=1/kT,
+    # so we can compare back to the energies of the MD simulations
+    job.doc.npt_mc.potential_energy = sp["kT"] * np.average(potential_energies)
 
     # make plots for visual inspection
     plt.plot(pressures)
