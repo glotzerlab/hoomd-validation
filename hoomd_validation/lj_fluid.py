@@ -105,7 +105,10 @@ def run_nvt_md_sim(job):
             )  # eventually move this to a groupby
 @LJFluid.operation.with_directives(directives=dict(
     executable="singularity exec {} python".format(CONTAINER_IMAGE_PATH)))
-@LJFluid.pre.after(run_nvt_md_sim)
+@LJFluid.pre.after(analyze_nvt_md_sim)
+@LJFluid.pre.after(analyze_nvt_mc_sim)
+@LJFluid.pre.after(analyze_npt_md_sim)
+@LJFluid.pre.after(analyze_npt_mc_sim)
 def analyze_potential_energies(*jobs):
     """Plot standard error of the mean of the potential energies.
 
@@ -113,7 +116,7 @@ def analyze_potential_energies(*jobs):
     """
     import matplotlib.pyplot as plt
 
-    simulation_modes = ['nvt_md', 'npt_md', 'nvt_mc']
+    simulation_modes = ['nvt_md', 'npt_md', 'nvt_mc', 'mvt_md']
 
     # organize data from jobs
     energies = {mode: [] for mode in simulation_modes}
@@ -476,7 +479,7 @@ def analyze_nvt_mc_sim(job):
     executable="singularity exec {} python".format(CONTAINER_IMAGE_PATH),
     nranks=16))
 @LJFluid.pre.isfile('initial_state.gsd')
-@LJFluid.pre.after(run_nvt_mc_sim)
+@LJFluid.pre.after(run_nvt_md_sim)
 @LJFluid.pre(lambda job: job.doc.nvt_md.pressure > 0.0)
 @LJFluid.post.isfile('npt_mc_sim.gsd')
 def run_npt_mc_sim(job):
@@ -541,7 +544,7 @@ def run_npt_mc_sim(job):
     mc.pair_potential = patch
 
     # update box
-    boxmc = hpmc.update.BoxMC(betaP=doc["nvt_mc"]["pressure"] / sp["kT"],
+    boxmc = hpmc.update.BoxMC(betaP=doc["nvt_md"]["pressure"] / sp["kT"],
                               trigger=hoomd.trigger.Periodic(10))
     boxmc.volume = dict(weight=1.0, mode='standard', delta=25)
     sim.operations.add(boxmc)
