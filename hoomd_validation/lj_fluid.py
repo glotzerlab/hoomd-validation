@@ -288,7 +288,7 @@ def run_nvt_mc_sim(job):
 
     # integrator
     mc = hpmc.integrate.Sphere()
-    mc.shape[('A', 'A')] = dict(diameter=0.0001)
+    mc.shape[('A', 'A')] = dict(diameter=0.0)
     sim.operations.integrator = mc
 
     # pair potential
@@ -308,7 +308,7 @@ def run_nvt_mc_sim(job):
                 float r_on = {r_on:.15f};
                 float r_cut = {r_cut:.15f};
                 float r = sqrt(rsq);
-                if (r > r_on && r < r_cut)
+                if (r > r_on && r <= r_cut)
                 {{
                     // computing denominator for the shifting factor
                     float r_onsq = r_on * r_on;
@@ -335,11 +335,11 @@ def run_nvt_mc_sim(job):
     mc.pair_potential = patch
 
     # move size tuner
-    mstuner = hpmc.tune.MoveSize.scale_solver(moves=['a', 'd'],
+    mstuner = hpmc.tune.MoveSize.scale_solver(moves=['d'],
                                               target=0.2,
                                               trigger=hoomd.trigger.And([
-                                                  hoomd.trigger.Periodic(1000),
-                                                  hoomd.trigger.Before(100000)
+                                                  hoomd.trigger.Periodic(10),
+                                                  hoomd.trigger.Before(10000)
                                               ]))
     sim.operations.add(mstuner)
 
@@ -430,7 +430,7 @@ def run_npt_mc_sim(job):
 
     # integrator
     mc = hpmc.integrate.Sphere()
-    mc.shape[('A', 'A')] = dict(diameter=0.0001)
+    mc.shape[('A', 'A')] = dict(diameter=0.0)
     sim.operations.integrator = mc
 
     # pair potential
@@ -450,7 +450,7 @@ def run_npt_mc_sim(job):
                 float r_on = {r_on:.15f};
                 float r_cut = {r_cut:.15f};
                 float r = sqrt(rsq);
-                if (r > r_on && r < r_cut)
+                if (r > r_on && r <= r_cut)
                 {{
                     // computing denominator for the shifting factor
                     float r_onsq = r_on * r_on;
@@ -481,20 +481,20 @@ def run_npt_mc_sim(job):
     sim.operations.add(boxmc)
 
     trigger_tuners = hoomd.trigger.And(
-        [hoomd.trigger.Periodic(1000),
-         hoomd.trigger.Before(100000)])
+        [hoomd.trigger.Periodic(10),
+         hoomd.trigger.Before(10000)])
 
     # tune box updates
     mstuner_boxmc = hpmc.tune.BoxMCMoveSize(boxmc=boxmc,
                                             trigger=trigger_tuners,
                                             moves=['volume'],
                                             target=0.2,
-                                            solver=hoomd.tune.SecantSolver(),
+                                            solver=hoomd.tune.ScaleSolver(),
                                             max_move_size=dict(volume=50.0))
     sim.operations.add(mstuner_boxmc)
 
     # move size tuner
-    mstuner = hpmc.tune.MoveSize.scale_solver(moves=['a', 'd'],
+    mstuner = hpmc.tune.MoveSize.scale_solver(moves=['d'],
                                               target=0.2,
                                               trigger=trigger_tuners)
     sim.operations.add(mstuner)
