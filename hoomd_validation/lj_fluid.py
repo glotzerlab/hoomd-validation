@@ -373,7 +373,7 @@ def run_nvt_mc_sim(job):
     executable="singularity exec {} python".format(CONTAINER_IMAGE_PATH)))
 @LJFluid.pre.isfile('nvt_mc_sim.gsd')
 @LJFluid.pre.after(run_nvt_mc_sim)
-@LJFluid.post.isfile(lambda job: job.doc.nvt_mc.potential_energy != 0.0)
+@LJFluid.post(lambda job: job.doc.nvt_mc.potential_energy != 0.0)
 def analyze_nvt_mc_sim(job):
     """Compute the pressure for use in NPT simulations to cross-validate."""
     import gsd.hoomd
