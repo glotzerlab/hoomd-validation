@@ -103,8 +103,9 @@ def run_nvt_md_sim(job):
 # @aggregator.groupby(['kT', 'density'])
 @aggregator(select=lambda job: job.sp.kT == 1.5 and job.sp.density == 0.6
             )  # eventually move this to a groupby
-@LJFluid.operation.with_directives(directives=dict(
-    executable="singularity exec {} python".format(CONTAINER_IMAGE_PATH)))
+@LJFluid.operation
+#@LJFluid.operation.with_directives(directives=dict(
+#    executable="singularity exec {} python".format(CONTAINER_IMAGE_PATH)))
 @LJFluid.pre.after(analyze_nvt_md_sim)
 @LJFluid.pre.after(analyze_nvt_mc_sim)
 @LJFluid.pre.after(analyze_npt_md_sim)
@@ -116,7 +117,12 @@ def analyze_potential_energies(*jobs):
     """
     import matplotlib.pyplot as plt
 
-    simulation_modes = ['nvt_md', 'npt_md', 'nvt_mc', 'mvt_md']
+    # grab the common statepoint parameters
+    kT = jobs[0].sp.kT
+    density = jobs[0].sp.density
+    num_particles = jobs[0].sp.num_particles
+
+    simulation_modes = ['nvt_md', 'npt_md', 'nvt_mc', 'npt_mc']
 
     # organize data from jobs
     energies = {mode: [] for mode in simulation_modes}
@@ -126,28 +132,34 @@ def analyze_potential_energies(*jobs):
                 getattr(getattr(jb.doc, sim_mode), 'potential_energy'))
 
     # compute stats with data
-    avg_energy = {
-        sim_mode: np.average(np.array(energies[sim_mode]))
+    avg_energy_pp = {
+        sim_mode: np.average(np.array(energies[sim_mode])) / num_particles
         for sim_mode in simulation_modes
     }
-    stderr_energy = {
+    stderr_energy_pp = {
         sim_mode:
-        2 * np.std(energies[sim_mode]) / np.sqrt(len(energies[sim_mode]))
+        2 * np.std(energies[sim_mode]) / np.sqrt(len(energies[sim_mode])) / num_particles
         for sim_mode in simulation_modes
     }
 
+    # compute the energy differences
+    egy_pp_list = [avg_energy_pp[mode] for mode in simulation_modes]
+    stderr_pp_list = [stderr_energy_pp[mode] for mode in simulation_modes]
+    avg_across_modes = np.average(egy_pp_list)
+    egy_diff_list = np.array(egy_pp_list) - avg_across_modes
+
     # make plot
-    kT = jobs[0].sp.kT
-    density = jobs[0].sp.density
     plt.bar(range(len(simulation_modes)),
-            height=[avg_energy[mode] for mode in simulation_modes],
-            yerr=[stderr_energy[mode] for mode in simulation_modes],
+            height=egy_diff_list,
+            yerr=stderr_pp_list,
             alpha=0.5,
             ecolor='black',
             capsize=10)
     plt.xticks(range(len(simulation_modes)), simulation_modes)
-    plt.title(f"$kT={kT}$, $\\rho={density}$, $N=10000$")
-    plt.ylabel("Potential Energy")
+    plt.title(f"$kT={kT}$, $\\rho={density}$, $N={num_particles}$")
+    plt.ylabel("$(U - <U>) \ / \ N$")
+    plt.savefig(f'potential_energies_kT{kT}_density{density}.png',
+                bbox_inches='tight')
     plt.show()
     plt.close()
 
