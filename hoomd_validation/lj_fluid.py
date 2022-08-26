@@ -169,6 +169,7 @@ def analyze_potential_energies(*jobs):
 @LJFluid.pre.isfile('nvt_md_sim.gsd')
 @LJFluid.pre.after(run_nvt_md_sim)
 @LJFluid.post(lambda job: job.doc.nvt_md.pressure != 0.0)
+@LJFluid.post(lambda job: job.doc.nvt_md.potential_energy != 0.0)
 @LJFluid.post.isfile('nvt_md_pressure_vs_time.png')
 def analyze_nvt_md_sim(job):
     """Compute the pressure for use in NPT simulations to cross-validate."""
@@ -282,7 +283,7 @@ def run_npt_md_sim(job):
     executable="singularity exec {} python".format(CONTAINER_IMAGE_PATH)))
 @LJFluid.pre.isfile('npt_md_sim.gsd')
 @LJFluid.pre.after(run_npt_md_sim)
-@LJFluid.post(lambda job: job.doc.npt_md.density != 0.0)
+@LJFluid.post(lambda job: job.doc.npt_md.potential_energy != 0.0)
 def analyze_npt_md_sim(job):
     """Compute the density to cross-validate with earlier NVT simulations."""
     import gsd.hoomd
@@ -436,11 +437,9 @@ def run_nvt_mc_sim(job):
     executable="singularity exec {} python".format(CONTAINER_IMAGE_PATH)))
 @LJFluid.pre.isfile('nvt_mc_sim.gsd')
 @LJFluid.pre.after(run_nvt_mc_sim)
-@LJFluid.post(lambda job: job.doc.nvt_mc.pressure != 0.0)
-@LJFluid.post.isfile('nvt_mc_pressure_vs_time.png')
+@LJFluid.post.isfile(lambda job: job.doc.nvt_mc.potential_energy != 0.0)
 def analyze_nvt_mc_sim(job):
     """Compute the pressure for use in NPT simulations to cross-validate."""
-    from mc_pressure import LJForce, PressureCompute
     import gsd.hoomd
     import matplotlib.pyplot as plt
 
@@ -452,32 +451,16 @@ def analyze_nvt_mc_sim(job):
     traj = traj[-1000:]
 
     # create array of data points
-    pressures = np.zeros(len(traj))
     potential_energies = np.zeros(len(traj))
 
-    # using epsilon=1 here, so we can compare back to the MD simulations
-    force_eval = LJForce(sigma=1, epsilon=1, r_cut=2.5, r_on=2.0)
-    pressure_compute = PressureCompute(force_eval)
     for i, frame in enumerate(traj):
-        pressures[i] = pressure_compute.compute(frame.particles.position,
-                                                frame.configuration.box,
-                                                sp["kT"])
         potential_energies[i] = frame.log['hpmc/pair/user/CPPPotential/energy']
-
-    # save the average value in a job doc parameter
-    job.doc.nvt_mc.pressure = np.average(pressures)
 
     # need to scale this energy by kT, since the simulation uses epsilon=1/kT,
     # so we can compare back to the energies of the MD simulations
     job.doc.nvt_mc.potential_energy = sp["kT"] * np.average(potential_energies)
 
     # make plots for visual inspection
-    plt.plot(pressures)
-    plt.title('Pressure vs. time')
-    plt.ylabel('$P$')
-    plt.savefig(job.fn('nvt_mc_pressure_vs_time.png'), bbox_inches='tight')
-    plt.close()
-
     plt.plot(potential_energies)
     plt.title('Potential Energy vs. time')
     plt.ylabel('$U$')
@@ -612,10 +595,9 @@ def run_npt_mc_sim(job):
     executable="singularity exec {} python".format(CONTAINER_IMAGE_PATH)))
 @LJFluid.pre.isfile('npt_mc_sim.gsd')
 @LJFluid.pre.after(run_npt_mc_sim)
-@LJFluid.post(lambda job: job.doc.npt_mc.density != 0.0)
+@LJFluid.post(lambda job: job.doc.npt_mc.potential_energy != 0.0)
 def analyze_npt_mc_sim(job):
     """Compute the density to cross-validate with earlier NVT simulations."""
-    from mc_pressure import LJForce, PressureCompute
     import gsd.hoomd
     import matplotlib.pyplot as plt
 
@@ -627,17 +609,10 @@ def analyze_npt_mc_sim(job):
     traj = traj[-1000:]
 
     # create array of pressures
-    pressures = np.zeros(len(traj))
     potential_energies = np.zeros(len(traj))
     densities = np.zeros(len(traj))
 
-    # using epsilon=1 here, so we can compare back to the MD simulations
-    force_eval = LJForce(sigma=1, epsilon=1, r_cut=2.5, r_on=2.0)
-    pressure_compute = PressureCompute(force_eval)
     for i, frame in enumerate(traj):
-        pressures[i] = pressure_compute.compute(frame.particles.position,
-                                                frame.configuration.box,
-                                                sp["kT"])
         potential_energies[i] = frame.log['hpmc/pair/user/CPPPotential/energy']
         densities[i] = frame.log['custom_actions/ComputeDensity/density']
 
@@ -647,13 +622,6 @@ def analyze_npt_mc_sim(job):
     # need to scale this energy by kT, since the simulation uses epsilon=1/kT,
     # so we can compare back to the energies of the MD simulations
     job.doc.npt_mc.potential_energy = sp["kT"] * np.average(potential_energies)
-
-    # make plots for visual inspection
-    plt.plot(pressures)
-    plt.title('Pressure vs. time')
-    plt.ylabel('$P \\sigma^3 / \\epsilon$')
-    plt.savefig(job.fn('npt_mc_pressure_vs_time.png'), bbox_inches='tight')
-    plt.close()
 
     plt.plot(potential_energies)
     plt.title('Potential Energy vs. time')
