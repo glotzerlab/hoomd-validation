@@ -9,6 +9,13 @@ from project_classes import LJFluid
 from flow import aggregator
 
 
+# Run parameters shared between simulations
+RUN_STEPS = 2e6
+WRITE_PERIOD = 1000
+LOG_PERIOD = 1000
+FRAMES_ANALYZE = 1000
+
+
 @LJFluid.operation.with_directives(directives=dict(
     executable="singularity exec {} python".format(CONTAINER_IMAGE_PATH)))
 @LJFluid.post.isfile('initial_state.gsd')
@@ -81,7 +88,7 @@ def run_nvt_md_sim(job):
 
     # write data to gsd file
     gsd_writer = hoomd.write.GSD(filename=job.fn('nvt_md_sim.gsd'),
-                                 trigger=hoomd.trigger.Periodic(1000),
+                                 trigger=hoomd.trigger.Periodic(LOG_PERIOD),
                                  mode='wb',
                                  log=logger)
     sim.operations.add(gsd_writer)
@@ -89,14 +96,14 @@ def run_nvt_md_sim(job):
     # write to terminal
     logger_table = hoomd.logging.Logger(categories=['scalar'])
     logger_table.add(sim, quantities=['timestep', 'final_timestep', 'tps'])
-    table_writer = hoomd.write.Table(hoomd.trigger.Periodic(1000), logger_table)
+    table_writer = hoomd.write.Table(hoomd.trigger.Periodic(WRITE_PERIOD), logger_table)
     sim.operations.add(table_writer)
 
     # thermoalize momenta
     sim.state.thermalize_particle_momenta(hoomd.filter.All(), sp["kT"])
 
     # run
-    sim.run(2e6)
+    sim.run(RUN_STEPS)
 
 
 @LJFluid.operation.with_directives(directives=dict(
@@ -113,7 +120,7 @@ def analyze_nvt_md_sim(job):
     traj = gsd.hoomd.open(job.fn('nvt_md_sim.gsd'))
 
     # analyze over the last 1000 frame (1e6 timesteps)
-    traj = traj[-1000:]
+    traj = traj[-FRAMES_ANALYZE:]
 
     # create array of data points
     pressures = np.zeros(len(traj))
@@ -194,7 +201,7 @@ def run_npt_md_sim(job):
 
     # write data to gsd file
     gsd_writer = hoomd.write.GSD(filename=job.fn('npt_md_sim.gsd'),
-                                 trigger=hoomd.trigger.Periodic(1000),
+                                 trigger=hoomd.trigger.Periodic(LOG_PERIOD),
                                  mode='wb',
                                  log=logger)
     sim.operations.add(gsd_writer)
@@ -202,14 +209,14 @@ def run_npt_md_sim(job):
     # write to terminal
     logger_table = hoomd.logging.Logger(categories=['scalar'])
     logger_table.add(sim, quantities=['timestep', 'final_timestep', 'tps'])
-    table_writer = hoomd.write.Table(hoomd.trigger.Periodic(1000), logger_table)
+    table_writer = hoomd.write.Table(hoomd.trigger.Periodic(WRITE_PERIOD), logger_table)
     sim.operations.add(table_writer)
 
     # thermoalize momenta
     sim.state.thermalize_particle_momenta(hoomd.filter.All(), sp["kT"])
 
     # run
-    sim.run(2e6)
+    sim.run(RUN_STEPS)
 
 
 @LJFluid.operation.with_directives(directives=dict(
@@ -224,7 +231,7 @@ def analyze_npt_md_sim(job):
     traj = gsd.hoomd.open(job.fn('npt_md_sim.gsd'))
 
     # analyze over the last 1000 frame (1e6 timesteps)
-    traj = traj[-1000:]
+    traj = traj[-FRAMES_ANALYZE:]
 
     # create array of pressures
     pressures = np.zeros(len(traj))
@@ -344,7 +351,7 @@ def run_nvt_mc_sim(job):
     logger_gsd.add(patch, quantities=['energy'])
 
     gsd_writer = hoomd.write.GSD(filename=job.fn('nvt_mc_sim.gsd'),
-                                 trigger=hoomd.trigger.Periodic(1000),
+                                 trigger=hoomd.trigger.Periodic(LOG_PERIOD),
                                  mode='wb',
                                  log=logger_gsd)
     sim.operations.add(gsd_writer)
@@ -352,7 +359,7 @@ def run_nvt_mc_sim(job):
     # write to terminal
     logger_table = hoomd.logging.Logger(categories=['scalar'])
     logger_table.add(sim, quantities=['timestep', 'final_timestep', 'tps'])
-    table_writer = hoomd.write.Table(hoomd.trigger.Periodic(1000), logger_table)
+    table_writer = hoomd.write.Table(hoomd.trigger.Periodic(WRITE_PERIOD), logger_table)
     sim.operations.add(table_writer)
 
     # make sure we have a valid initial state
@@ -361,7 +368,7 @@ def run_nvt_mc_sim(job):
         raise RuntimeError("Initial configuration has overlaps!")
 
     # run
-    sim.run(2e6)
+    sim.run(RUN_STEPS)
 
 
 @LJFluid.operation.with_directives(directives=dict(
@@ -378,7 +385,7 @@ def analyze_nvt_mc_sim(job):
     traj = gsd.hoomd.open(job.fn('nvt_mc_sim.gsd'))
 
     # analyze over the last 1000 frame (1e6 timesteps)
-    traj = traj[-1000:]
+    traj = traj[-FRAMES_ANALYZE:]
 
     # create array of data points
     potential_energies = np.zeros(len(traj))
@@ -501,7 +508,7 @@ def run_npt_mc_sim(job):
     logger_gsd.add(compute_density, quantities=['density'])
 
     gsd_writer = hoomd.write.GSD(filename=job.fn('npt_mc_sim.gsd'),
-                                 trigger=hoomd.trigger.Periodic(1000),
+                                 trigger=hoomd.trigger.Periodic(LOG_PERIOD),
                                  mode='wb',
                                  log=logger_gsd)
     sim.operations.add(gsd_writer)
@@ -509,7 +516,7 @@ def run_npt_mc_sim(job):
     # write to terminal
     logger_table = hoomd.logging.Logger(categories=['scalar'])
     logger_table.add(sim, quantities=['timestep', 'final_timestep', 'tps'])
-    table_writer = hoomd.write.Table(hoomd.trigger.Periodic(1000), logger_table)
+    table_writer = hoomd.write.Table(hoomd.trigger.Periodic(WRITE_PERIOD), logger_table)
     sim.operations.add(table_writer)
 
     # make sure we have a valid initial state
@@ -518,7 +525,7 @@ def run_npt_mc_sim(job):
         raise RuntimeError("Initial configuration has overlaps!")
 
     # run
-    sim.run(2e6)
+    sim.run(RUN_STEPS)
 
 
 @LJFluid.operation.with_directives(directives=dict(
@@ -535,7 +542,7 @@ def analyze_npt_mc_sim(job):
     traj = gsd.hoomd.open(job.fn('npt_mc_sim.gsd'))
 
     # analyze over the last 1000 frame (1e6 timesteps)
-    traj = traj[-1000:]
+    traj = traj[-FRAMES_ANALYZE:]
 
     # create array of pressures
     potential_energies = np.zeros(len(traj))
