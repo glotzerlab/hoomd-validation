@@ -63,7 +63,7 @@ def run_nvt_md_sim(job):
     nlist = md.nlist.Cell(buffer=0.3)
     lj = md.pair.LJ(default_r_cut=2.5, default_r_on=2.0, nlist=nlist)
     lj.params[('A', 'A')] = dict(sigma=1, epsilon=1)
-    lj.shift_mode = 'xplor'
+    lj.mode = 'xplor'
 
     # integration method
     nvt = md.methods.NVT(hoomd.filter.All(), kT=sp["kT"], tau=0.1)
