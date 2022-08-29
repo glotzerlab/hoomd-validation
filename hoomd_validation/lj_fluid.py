@@ -43,7 +43,6 @@ def create_initial_state(job):
     walltime=48,
     executable="singularity exec {} python".format(CONTAINER_IMAGE_PATH),
     nranks=8))
-@LJFluid.pre.isfile('initial_state.gsd')
 @LJFluid.pre.after(create_initial_state)
 @LJFluid.post.isfile('nvt_md_sim.gsd')
 def run_nvt_md_sim(job):
@@ -102,7 +101,6 @@ def run_nvt_md_sim(job):
 
 @LJFluid.operation.with_directives(directives=dict(
     executable="singularity exec {} python".format(CONTAINER_IMAGE_PATH)))
-@LJFluid.pre.isfile('nvt_md_sim.gsd')
 @LJFluid.pre.after(run_nvt_md_sim)
 @LJFluid.post(lambda job: job.doc.nvt_md.pressure != 0.0)
 @LJFluid.post(lambda job: job.doc.nvt_md.potential_energy != 0.0)
@@ -148,8 +146,7 @@ def analyze_nvt_md_sim(job):
     walltime=48,
     executable="singularity exec {} python".format(CONTAINER_IMAGE_PATH),
     nranks=8))
-@LJFluid.pre.isfile('initial_state.gsd')
-@LJFluid.pre(lambda job: job.doc.nvt_md.pressure != 0.0)
+@LJFluid.pre.after(analyze_nvt_md_sim)
 @LJFluid.pre.after(create_initial_state)
 @LJFluid.post.isfile('npt_md_sim.gsd')
 def run_npt_md_sim(job):
@@ -217,7 +214,6 @@ def run_npt_md_sim(job):
 
 @LJFluid.operation.with_directives(directives=dict(
     executable="singularity exec {} python".format(CONTAINER_IMAGE_PATH)))
-@LJFluid.pre.isfile('npt_md_sim.gsd')
 @LJFluid.pre.after(run_npt_md_sim)
 @LJFluid.post(lambda job: job.doc.npt_md.potential_energy != 0.0)
 def analyze_npt_md_sim(job):
@@ -269,7 +265,6 @@ def analyze_npt_md_sim(job):
     walltime=48,
     executable="singularity exec {} python".format(CONTAINER_IMAGE_PATH),
     nranks=16))
-@LJFluid.pre.isfile('initial_state.gsd')
 @LJFluid.pre.after(create_initial_state)
 @LJFluid.post.isfile('nvt_mc_sim.gsd')
 def run_nvt_mc_sim(job):
@@ -371,7 +366,6 @@ def run_nvt_mc_sim(job):
 
 @LJFluid.operation.with_directives(directives=dict(
     executable="singularity exec {} python".format(CONTAINER_IMAGE_PATH)))
-@LJFluid.pre.isfile('nvt_mc_sim.gsd')
 @LJFluid.pre.after(run_nvt_mc_sim)
 @LJFluid.post(lambda job: job.doc.nvt_mc.potential_energy != 0.0)
 def analyze_nvt_mc_sim(job):
@@ -409,7 +403,7 @@ def analyze_nvt_mc_sim(job):
     walltime=48,
     executable="singularity exec {} python".format(CONTAINER_IMAGE_PATH),
     nranks=16))
-@LJFluid.pre.isfile('initial_state.gsd')
+@LJFluid.pre.after(create_initial_state)
 @LJFluid.pre.after(run_nvt_md_sim)
 @LJFluid.pre(lambda job: job.doc.nvt_md.pressure > 0.0)
 @LJFluid.post.isfile('npt_mc_sim.gsd')
@@ -529,7 +523,6 @@ def run_npt_mc_sim(job):
 
 @LJFluid.operation.with_directives(directives=dict(
     executable="singularity exec {} python".format(CONTAINER_IMAGE_PATH)))
-@LJFluid.pre.isfile('npt_mc_sim.gsd')
 @LJFluid.pre.after(run_npt_mc_sim)
 @LJFluid.post(lambda job: job.doc.npt_mc.potential_energy != 0.0)
 def analyze_npt_mc_sim(job):
@@ -579,7 +572,6 @@ def analyze_npt_mc_sim(job):
 @LJFluid.operation
 #@LJFluid.operation.with_directives(directives=dict(
 #    executable="singularity exec {} python".format(CONTAINER_IMAGE_PATH)))
-@LJFluid.pre.after(analyze_nvt_md_sim)
 @LJFluid.pre.after(analyze_nvt_mc_sim)
 @LJFluid.pre.after(analyze_npt_md_sim)
 @LJFluid.pre.after(analyze_npt_mc_sim)
