@@ -12,17 +12,10 @@ class ComputeDensity(hoomd.custom.Action):
     The density computed is a number density.
     """
 
-    def __init__(self, sim, num_particles):
-        self._sim = sim
-        self._num_particles = num_particles
-
     @hoomd.logging.log
     def density(self):
         """float: The density of the system."""
-        vol = None
-        with self._sim.state.cpu_local_snapshot as snap:
-            vol = snap.global_box.volume
-        return self._num_particles / vol
+        return self._state.N_particles / self._state.box.volume
 
     def act(self, timestep):
         """Dummy act method."""
