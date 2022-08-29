@@ -167,7 +167,7 @@ def run_npt_md_sim(job):
     nlist = md.nlist.Cell(buffer=0.2)
     lj = md.pair.LJ(default_r_cut=2.5, nlist=nlist)
     lj.params[('A', 'A')] = dict(sigma=1, epsilon=1)
-    lj.shift_mode = 'xplor'
+    lj.mode = 'xplor'
 
     # integration method
     p = doc["nvt_md"]["pressure"]
