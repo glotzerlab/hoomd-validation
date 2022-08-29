@@ -124,8 +124,8 @@ def analyze_nvt_md_sim(job):
             'md/compute/ThermodynamicQuantities/potential_energy']
 
     # save the average value in a job doc parameter
-    job.doc.nvt_md.pressure = np.average(pressures)
-    job.doc.nvt_md.potential_energy = np.average(potential_energies)
+    job.doc.nvt_md.pressure = np.mean(pressures)
+    job.doc.nvt_md.potential_energy = np.mean(potential_energies)
 
     # make plots for visual inspection
     plt.plot(pressures)
@@ -598,7 +598,7 @@ def analyze_potential_energies(*jobs):
 
     # compute stats with data
     avg_energy_pp = {
-        sim_mode: np.average(np.array(energies[sim_mode])) / num_particles
+        sim_mode: np.mean(energies[sim_mode]) / num_particles
         for sim_mode in simulation_modes
     }
     stderr_energy_pp = {
@@ -610,7 +610,7 @@ def analyze_potential_energies(*jobs):
     # compute the energy differences
     egy_pp_list = [avg_energy_pp[mode] for mode in simulation_modes]
     stderr_pp_list = [stderr_energy_pp[mode] for mode in simulation_modes]
-    avg_across_modes = np.average(egy_pp_list)
+    avg_across_modes = np.mean(egy_pp_list)
     egy_diff_list = np.array(egy_pp_list) - avg_across_modes
 
     # make plot
