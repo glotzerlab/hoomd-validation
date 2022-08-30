@@ -133,38 +133,23 @@ def run_nvt_md_sim(job):
 def analyze_nvt_md_sim(job):
     """Compute the pressure for use in NPT simulations to cross-validate."""
     import gsd.hoomd
-    import matplotlib.pyplot as plt
+    from plotting import get_energies, get_pressures, plot_energies, plot_pressures
 
+    # get trajectory
     traj = gsd.hoomd.open(job.fn('nvt_md_sim.gsd'))
-
-    # analyze over the last 1000 frame (1e6 timesteps)
     traj = traj[-FRAMES_ANALYZE:]
 
-    # create array of data points
-    pressures = np.zeros(len(traj))
-    potential_energies = np.zeros(len(traj))
-    for i, frame in enumerate(traj):
-        pressures[i] = frame.log['md/compute/ThermodynamicQuantities/pressure']
-        potential_energies[i] = frame.log[
-            'md/compute/ThermodynamicQuantities/potential_energy']
+    # get data
+    pressures = get_pressures(traj)
+    energies = get_energies(traj)
 
     # save the average value in a job doc parameter
     job.doc.nvt_md.pressure = np.mean(pressures)
     job.doc.nvt_md.potential_energy = np.mean(potential_energies)
 
-    # make plots for visual inspection
-    plt.plot(pressures)
-    plt.title('Pressure vs. time')
-    plt.ylabel('$P$')
-    plt.savefig(job.fn('nvt_md_pressure_vs_time.png'), bbox_inches='tight')
-    plt.close()
-
-    plt.plot(potential_energies)
-    plt.title('Potential Energy vs. time')
-    plt.ylabel('$U$')
-    plt.savefig(job.fn('nvt_md_potential_energy_vs_time.png'),
-                bbox_inches='tight')
-    plt.close()
+    # make plots
+    plot_pressures(pressures, job.fn('nvt_md_pressure_vs_time.png'))
+    plot_energies(energies, job.fn('nvt_md_potential_energy_vs_time.png'))
 
 
 @LJFluid.operation.with_directives(directives=dict(
@@ -205,46 +190,25 @@ def run_npt_md_sim(job):
 def analyze_npt_md_sim(job):
     """Compute the density to cross-validate with earlier NVT simulations."""
     import gsd.hoomd
-    import matplotlib.pyplot as plt
+    from plotting import (get_quantity, get_pressures, get_energies, plot_pressures,
+                          plot_energies, plot_densities)
 
     traj = gsd.hoomd.open(job.fn('npt_md_sim.gsd'))
-
-    # analyze over the last 1000 frame (1e6 timesteps)
     traj = traj[-FRAMES_ANALYZE:]
 
-    # create array of pressures
-    pressures = np.zeros(len(traj))
-    potential_energies = np.zeros(len(traj))
-    densities = np.zeros(len(traj))
-    for i, frame in enumerate(traj):
-        pressures[i] = frame.log['md/compute/ThermodynamicQuantities/pressure']
-        potential_energies[i] = frame.log[
-            'md/compute/ThermodynamicQuantities/potential_energy']
-        densities[i] = frame.log['custom_actions/ComputeDensity/density']
+    # get data
+    pressures = get_pressures(traj)
+    energies = get_energies(traj)
+    densities = get_quantity('custom_actions/ComputeDensity/density')
 
     # save the average value in a job doc parameter
-    job.doc.npt_md.density = np.average(densities)
-    job.doc.npt_md.potential_energy = np.average(potential_energies)
+    job.doc.npt_md.density = np.mean(densities)
+    job.doc.npt_md.potential_energy = np.mean(potential_energies)
 
-    # make plots for visual inspection
-    plt.plot(pressures)
-    plt.title('Pressure vs. time')
-    plt.ylabel('$P \\sigma^3 / \\epsilon$')
-    plt.savefig(job.fn('npt_md_pressure_vs_time.png'), bbox_inches='tight')
-    plt.close()
-
-    plt.plot(potential_energies)
-    plt.title('Potential Energy vs. time')
-    plt.ylabel('$U / \\epsilon$')
-    plt.savefig(job.fn('npt_md_potential_energy_vs_time.png'),
-                bbox_inches='tight')
-    plt.close()
-
-    plt.plot(densities)
-    plt.title('Number Density vs. time')
-    plt.ylabel('$\\rho \\sigma^3$')
-    plt.savefig(job.fn('npt_md_density_vs_time.png'), bbox_inches='tight')
-    plt.close()
+    # make plots
+    plot_pressures(pressures, job.fn('npt_md_pressure_vs_time.png'))
+    plot_energies(energies, job.fn('npt_md_potential_energy_vs_time.png'))
+    plot_densities(densities, job.fn('npt_md_density_vs_time.png'))
 
 
 def make_mc_simulation(job, device, gsd_filename, extra_operations=[], extra_loggables=[]):
@@ -382,32 +346,19 @@ def run_nvt_mc_sim(job):
 def analyze_nvt_mc_sim(job):
     """Compute the pressure for use in NPT simulations to cross-validate."""
     import gsd.hoomd
-    import matplotlib.pyplot as plt
-
-    sp = job.sp()
+    from plotting import get_log_quantity, plot_energies
 
     traj = gsd.hoomd.open(job.fn('nvt_mc_sim.gsd'))
-
-    # analyze over the last 1000 frame (1e6 timesteps)
     traj = traj[-FRAMES_ANALYZE:]
 
-    # create array of data points
-    potential_energies = np.zeros(len(traj))
-
-    for i, frame in enumerate(traj):
-        potential_energies[i] = frame.log['hpmc/pair/user/CPPPotential/energy']
+    energies = get_log_quantity(traj, 'hpmc/pair/user/CPPPotential/energy')
 
     # need to scale this energy by kT, since the simulation uses epsilon=1/kT,
     # so we can compare back to the energies of the MD simulations
-    job.doc.nvt_mc.potential_energy = sp["kT"] * np.average(potential_energies)
+    energies *= job.sp.kT
+    job.doc.nvt_mc.potential_energy = np.mean(energies)
 
-    # make plots for visual inspection
-    plt.plot(potential_energies)
-    plt.title('Potential Energy vs. time')
-    plt.ylabel('$U$')
-    plt.savefig(job.fn('nvt_mc_potential_energy_vs_time.png'),
-                bbox_inches='tight')
-    plt.close()
+    plot_energies(energies, job.fn('nvt_mc_potential_energy_vs_time.png'))
 
 
 @LJFluid.operation.with_directives(directives=dict(
@@ -452,42 +403,22 @@ def run_npt_mc_sim(job):
 def analyze_npt_mc_sim(job):
     """Compute the density to cross-validate with earlier NVT simulations."""
     import gsd.hoomd
-    import matplotlib.pyplot as plt
-
-    sp = job.sp()
+    from plotting import get_log_quantity, plot_energies, plot_densities
 
     traj = gsd.hoomd.open(job.fn('npt_mc_sim.gsd'))
-
-    # analyze over the last 1000 frame (1e6 timesteps)
     traj = traj[-FRAMES_ANALYZE:]
 
-    # create array of pressures
-    potential_energies = np.zeros(len(traj))
-    densities = np.zeros(len(traj))
-
-    for i, frame in enumerate(traj):
-        potential_energies[i] = frame.log['hpmc/pair/user/CPPPotential/energy']
-        densities[i] = frame.log['custom_actions/ComputeDensity/density']
+    energies = get_log_quantity(traj, 'hpmc/pair/user/CPPPotential/energy')
+    densities = get_log_quantity(traj, 'custom_actions/ComputeDensity/density')
 
     # save the average value in a job doc parameter
-    job.doc.npt_mc.density = np.average(densities)
+    energies *= job.sp.kT
+    job.doc.npt_mc.potential_energy = np.mean(energies)
+    job.doc.npt_mc.density = np.mean(densities)
 
-    # need to scale this energy by kT, since the simulation uses epsilon=1/kT,
-    # so we can compare back to the energies of the MD simulations
-    job.doc.npt_mc.potential_energy = sp["kT"] * np.average(potential_energies)
-
-    plt.plot(potential_energies)
-    plt.title('Potential Energy vs. time')
-    plt.ylabel('$U / \\epsilon$')
-    plt.savefig(job.fn('npt_mc_potential_energy_vs_time.png'),
-                bbox_inches='tight')
-    plt.close()
-
-    plt.plot(densities)
-    plt.title('Number Density vs. time')
-    plt.ylabel('$\\rho \\sigma^3$')
-    plt.savefig(job.fn('npt_mc_density_vs_time.png'), bbox_inches='tight')
-    plt.close()
+    # plot
+    plot_energies(energies, job.fn('npt_mc_potential_energy_vs_time.png'))
+    plot_densities(densities, job.fn('npt_mc_density_vs_time.png'))
 
 
 # @aggregator.groupby(['kT', 'density'])
