@@ -4,7 +4,7 @@
 """Lennard Jones phase behavior validation test."""
 
 import numpy as np
-from config import test_project_dict, CONTAINER_IMAGE_PATH
+from config import test_project_dict, EXECUTABLE_STR
 from project_classes import LJFluid
 from flow import aggregator
 
@@ -16,8 +16,7 @@ LOG_PERIOD = 1000
 FRAMES_ANALYZE = 1000
 
 
-@LJFluid.operation.with_directives(directives=dict(
-    executable="singularity exec {} python".format(CONTAINER_IMAGE_PATH)))
+@LJFluid.operation.with_directives(directives=dict(executable=EXECUTABLE_STR))
 @LJFluid.post.isfile('initial_state.gsd')
 def create_initial_state(job):
     """Create initial system configuration."""
@@ -105,7 +104,7 @@ def make_md_simulation(job, device, method, gsd_filename, extra_loggables=[]):
 
 @LJFluid.operation.with_directives(directives=dict(
     walltime=48,
-    executable="singularity exec {} python".format(CONTAINER_IMAGE_PATH),
+    executable=EXECUTABLE_STR,
     nranks=8))
 @LJFluid.pre.after(create_initial_state)
 @LJFluid.post.isfile('nvt_md_sim.gsd')
@@ -124,8 +123,7 @@ def run_nvt_md_sim(job):
     sim.run(RUN_STEPS)
 
 
-@LJFluid.operation.with_directives(directives=dict(
-    executable="singularity exec {} python".format(CONTAINER_IMAGE_PATH)))
+@LJFluid.operation.with_directives(directives=dict(executable=EXECUTABLE_STR))
 @LJFluid.pre.after(run_nvt_md_sim)
 @LJFluid.post(lambda job: job.doc.nvt_md.pressure != 0.0)
 @LJFluid.post(lambda job: job.doc.nvt_md.potential_energy != 0.0)
@@ -154,7 +152,7 @@ def analyze_nvt_md_sim(job):
 
 @LJFluid.operation.with_directives(directives=dict(
     walltime=48,
-    executable="singularity exec {} python".format(CONTAINER_IMAGE_PATH),
+    executable=EXECUTABLE_STR,
     nranks=8))
 @LJFluid.pre.after(analyze_nvt_md_sim)
 @LJFluid.pre.after(create_initial_state)
@@ -183,8 +181,7 @@ def run_npt_md_sim(job):
     sim.run(RUN_STEPS)
 
 
-@LJFluid.operation.with_directives(directives=dict(
-    executable="singularity exec {} python".format(CONTAINER_IMAGE_PATH)))
+@LJFluid.operation.with_directives(directives=dict(executable=EXECUTABLE_STR))
 @LJFluid.pre.after(run_npt_md_sim)
 @LJFluid.post(lambda job: job.doc.npt_md.potential_energy != 0.0)
 def analyze_npt_md_sim(job):
@@ -321,7 +318,7 @@ def make_mc_simulation(job, device, gsd_filename, extra_operations=[], extra_log
 
 @LJFluid.operation.with_directives(directives=dict(
     walltime=48,
-    executable="singularity exec {} python".format(CONTAINER_IMAGE_PATH),
+    executable=EXECUTABLE_STR,
     nranks=16))
 @LJFluid.pre.after(create_initial_state)
 @LJFluid.post.isfile('nvt_mc_sim.gsd')
@@ -339,8 +336,7 @@ def run_nvt_mc_sim(job):
     sim.run(RUN_STEPS)
 
 
-@LJFluid.operation.with_directives(directives=dict(
-    executable="singularity exec {} python".format(CONTAINER_IMAGE_PATH)))
+@LJFluid.operation.with_directives(directives=dict(executable=EXECUTABLE_STR))
 @LJFluid.pre.after(run_nvt_mc_sim)
 @LJFluid.post(lambda job: job.doc.nvt_mc.potential_energy != 0.0)
 def analyze_nvt_mc_sim(job):
@@ -363,7 +359,7 @@ def analyze_nvt_mc_sim(job):
 
 @LJFluid.operation.with_directives(directives=dict(
     walltime=48,
-    executable="singularity exec {} python".format(CONTAINER_IMAGE_PATH),
+    executable=EXECUTABLE_STR,
     nranks=16))
 @LJFluid.pre.after(create_initial_state)
 @LJFluid.pre.after(run_nvt_md_sim)
@@ -396,8 +392,7 @@ def run_npt_mc_sim(job):
     sim.run(RUN_STEPS)
 
 
-@LJFluid.operation.with_directives(directives=dict(
-    executable="singularity exec {} python".format(CONTAINER_IMAGE_PATH)))
+@LJFluid.operation.with_directives(directives=dict(executable=EXECUTABLE_STR))
 @LJFluid.pre.after(run_npt_mc_sim)
 @LJFluid.post(lambda job: job.doc.npt_mc.potential_energy != 0.0)
 def analyze_npt_mc_sim(job):
@@ -424,9 +419,7 @@ def analyze_npt_mc_sim(job):
 # @aggregator.groupby(['kT', 'density'])
 @aggregator(select=lambda job: job.sp.kT == 1.5 and job.sp.density == 0.6
             )  # eventually move this to a groupby
-@LJFluid.operation
-#@LJFluid.operation.with_directives(directives=dict(
-#    executable="singularity exec {} python".format(CONTAINER_IMAGE_PATH)))
+@LJFluid.operation.with_directives(directives=dict(executable=EXECUTABLE_STR))
 @LJFluid.pre.after(analyze_nvt_mc_sim)
 @LJFluid.pre.after(analyze_npt_md_sim)
 @LJFluid.pre.after(analyze_npt_mc_sim)

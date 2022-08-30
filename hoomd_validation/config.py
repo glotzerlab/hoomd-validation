@@ -5,10 +5,12 @@
 
 import signac
 import project_classes
+from parser import parse_config_file
 from pathlib import Path
 
+
 # path to container image for simulations
-CONTAINER_IMAGE_PATH = "/ocean/projects/dmr170059p/tomwalt/software.sif"
+EXECUTABLE_STR = parse_config_file()
 
 # global variables for validation test projects
 test_project_name_list = ['LJFluid']
