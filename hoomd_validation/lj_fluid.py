@@ -57,6 +57,9 @@ def make_md_simulation(job, device, method, gsd_filename, extra_loggables=[]):
             List of quantities to add to the gsd logger. ThermodynamicQuantities
             is added by default, any more quantities should be in this list.
     """
+    import hoomd
+    from hoomd import md
+
     sim = hoomd.Simulation(device)
     sim.create_state_from_gsd(job.fn('initial_state.gsd'))
 
@@ -151,8 +154,8 @@ def analyze_nvt_md_sim(job):
 
 @aggregator.groupby(['kT', 'density'])
 @LJFluid.operation.with_directives(directives=dict(executable=EXECUTABLE_STR))
-@LJFluid.pre.after(analyze_nvt_md_sim)
-@LJFluid.post(lambda job: job.doc.nvt_md.aggregate_pressure is not None)
+#@LJFluid.pre.after(analyze_nvt_md_sim)
+#@LJFluid.post(lambda job: job.doc.nvt_md.aggregate_pressure is not None)
 def average_nvt_md_pressures(*jobs):
     """Average the pressures from all replicates at a given LJ statepoint.
 
@@ -174,7 +177,7 @@ def average_nvt_md_pressures(*jobs):
     walltime=48,
     executable=EXECUTABLE_STR,
     nranks=8))
-@LJFluid.pre.after(average_nvt_md_pressures)
+@LJFluid.pre(lambda job: job.doc.nvt_md.aggregate_pressure is not None)
 @LJFluid.pre.after(create_initial_state)
 @LJFluid.post.isfile('npt_md_sim.gsd')
 def run_npt_md_sim(job):
@@ -242,6 +245,9 @@ def make_mc_simulation(job, device, gsd_filename, extra_operations=[], extra_log
             List of extra loggables to log to gsd files. Patch energies and
             type shapes are logged by default.
     """
+    import hoomd
+    from hoomd import hpmc
+
     sim = hoomd.Simulation(device)
     sim.create_state_from_gsd(job.fn('initial_state.gsd'))
 
@@ -381,7 +387,7 @@ def analyze_nvt_mc_sim(job):
     executable=EXECUTABLE_STR,
     nranks=16))
 @LJFluid.pre.after(create_initial_state)
-@LJFluid.pre.after(average_nvt_md_pressures)
+@LJFluid.pre(lambda job: job.doc.nvt_md.aggregate_pressure is not None)
 @LJFluid.post.isfile('npt_mc_sim.gsd')
 def run_npt_mc_sim(job):
     """Run MC sim in NPT."""
