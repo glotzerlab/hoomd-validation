@@ -2,3 +2,4 @@ AllValidationTests
 LJFluid
 
 hoomd_validation/*.out
+hoomd_validation/config.json

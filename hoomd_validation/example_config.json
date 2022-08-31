@@ -1,5 +1,0 @@
-{
-    "containerized": true,
-    "container_path": "path/to/my/container",
-    "path_to_python": "/usr/bin/python3"
-}
