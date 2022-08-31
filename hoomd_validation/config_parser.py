@@ -1,6 +1,6 @@
 import os
+import sys
 import json
-import subprocess
 
 
 class ConfigFileParser:
@@ -16,11 +16,17 @@ class ConfigFileParser:
 
         {
             "executable": {
-                "containerized": true,
                 "container_path": "/path/to/my/container",
-                "path_to_python": "/usr/bin/python"
+                "python_exec": "/usr/bin/python"
             }
         }
+
+    Neither field in executable is strictly required, but if working in a
+    containerized environment, container_path must specify the location of the
+    container. If python_exec is not specified, the default behavior is to use
+    the executable being used to run the code. In a containerized environment, the
+    default behavior is to use "python", since we cannot know a priori the name
+    of the executable in the container.
     """
 
     DEFAULT_CONFIG_PATH = "config.json"
@@ -34,28 +40,27 @@ class ConfigFileParser:
         Searches the executable section of the config file and builds the string
         needed by flow's directives.
 
-        If no config file is present, we use the python executable on the PATH.
+        If no config file is present, we use the python executable used to run
+        this code.
         """
 
         if not os.path.exists(self._config_path):
-            print(f"Could not find config file located at {self._config_path}, "
-                  "using the default python executable instead")
-            python_exec = subprocess.run(["which", "python"], stdout=subprocess.PIPE, text=True)
-            return python_exec.stdout[:-1] # remove the \n at the end
+            return sys.executable
 
         return_string = ""
         with open(self._config_path) as f:
             config_file = json.load(f)
             executable_options = config_file["executable"]
 
-            if executable_options["containerized"]:
+            using_container = "container_path" in executable_options
+            if using_container:
                 return_string += "singularity exec --nv "
-                if len(executable_options["container_path"]) > 0:
-                    return_string += (executable_options["container_path"] + " ")
-                else:
-                    raise RuntimeError("If containerized is true, a non-empty"
-                                       " container_path must be specified")
-            return_string += executable_options["path_to_python"]
+                return_string += (executable_options["container_path"] + " ")
+
+            if "python_exec" in executable_options:
+                return_string += executable_options["python_exec"]
+            else:
+                return_string += ("python" if using_container else sys.executable)
         return return_string
 
 
