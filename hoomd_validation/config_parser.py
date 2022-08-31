@@ -50,8 +50,11 @@ class ConfigFileParser:
         return_string = ""
         with open(self._config_path) as f:
             config_file = json.load(f)
-            executable_options = config_file["executable"]
 
+            if "executable" not in config_file:
+                return sys.executable
+
+            executable_options = config_file["executable"]
             using_container = "container_path" in executable_options
             if using_container:
                 return_string += "singularity exec --nv "
