@@ -39,8 +39,7 @@ class LJFluid(ValidationTestProject):
         list_sps = []
         num_particles = 10000
         replicate_indices = range(4)
-        params_list = [(0.75, 0.05), (0.75, 0.8), (1.0, 0.2), (1.0, 0.4),
-                       (1.5, 0.6), (1.5, 0.7)]
+        params_list = [(1.5, 0.6)]
         for kT, density in params_list:
             for idx in replicate_indices:
                 list_sps.append({
@@ -58,19 +57,16 @@ class LJFluid(ValidationTestProject):
 
         # random seeds
         id_str = str(int('0x' + job.id, base=16))
-        seed0 = int(id_str[-4:])
-        seed1 = int(id_str[-8:-4])
-        seed2 = int(id_str[-12:-8])
-        seed3 = int(id_str[-16:-12])
+        params_list.append(('seed', int(id_str[:5])))
 
         # store values needed for each simulation to be run
         params_list.append(
-            ('nvt_md', dict(seed=seed0, pressure=0.0, potential_energy=0.0)))
+            ('nvt_md', dict(pressure=None, aggregate_pressure=None, potential_energy=None)))
         params_list.append(
-            ('npt_md', dict(seed=seed1, density=0.0, potential_energy=0.0)))
+            ('npt_md', dict(density=None, potential_energy=None)))
         params_list.append(
-            ('nvt_mc', dict(seed=seed2, pressure=0.0, potential_energy=0.0)))
+            ('nvt_mc', dict(pressure=None, potential_energy=None)))
         params_list.append(
-            ('npt_mc', dict(seed=seed3, density=0.0, potential_energy=0.0)))
+            ('npt_mc', dict(density=None, potential_energy=None)))
 
         return params_list

@@ -125,8 +125,8 @@ def run_nvt_md_sim(job):
 
 @LJFluid.operation.with_directives(directives=dict(executable=EXECUTABLE_STR))
 @LJFluid.pre.after(run_nvt_md_sim)
-@LJFluid.post(lambda job: job.doc.nvt_md.pressure != 0.0)
-@LJFluid.post(lambda job: job.doc.nvt_md.potential_energy != 0.0)
+@LJFluid.post(lambda job: job.doc.nvt_md.pressure is not None)
+@LJFluid.post(lambda job: job.doc.nvt_md.potential_energy is not None)
 @LJFluid.post.isfile('nvt_md_pressure_vs_time.png')
 def analyze_nvt_md_sim(job):
     """Compute the pressure for use in NPT simulations to cross-validate."""
@@ -150,11 +150,32 @@ def analyze_nvt_md_sim(job):
     plot_energies(energies, job.fn('nvt_md_potential_energy_vs_time.png'))
 
 
+@aggregator.groupby(['kT', 'density'])
+@LJFluid.operation.with_directives(directives=dict(executable=EXECUTABLE_STR))
+@LJFluid.pre.after(analyze_nvt_md_sim)
+@LJFluid.post(lambda job: job.doc.nvt_md.aggregate_pressure is not None)
+def average_nvt_md_pressures(*jobs):
+    """Average the pressures from all replicates at a given LJ statepoint.
+
+    This operation is used so the pressure setpoint for all the NPT simulation
+    replicates will have the exact same pressure setpoint. Conceptually, this
+    operation is an MPI Allreduce, with the average operation, where each "rank"
+    is a simulation replicate.
+    """
+    pressures = []
+    for job in jobs:
+        pressures.append(job.doc.nvt_md.pressure)
+
+    avg = np.mean(pressures)
+    for job in jobs:
+        job.doc.nvt_md.aggregate_pressure = avg
+
+
 @LJFluid.operation.with_directives(directives=dict(
     walltime=48,
     executable=EXECUTABLE_STR,
     nranks=8))
-@LJFluid.pre.after(analyze_nvt_md_sim)
+@LJFluid.pre.after(average_nvt_md_pressures)
 @LJFluid.pre.after(create_initial_state)
 @LJFluid.post.isfile('npt_md_sim.gsd')
 def run_npt_md_sim(job):
@@ -164,7 +185,7 @@ def run_npt_md_sim(job):
     from custom_actions import ComputeDensity
 
     device = hoomd.device.CPU()
-    p = job.doc.nvt_md.pressure
+    p = job.doc.nvt_md.aggregate_pressure
     npt = md.methods.NPT(hoomd.filter.All(),
                          kT=job.sp.kT,
                          tau=0.1,
@@ -183,7 +204,7 @@ def run_npt_md_sim(job):
 
 @LJFluid.operation.with_directives(directives=dict(executable=EXECUTABLE_STR))
 @LJFluid.pre.after(run_npt_md_sim)
-@LJFluid.post(lambda job: job.doc.npt_md.potential_energy != 0.0)
+@LJFluid.post(lambda job: job.doc.npt_md.potential_energy is not None)
 def analyze_npt_md_sim(job):
     """Compute the density to cross-validate with earlier NVT simulations."""
     import gsd.hoomd
@@ -338,7 +359,7 @@ def run_nvt_mc_sim(job):
 
 @LJFluid.operation.with_directives(directives=dict(executable=EXECUTABLE_STR))
 @LJFluid.pre.after(run_nvt_mc_sim)
-@LJFluid.post(lambda job: job.doc.nvt_mc.potential_energy != 0.0)
+@LJFluid.post(lambda job: job.doc.nvt_mc.potential_energy is not None)
 def analyze_nvt_mc_sim(job):
     """Compute the pressure for use in NPT simulations to cross-validate."""
     import gsd.hoomd
@@ -362,8 +383,7 @@ def analyze_nvt_mc_sim(job):
     executable=EXECUTABLE_STR,
     nranks=16))
 @LJFluid.pre.after(create_initial_state)
-@LJFluid.pre.after(run_nvt_md_sim)
-@LJFluid.pre(lambda job: job.doc.nvt_md.pressure > 0.0)
+@LJFluid.pre.after(average_nvt_md_pressures)
 @LJFluid.post.isfile('npt_mc_sim.gsd')
 def run_npt_mc_sim(job):
     """Run MC sim in NPT."""
@@ -379,7 +399,7 @@ def run_npt_mc_sim(job):
     compute_density = ComputeDensity()
 
     # box updates
-    boxmc = hpmc.update.BoxMC(betaP=job.doc.nvt_md.pressure / job.sp.kT,
+    boxmc = hpmc.update.BoxMC(betaP=job.doc.nvt_md.aggregate_pressure / job.sp.kT,
                               trigger=hoomd.trigger.Periodic(10))
     boxmc.volume = dict(weight=1.0, mode='standard', delta=25)
 
@@ -394,7 +414,7 @@ def run_npt_mc_sim(job):
 
 @LJFluid.operation.with_directives(directives=dict(executable=EXECUTABLE_STR))
 @LJFluid.pre.after(run_npt_mc_sim)
-@LJFluid.post(lambda job: job.doc.npt_mc.potential_energy != 0.0)
+@LJFluid.post(lambda job: job.doc.npt_mc.potential_energy is not None)
 def analyze_npt_mc_sim(job):
     """Compute the density to cross-validate with earlier NVT simulations."""
     import gsd.hoomd
@@ -416,13 +436,11 @@ def analyze_npt_mc_sim(job):
     plot_densities(densities, job.fn('npt_mc_density_vs_time.png'))
 
 
-# @aggregator.groupby(['kT', 'density'])
-@aggregator(select=lambda job: job.sp.kT == 1.5 and job.sp.density == 0.6
-            )  # eventually move this to a groupby
+@aggregator.groupby(['kT', 'density'])
 @LJFluid.operation.with_directives(directives=dict(executable=EXECUTABLE_STR))
-@LJFluid.pre.after(analyze_nvt_mc_sim)
-@LJFluid.pre.after(analyze_npt_md_sim)
-@LJFluid.pre.after(analyze_npt_mc_sim)
+#@LJFluid.pre.after(analyze_nvt_mc_sim)
+#@LJFluid.pre.after(analyze_npt_md_sim)
+#@LJFluid.pre.after(analyze_npt_mc_sim)
 def analyze_potential_energies(*jobs):
     """Plot standard error of the mean of the potential energies.
 
