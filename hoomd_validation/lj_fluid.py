@@ -23,7 +23,7 @@ def create_initial_state(job):
     import gsd.hoomd
     import itertools
 
-    sp = job.sp()
+    sp = job.sp
 
     box_volume = sp["num_particles"] / sp["density"]
     L = box_volume**(1 / 3.)
@@ -60,8 +60,7 @@ def make_md_simulation(job, device, method, gsd_filename, extra_loggables=[]):
     sim = hoomd.Simulation(device)
     sim.create_state_from_gsd(job.fn('initial_state.gsd'))
 
-    # TODO change to only using one simulation seed
-    sim.seed = job.doc.nvt_md.seed
+    sim.seed = job.doc.seed
 
     # pair force
     nlist = md.nlist.Cell(buffer=0.3)
@@ -246,8 +245,7 @@ def make_mc_simulation(job, device, gsd_filename, extra_operations=[], extra_log
     sim = hoomd.Simulation(device)
     sim.create_state_from_gsd(job.fn('initial_state.gsd'))
 
-    # TODO: change so there is only one seed needed
-    sim.seed = job.doc.nvt_mc.seed
+    sim.seed = job.doc.seed
 
     # integrator
     mc = hpmc.integrate.Sphere()
