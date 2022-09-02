@@ -1,6 +1,7 @@
 import os
 import sys
 import json
+from pathlib import Path
 
 
 class ConfigFileParser:
@@ -27,9 +28,11 @@ class ConfigFileParser:
     the executable being used to run the code. In a containerized environment, the
     default behavior is to use "python", since we cannot know a priori the name
     of the executable in the container.
+
+    The config file must be located in the hoomd_validation directory.
     """
 
-    DEFAULT_CONFIG_PATH = "config.json"
+    DEFAULT_CONFIG_PATH = str(Path(__file__).parent / "config.json")
 
     def __init__(self, config_file_path=DEFAULT_CONFIG_PATH):
         self._config_path = config_file_path
