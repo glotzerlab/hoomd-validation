@@ -152,10 +152,27 @@ def analyze_nvt_md_sim(job):
     plot_energies(energies, job.fn('nvt_md_potential_energy_vs_time.png'))
 
 
+
+def nvt_md_pressures_averaged(*jobs):
+    """Make sure the pressure setpoint is computed and added to job docs."""
+    for job in jobs:
+        if job.doc.nvt_md.aggregate_pressure is None:
+            return False
+    return True
+
+
+def nvt_md_pressures_computed(*jobs):
+    """Make sure the pressures for nvt md sims are computed."""
+    for job in jobs:
+        if job.doc.nvt_md.pressure is None:
+            return False
+    return True
+
+
 @aggregator.groupby(['kT', 'density'])
 @LJFluid.operation.with_directives(directives=dict(executable=EXECUTABLE_STR))
-#@LJFluid.pre.after(analyze_nvt_md_sim)
-#@LJFluid.post(lambda job: job.doc.nvt_md.aggregate_pressure is not None)
+@LJFluid.pre(nvt_md_pressures_computed)
+@LJFluid.post(nvt_md_pressures_averaged)
 def average_nvt_md_pressures(*jobs):
     """Average the pressures from all replicates at a given LJ statepoint.
 
@@ -440,11 +457,22 @@ def analyze_npt_mc_sim(job):
     plot_densities(densities, job.fn('npt_mc_density_vs_time.png'))
 
 
+def all_sims_analyzed(*jobs):
+    """Make sure all sims have values for potential energy computed.
+
+    Implicit here is the nvt_md sim, whose analysis is a precondition for
+    running the other modes of simulation."""
+    for job in jobs:
+        if job.doc.npt_mc.potential_energy is None \
+            or job.doc.npt_md.potential_energy is None \
+            or job.doc.nvt_mc.potential_energy is None:
+            return False
+    return True
+
+
 @aggregator.groupby(['kT', 'density'])
 @LJFluid.operation.with_directives(directives=dict(executable=EXECUTABLE_STR))
-#@LJFluid.pre.after(analyze_nvt_mc_sim)
-#@LJFluid.pre.after(analyze_npt_md_sim)
-#@LJFluid.pre.after(analyze_npt_mc_sim)
+@LJFluid.pre(all_sims_analyzed)
 def analyze_potential_energies(*jobs):
     """Plot standard error of the mean of the potential energies.
 
