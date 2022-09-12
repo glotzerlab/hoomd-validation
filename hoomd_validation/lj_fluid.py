@@ -83,6 +83,9 @@ def make_md_simulation(job, device, method, gsd_filename, extra_loggables=[]):
     logger = hoomd.logging.Logger(categories=['scalar'])
     logger.add(thermo, quantities=['pressure', 'potential_energy'])
     for loggable in extra_loggables:
+        # call attach method explicitly so we can access simulation state when
+        # computing the loggable quantity
+        loggable.attach(sim)
         logger.add(loggable)
 
     # write data to gsd file
@@ -145,7 +148,7 @@ def analyze_nvt_md_sim(job):
 
     # save the average value in a job doc parameter
     job.doc.nvt_md.pressure = np.mean(pressures)
-    job.doc.nvt_md.potential_energy = np.mean(potential_energies)
+    job.doc.nvt_md.potential_energy = np.mean(energies)
 
     # make plots
     plot_pressures(pressures, job.fn('nvt_md_pressure_vs_time.png'))
@@ -336,6 +339,9 @@ def make_mc_simulation(job, device, gsd_filename, extra_operations=[], extra_log
     logger_gsd.add(mc, quantities=['type_shapes'])
     logger_gsd.add(patch, quantities=['energy'])
     for loggable in extra_loggables:
+        # call attach method explicitly so we can access simulation state when
+        # computing the loggable quantity
+        loggable.attach(sim)
         logger_gsd.add(loggable)
 
     gsd_writer = hoomd.write.GSD(filename=gsd_filename,
@@ -425,9 +431,9 @@ def run_npt_mc_sim(job):
     boxmc.volume = dict(weight=1.0, mode='standard', delta=25)
 
     # simulation
-    sim = make_mc_sim(job, dev, gsd_filename,
-                      extra_operations=[boxmc],
-                      extra_loggables=[compute_density])
+    sim = make_mc_simulation(job, dev, gsd_filename,
+                             extra_operations=[boxmc],
+                             extra_loggables=[compute_density])
 
     # run
     sim.run(RUN_STEPS)
