@@ -8,7 +8,6 @@ from config import test_project_dict, EXECUTABLE_STR
 from project_classes import LJFluid
 from flow import aggregator
 
-
 # Run parameters shared between simulations
 RUN_STEPS = 2e6
 WRITE_PERIOD = 1000
@@ -53,9 +52,9 @@ def make_md_simulation(job, device, method, gsd_filename, extra_loggables=[]):
         device (`hoomd.device.Device`): hoomd device object.
         method (`hoomd.md.methods.Method`): hoomd integration method.
         gsd_filename (str): Path to the gsd file to write simulation data.
-        extra_loggables (list):
-            List of quantities to add to the gsd logger. ThermodynamicQuantities
-            is added by default, any more quantities should be in this list.
+        extra_loggables (list): List of quantities to add to the gsd logger.
+        ThermodynamicQuantities is added by default, any more quantities should
+        be in this list.
     """
     import hoomd
     from hoomd import md
@@ -98,7 +97,8 @@ def make_md_simulation(job, device, method, gsd_filename, extra_loggables=[]):
     # write to terminal
     logger_table = hoomd.logging.Logger(categories=['scalar'])
     logger_table.add(sim, quantities=['timestep', 'final_timestep', 'tps'])
-    table_writer = hoomd.write.Table(hoomd.trigger.Periodic(WRITE_PERIOD), logger_table)
+    table_writer = hoomd.write.Table(hoomd.trigger.Periodic(WRITE_PERIOD),
+                                     logger_table)
     sim.operations.add(table_writer)
 
     # thermoalize momenta
@@ -107,10 +107,9 @@ def make_md_simulation(job, device, method, gsd_filename, extra_loggables=[]):
     return sim
 
 
-@LJFluid.operation.with_directives(directives=dict(
-    walltime=48,
-    executable=EXECUTABLE_STR,
-    nranks=8))
+@LJFluid.operation.with_directives(directives=dict(walltime=48,
+                                                   executable=EXECUTABLE_STR,
+                                                   nranks=8))
 @LJFluid.pre.after(create_initial_state)
 @LJFluid.post.isfile('nvt_md_sim.gsd')
 def run_nvt_md_sim(job):
@@ -136,7 +135,8 @@ def run_nvt_md_sim(job):
 def analyze_nvt_md_sim(job):
     """Compute the pressure for use in NPT simulations to cross-validate."""
     import gsd.hoomd
-    from plotting import get_energies, get_pressures, plot_energies, plot_pressures
+    from plotting import (get_energies, get_pressures, plot_energies,
+                          plot_pressures)
 
     # get trajectory
     traj = gsd.hoomd.open(job.fn('nvt_md_sim.gsd'))
@@ -153,7 +153,6 @@ def analyze_nvt_md_sim(job):
     # make plots
     plot_pressures(pressures, job.fn('nvt_md_pressure_vs_time.png'))
     plot_energies(energies, job.fn('nvt_md_potential_energy_vs_time.png'))
-
 
 
 def nvt_md_pressures_averaged(*jobs):
@@ -193,10 +192,9 @@ def average_nvt_md_pressures(*jobs):
         job.doc.nvt_md.aggregate_pressure = avg
 
 
-@LJFluid.operation.with_directives(directives=dict(
-    walltime=48,
-    executable=EXECUTABLE_STR,
-    nranks=8))
+@LJFluid.operation.with_directives(directives=dict(walltime=48,
+                                                   executable=EXECUTABLE_STR,
+                                                   nranks=8))
 @LJFluid.pre(lambda job: job.doc.nvt_md.aggregate_pressure is not None)
 @LJFluid.pre.after(create_initial_state)
 @LJFluid.post.isfile('npt_md_sim.gsd')
@@ -217,7 +215,10 @@ def run_npt_md_sim(job):
     gsd_file = job.fn('npt_md_sim.gsd')
     density_compute = ComputeDensity()
 
-    sim = make_md_simulation(job, device, npt, gsd_file,
+    sim = make_md_simulation(job,
+                             device,
+                             npt,
+                             gsd_file,
                              extra_loggables=[density_compute])
 
     # run
@@ -230,8 +231,8 @@ def run_npt_md_sim(job):
 def analyze_npt_md_sim(job):
     """Compute the density to cross-validate with earlier NVT simulations."""
     import gsd.hoomd
-    from plotting import (get_quantity, get_pressures, get_energies, plot_pressures,
-                          plot_energies, plot_densities)
+    from plotting import (get_quantity, get_pressures, get_energies,
+                          plot_pressures, plot_energies, plot_densities)
 
     traj = gsd.hoomd.open(job.fn('npt_md_sim.gsd'))
     traj = traj[-FRAMES_ANALYZE:]
@@ -243,7 +244,7 @@ def analyze_npt_md_sim(job):
 
     # save the average value in a job doc parameter
     job.doc.npt_md.density = np.mean(densities)
-    job.doc.npt_md.potential_energy = np.mean(potential_energies)
+    job.doc.npt_md.potential_energy = np.mean(energies)
 
     # make plots
     plot_pressures(pressures, job.fn('npt_md_pressure_vs_time.png'))
@@ -251,19 +252,22 @@ def analyze_npt_md_sim(job):
     plot_densities(densities, job.fn('npt_md_density_vs_time.png'))
 
 
-def make_mc_simulation(job, device, gsd_filename, extra_operations=[], extra_loggables=[]):
+def make_mc_simulation(job,
+                       device,
+                       gsd_filename,
+                       extra_operations=[],
+                       extra_loggables=[]):
     """Make an MC Simulation.
 
     Args:
         job (`signac.job.Job`): Signac job object.
         device (`hoomd.device.Device`): Device object.
         gsd_filename (str): Path to the gsd file to write simulation data.
-        extra_operations (list):
-            List of extra operations to add to the simulation. MC integrator, move
-            size tuner, gsd logger, and table logger are added by default.
-        extra_loggables (list):
-            List of extra loggables to log to gsd files. Patch energies and
-            type shapes are logged by default.
+        extra_operations (list): List of extra operations to add to the
+        simulation. MC integrator, move size tuner, gsd logger, and table logger
+        are added by default.
+        extra_loggables (list): List of extra loggables to log to gsd files.
+        Patch energies and type shapes are logged by default.
     """
     import hoomd
     from hoomd import hpmc
@@ -353,7 +357,8 @@ def make_mc_simulation(job, device, gsd_filename, extra_operations=[], extra_log
     # write to terminal
     logger_table = hoomd.logging.Logger(categories=['scalar'])
     logger_table.add(sim, quantities=['timestep', 'final_timestep', 'tps'])
-    table_writer = hoomd.write.Table(hoomd.trigger.Periodic(WRITE_PERIOD), logger_table)
+    table_writer = hoomd.write.Table(hoomd.trigger.Periodic(WRITE_PERIOD),
+                                     logger_table)
     sim.operations.add(table_writer)
 
     # make sure we have a valid initial state
@@ -364,16 +369,14 @@ def make_mc_simulation(job, device, gsd_filename, extra_operations=[], extra_log
     return sim
 
 
-@LJFluid.operation.with_directives(directives=dict(
-    walltime=48,
-    executable=EXECUTABLE_STR,
-    nranks=16))
+@LJFluid.operation.with_directives(directives=dict(walltime=48,
+                                                   executable=EXECUTABLE_STR,
+                                                   nranks=16))
 @LJFluid.pre.after(create_initial_state)
 @LJFluid.post.isfile('nvt_mc_sim.gsd')
 def run_nvt_mc_sim(job):
     """Run MC sim in NVT."""
     import hoomd
-    from hoomd import hpmc
 
     # simulation
     dev = hoomd.device.CPU()
@@ -405,10 +408,9 @@ def analyze_nvt_mc_sim(job):
     plot_energies(energies, job.fn('nvt_mc_potential_energy_vs_time.png'))
 
 
-@LJFluid.operation.with_directives(directives=dict(
-    walltime=48,
-    executable=EXECUTABLE_STR,
-    nranks=16))
+@LJFluid.operation.with_directives(directives=dict(walltime=48,
+                                                   executable=EXECUTABLE_STR,
+                                                   nranks=16))
 @LJFluid.pre.after(create_initial_state)
 @LJFluid.pre(lambda job: job.doc.nvt_md.aggregate_pressure is not None)
 @LJFluid.post.isfile('npt_mc_sim.gsd')
@@ -426,12 +428,15 @@ def run_npt_mc_sim(job):
     compute_density = ComputeDensity()
 
     # box updates
-    boxmc = hpmc.update.BoxMC(betaP=job.doc.nvt_md.aggregate_pressure / job.sp.kT,
+    boxmc = hpmc.update.BoxMC(betaP=job.doc.nvt_md.aggregate_pressure
+                              / job.sp.kT,
                               trigger=hoomd.trigger.Periodic(10))
     boxmc.volume = dict(weight=1.0, mode='standard', delta=25)
 
     # simulation
-    sim = make_mc_simulation(job, dev, gsd_filename,
+    sim = make_mc_simulation(job,
+                             dev,
+                             gsd_filename,
                              extra_operations=[boxmc],
                              extra_loggables=[compute_density])
 
@@ -467,11 +472,12 @@ def all_sims_analyzed(*jobs):
     """Make sure all sims have values for potential energy computed.
 
     Implicit here is the nvt_md sim, whose analysis is a precondition for
-    running the other modes of simulation."""
+    running the other modes of simulation.
+    """
     for job in jobs:
-        if job.doc.npt_mc.potential_energy is None \
-            or job.doc.npt_md.potential_energy is None \
-            or job.doc.nvt_mc.potential_energy is None:
+        if job.doc.npt_mc.potential_energy is None or \
+            job.doc.npt_md.potential_energy is None or \
+                job.doc.nvt_mc.potential_energy is None:
             return False
     return True
 
@@ -506,8 +512,8 @@ def analyze_potential_energies(*jobs):
         for sim_mode in simulation_modes
     }
     stderr_energy_pp = {
-        sim_mode:
-        2 * np.std(energies[sim_mode]) / np.sqrt(len(energies[sim_mode])) / num_particles
+        sim_mode: 2 * np.std(energies[sim_mode])
+        / np.sqrt(len(energies[sim_mode])) / num_particles
         for sim_mode in simulation_modes
     }
 
@@ -526,7 +532,7 @@ def analyze_potential_energies(*jobs):
             capsize=10)
     plt.xticks(range(len(simulation_modes)), simulation_modes)
     plt.title(f"$kT={kT}$, $\\rho={density}$, $N={num_particles}$")
-    plt.ylabel("$(U - <U>) \ / \ N$")
+    plt.ylabel("$(U - <U>) / N$")
     plt.savefig(f'potential_energies_kT{kT}_density{density}.png',
                 bbox_inches='tight')
     plt.show()

@@ -8,7 +8,6 @@ import project_classes
 from config_parser import ConfigFileParser
 from pathlib import Path
 
-
 # path to container image for simulations
 EXECUTABLE_STR = ConfigFileParser().parse_executable_string()
 

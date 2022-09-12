@@ -1,3 +1,8 @@
+# Copyright (c) 2022 The Regents of the University of Michigan.
+# Part of HOOMD-blue, released under the BSD 3-Clause License.
+
+"""Class for parsing config files."""
+
 import os
 import sys
 import json
@@ -25,9 +30,9 @@ class ConfigFileParser:
     Neither field in executable is strictly required, but if working in a
     containerized environment, container_path must specify the location of the
     container. If python_exec is not specified, the default behavior is to use
-    the executable being used to run the code. In a containerized environment, the
-    default behavior is to use "python", since we cannot know a priori the name
-    of the executable in the container.
+    the executable being used to run the code. In a containerized environment,
+    the default behavior is to use "python", since we cannot know a priori the
+    name of the executable in the container.
 
     The config file must be located in the hoomd_validation directory.
     """
@@ -41,10 +46,8 @@ class ConfigFileParser:
         """Search the config file and determine the executable.
 
         Searches the executable section of the config file and builds the string
-        needed by flow's directives.
-
-        If no config file is present, we use the python executable used to run
-        this code.
+        needed by flow's directives. If no config file is present, we use the
+        python executable used to run this code.
         """
 
         if not os.path.exists(self._config_path):
@@ -66,7 +69,6 @@ class ConfigFileParser:
             if "python_exec" in executable_options:
                 return_string += executable_options["python_exec"]
             else:
-                return_string += ("python" if using_container else sys.executable)
+                return_string += ("python"
+                                  if using_container else sys.executable)
         return return_string
-
-

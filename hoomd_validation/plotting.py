@@ -1,3 +1,8 @@
+# Copyright (c) 2022 The Regents of the University of Michigan.
+# Part of HOOMD-blue, released under the BSD 3-Clause License.
+
+"""Helper functions for grabbing data and plotting."""
+
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -21,7 +26,8 @@ def get_energies(traj):
     Args:
         traj (`gsd.hoomd.Trajectory`): trajectory to read data from
     """
-    return get_log_quantity(traj, 'md/compute/ThermodynamicQuantities/potential_energy')
+    return get_log_quantity(
+        traj, 'md/compute/ThermodynamicQuantities/potential_energy')
 
 
 def get_pressures(traj):
@@ -66,7 +72,10 @@ def plot_energies(data, save_filename):
         data (`np.ndarray` (N, )): One dimensional data to plot.
         savename (str): File path for saving the plot.
     """
-    plot_quantity(data, save_filename, title='Potential Energy vs. time', ylabel='$U$')
+    plot_quantity(data,
+                  save_filename,
+                  title='Potential Energy vs. time',
+                  ylabel='$U$')
 
 
 def plot_densities(data, save_filename):
@@ -76,6 +85,7 @@ def plot_densities(data, save_filename):
         data (`np.ndarray` (N, )): One dimensional data to plot.
         savename (str): File path for saving the plot.
     """
-    plot_quantity(data, save_filename, title='Number Density vs. time', ylabel='$\\rho$')
-
-
+    plot_quantity(data,
+                  save_filename,
+                  title='Number Density vs. time',
+                  ylabel='$\\rho$')

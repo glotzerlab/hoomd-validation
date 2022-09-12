@@ -60,13 +60,15 @@ class LJFluid(ValidationTestProject):
         params_list.append(('seed', int(id_str[:5])))
 
         # store values needed for each simulation to be run
-        params_list.append(
-            ('nvt_md', dict(pressure=None, aggregate_pressure=None, potential_energy=None)))
-        params_list.append(
-            ('npt_md', dict(density=None, potential_energy=None)))
-        params_list.append(
-            ('nvt_mc', dict(pressure=None, potential_energy=None)))
-        params_list.append(
-            ('npt_mc', dict(density=None, potential_energy=None)))
+        params_list.append(('nvt_md',
+                            dict(pressure=None,
+                                 aggregate_pressure=None,
+                                 potential_energy=None)))
+        params_list.append(('npt_md', dict(density=None,
+                                           potential_energy=None)))
+        params_list.append(('nvt_mc', dict(pressure=None,
+                                           potential_energy=None)))
+        params_list.append(('npt_mc', dict(density=None,
+                                           potential_energy=None)))
 
         return params_list
