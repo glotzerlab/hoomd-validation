@@ -18,7 +18,7 @@ class ConfigFileParser:
     to give as a directive for job operations. An example config file is shown
     below:
 
-    .. json::
+    .. code-block:: json
 
         {
             "executable": {
