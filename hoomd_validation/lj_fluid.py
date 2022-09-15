@@ -231,7 +231,7 @@ def run_npt_md_sim(job):
 def analyze_npt_md_sim(job):
     """Compute the density to cross-validate with earlier NVT simulations."""
     import gsd.hoomd
-    from plotting import (get_quantity, get_pressures, get_energies,
+    from plotting import (get_log_quantity, get_pressures, get_energies,
                           plot_pressures, plot_energies, plot_densities)
 
     traj = gsd.hoomd.open(job.fn('npt_md_sim.gsd'))
@@ -240,7 +240,7 @@ def analyze_npt_md_sim(job):
     # get data
     pressures = get_pressures(traj)
     energies = get_energies(traj)
-    densities = get_quantity('custom_actions/ComputeDensity/density')
+    densities = get_log_quantity(traj, 'custom_actions/ComputeDensity/density')
 
     # save the average value in a job doc parameter
     job.doc.npt_md.density = np.mean(densities)
