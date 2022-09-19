@@ -44,6 +44,33 @@ def create_initial_state(job):
         traj.append(snap)
 
 
+def make_simulation(job, device, integrator):
+    """Make a simulation.
+
+    This operation returns a simulation with only the things needed for each
+    type of simulation. This includes initial state, random seed, integrator,
+    and table writer.
+
+    Args:
+        job (`signac.Job`): signac job object.
+        device (`hoomd.device.Device`): hoomd device object.
+        integrator (`hoomd.md.Integrator`): hoomd integrator object.
+    """
+    sim = hoomd.Simulation(device)
+    sim.seed = job.doc.seed
+    sim.create_state_from_gsd(job.fn('initial_state.gsd'))
+
+    sim.operations.integrator = integrator
+
+    # write to terminal
+    logger_table = hoomd.logging.Logger(categories=['scalar'])
+    logger_table.add(sim, quantities=['timestep', 'final_timestep', 'tps'])
+    table_writer = hoomd.write.Table(hoomd.trigger.Periodic(WRITE_PERIOD),
+                                     logger_table)
+    sim.operations.add(table_writer)
+    return sim
+
+
 def make_md_simulation(job, device, method, gsd_filename, extra_loggables=[]):
     """Make an MD simulation.
 
@@ -56,14 +83,6 @@ def make_md_simulation(job, device, method, gsd_filename, extra_loggables=[]):
         ThermodynamicQuantities is added by default, any more quantities should
         be in this list.
     """
-    import hoomd
-    from hoomd import md
-
-    sim = hoomd.Simulation(device)
-    sim.create_state_from_gsd(job.fn('initial_state.gsd'))
-
-    sim.seed = job.doc.seed
-
     # pair force
     nlist = md.nlist.Cell(buffer=0.3)
     lj = md.pair.LJ(default_r_cut=2.5, default_r_on=2.0, nlist=nlist)
@@ -72,9 +91,11 @@ def make_md_simulation(job, device, method, gsd_filename, extra_loggables=[]):
 
     # integrator
     integrator = md.Integrator(dt=0.005, methods=[method], forces=[lj])
-    sim.operations.integrator = integrator
 
-    # compute pressure
+    # simulation
+    sim = make_simulation(job, device, integrator)
+
+    # compute thermo
     thermo = md.compute.ThermodynamicQuantities(hoomd.filter.All())
     sim.operations.add(thermo)
 
@@ -82,8 +103,8 @@ def make_md_simulation(job, device, method, gsd_filename, extra_loggables=[]):
     logger = hoomd.logging.Logger(categories=['scalar'])
     logger.add(thermo, quantities=['pressure', 'potential_energy'])
     for loggable in extra_loggables:
-        # call attach method explicitly so we can access simulation state when
-        # computing the loggable quantity
+        # call attach explicitly so we can access sim state when computing the
+        # loggable quantity
         loggable.attach(sim)
         logger.add(loggable)
 
@@ -94,14 +115,7 @@ def make_md_simulation(job, device, method, gsd_filename, extra_loggables=[]):
                                  log=logger)
     sim.operations.add(gsd_writer)
 
-    # write to terminal
-    logger_table = hoomd.logging.Logger(categories=['scalar'])
-    logger_table.add(sim, quantities=['timestep', 'final_timestep', 'tps'])
-    table_writer = hoomd.write.Table(hoomd.trigger.Periodic(WRITE_PERIOD),
-                                     logger_table)
-    sim.operations.add(table_writer)
-
-    # thermoalize momenta
+    # thermalize momenta
     sim.state.thermalize_particle_momenta(hoomd.filter.All(), job.sp.kT)
 
     return sim
@@ -255,7 +269,6 @@ def analyze_npt_md_sim(job):
 def make_mc_simulation(job,
                        device,
                        gsd_filename,
-                       extra_operations=[],
                        extra_loggables=[]):
     """Make an MC Simulation.
 
@@ -263,24 +276,15 @@ def make_mc_simulation(job,
         job (`signac.job.Job`): Signac job object.
         device (`hoomd.device.Device`): Device object.
         gsd_filename (str): Path to the gsd file to write simulation data.
-        extra_operations (list): List of extra operations to add to the
-        simulation. MC integrator, move size tuner, gsd logger, and table logger
-        are added by default.
         extra_loggables (list): List of extra loggables to log to gsd files.
         Patch energies and type shapes are logged by default.
     """
     import hoomd
     from hoomd import hpmc
 
-    sim = hoomd.Simulation(device)
-    sim.create_state_from_gsd(job.fn('initial_state.gsd'))
-
-    sim.seed = job.doc.seed
-
     # integrator
     mc = hpmc.integrate.Sphere()
     mc.shape[('A', 'A')] = dict(diameter=0.0)
-    sim.operations.integrator = mc
 
     # pair potential
     epsilon = 1 / job.sp.kT  # noqa F841
@@ -325,6 +329,9 @@ def make_mc_simulation(job,
                                         param_array=[])
     mc.pair_potential = patch
 
+    # make simulation
+    sim = make_simulation(job, device, mc)
+
     # move size tuner
     mstuner = hpmc.tune.MoveSize.scale_solver(moves=['d'],
                                               target=0.2,
@@ -333,10 +340,6 @@ def make_mc_simulation(job,
                                                   hoomd.trigger.Before(10000)
                                               ]))
     sim.operations.add(mstuner)
-
-    # extra operations
-    for op in extra_operations:
-        sim.operations.add(op)
 
     # log to gsd
     logger_gsd = hoomd.logging.Logger()
@@ -353,13 +356,6 @@ def make_mc_simulation(job,
                                  mode='wb',
                                  log=logger_gsd)
     sim.operations.add(gsd_writer)
-
-    # write to terminal
-    logger_table = hoomd.logging.Logger(categories=['scalar'])
-    logger_table.add(sim, quantities=['timestep', 'final_timestep', 'tps'])
-    table_writer = hoomd.write.Table(hoomd.trigger.Periodic(WRITE_PERIOD),
-                                     logger_table)
-    sim.operations.add(table_writer)
 
     # make sure we have a valid initial state
     sim.run(0)
@@ -427,18 +423,18 @@ def run_npt_mc_sim(job):
     # compute the density
     compute_density = ComputeDensity()
 
+    # simulation
+    sim = make_mc_simulation(job,
+                             dev,
+                             gsd_filename,
+                             extra_loggables=[compute_density])
+
     # box updates
     boxmc = hpmc.update.BoxMC(betaP=job.doc.nvt_md.aggregate_pressure
                               / job.sp.kT,
                               trigger=hoomd.trigger.Periodic(10))
     boxmc.volume = dict(weight=1.0, mode='standard', delta=25)
-
-    # simulation
-    sim = make_mc_simulation(job,
-                             dev,
-                             gsd_filename,
-                             extra_operations=[boxmc],
-                             extra_loggables=[compute_density])
+    sim.operations.add(boxmc)
 
     # run
     sim.run(RUN_STEPS)
