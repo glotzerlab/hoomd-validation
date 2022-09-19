@@ -5,11 +5,11 @@
 
 import signac
 import project_classes
-from config_parser import ConfigFileParser
+from config_parser import ConfigFile
 from pathlib import Path
 
 # path to container image for simulations
-EXECUTABLE_STR = ConfigFileParser().parse_executable_string()
+CONFIG = ConfigFile()
 
 # global variables for validation test projects
 test_project_name_list = ['LJFluid']

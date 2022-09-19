@@ -4,7 +4,7 @@
 """Lennard Jones phase behavior validation test."""
 
 import numpy as np
-from config import test_project_dict, EXECUTABLE_STR
+from config import test_project_dict, CONFIG
 from project_classes import LJFluid
 from flow import aggregator
 
@@ -15,7 +15,7 @@ LOG_PERIOD = 1000
 FRAMES_ANALYZE = 1000
 
 
-@LJFluid.operation.with_directives(directives=dict(executable=EXECUTABLE_STR))
+@LJFluid.operation.with_directives(directives=dict(executable=CONFIG["executable"]))
 @LJFluid.post.isfile('initial_state.gsd')
 def create_initial_state(job):
     """Create initial system configuration."""
@@ -108,7 +108,7 @@ def make_md_simulation(job, device, method, gsd_filename, extra_loggables=[]):
 
 
 @LJFluid.operation.with_directives(directives=dict(walltime=48,
-                                                   executable=EXECUTABLE_STR,
+                                                   executable=CONFIG["executable"],
                                                    nranks=8))
 @LJFluid.pre.after(create_initial_state)
 @LJFluid.post.isfile('nvt_md_sim.gsd')
@@ -127,7 +127,7 @@ def run_nvt_md_sim(job):
     sim.run(RUN_STEPS)
 
 
-@LJFluid.operation.with_directives(directives=dict(executable=EXECUTABLE_STR))
+@LJFluid.operation.with_directives(directives=dict(executable=CONFIG["executable"]))
 @LJFluid.pre.after(run_nvt_md_sim)
 @LJFluid.post(lambda job: job.doc.nvt_md.pressure is not None)
 @LJFluid.post(lambda job: job.doc.nvt_md.potential_energy is not None)
@@ -172,7 +172,7 @@ def nvt_md_pressures_computed(*jobs):
 
 
 @aggregator.groupby(['kT', 'density'])
-@LJFluid.operation.with_directives(directives=dict(executable=EXECUTABLE_STR))
+@LJFluid.operation.with_directives(directives=dict(executable=CONFIG["executable"]))
 @LJFluid.pre(nvt_md_pressures_computed)
 @LJFluid.post(nvt_md_pressures_averaged)
 def average_nvt_md_pressures(*jobs):
@@ -193,7 +193,7 @@ def average_nvt_md_pressures(*jobs):
 
 
 @LJFluid.operation.with_directives(directives=dict(walltime=48,
-                                                   executable=EXECUTABLE_STR,
+                                                   executable=CONFIG["executable"],
                                                    nranks=8))
 @LJFluid.pre(lambda job: job.doc.nvt_md.aggregate_pressure is not None)
 @LJFluid.pre.after(create_initial_state)
@@ -225,7 +225,7 @@ def run_npt_md_sim(job):
     sim.run(RUN_STEPS)
 
 
-@LJFluid.operation.with_directives(directives=dict(executable=EXECUTABLE_STR))
+@LJFluid.operation.with_directives(directives=dict(executable=CONFIG["executable"]))
 @LJFluid.pre.after(run_npt_md_sim)
 @LJFluid.post(lambda job: job.doc.npt_md.potential_energy is not None)
 def analyze_npt_md_sim(job):
@@ -370,7 +370,7 @@ def make_mc_simulation(job,
 
 
 @LJFluid.operation.with_directives(directives=dict(walltime=48,
-                                                   executable=EXECUTABLE_STR,
+                                                   executable=CONFIG["executable"],
                                                    nranks=16))
 @LJFluid.pre.after(create_initial_state)
 @LJFluid.post.isfile('nvt_mc_sim.gsd')
@@ -387,7 +387,7 @@ def run_nvt_mc_sim(job):
     sim.run(RUN_STEPS)
 
 
-@LJFluid.operation.with_directives(directives=dict(executable=EXECUTABLE_STR))
+@LJFluid.operation.with_directives(directives=dict(executable=CONFIG["executable"]))
 @LJFluid.pre.after(run_nvt_mc_sim)
 @LJFluid.post(lambda job: job.doc.nvt_mc.potential_energy is not None)
 def analyze_nvt_mc_sim(job):
@@ -409,7 +409,7 @@ def analyze_nvt_mc_sim(job):
 
 
 @LJFluid.operation.with_directives(directives=dict(walltime=48,
-                                                   executable=EXECUTABLE_STR,
+                                                   executable=CONFIG["executable"],
                                                    nranks=16))
 @LJFluid.pre.after(create_initial_state)
 @LJFluid.pre(lambda job: job.doc.nvt_md.aggregate_pressure is not None)
@@ -444,7 +444,7 @@ def run_npt_mc_sim(job):
     sim.run(RUN_STEPS)
 
 
-@LJFluid.operation.with_directives(directives=dict(executable=EXECUTABLE_STR))
+@LJFluid.operation.with_directives(directives=dict(executable=CONFIG["executable"]))
 @LJFluid.pre.after(run_npt_mc_sim)
 @LJFluid.post(lambda job: job.doc.npt_mc.potential_energy is not None)
 def analyze_npt_mc_sim(job):
@@ -483,7 +483,7 @@ def all_sims_analyzed(*jobs):
 
 
 @aggregator.groupby(['kT', 'density'])
-@LJFluid.operation.with_directives(directives=dict(executable=EXECUTABLE_STR))
+@LJFluid.operation.with_directives(directives=dict(executable=CONFIG["executable"]))
 @LJFluid.pre(all_sims_analyzed)
 def analyze_potential_energies(*jobs):
     """Plot standard error of the mean of the potential energies.

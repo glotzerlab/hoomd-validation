@@ -9,7 +9,7 @@ import json
 from pathlib import Path
 
 
-class ConfigFileParser:
+class ConfigFile(dict):
     """Parse config files.
 
     This class is used to parse files named config.json, which have settings
@@ -40,9 +40,11 @@ class ConfigFileParser:
     DEFAULT_CONFIG_PATH = str(Path(__file__).parent / "config.json")
 
     def __init__(self, config_file_path=DEFAULT_CONFIG_PATH):
+        super().__init__()
         self._config_path = config_file_path
+        self["executable"] = self._parse_executable_string()
 
-    def parse_executable_string(self):
+    def _parse_executable_string(self):
         """Search the config file and determine the executable.
 
         Searches the executable section of the config file and builds the string
