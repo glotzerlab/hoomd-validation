@@ -56,6 +56,8 @@ def make_simulation(job, device, integrator):
         device (`hoomd.device.Device`): hoomd device object.
         integrator (`hoomd.md.Integrator`): hoomd integrator object.
     """
+    import hoomd
+
     sim = hoomd.Simulation(device)
     sim.seed = job.doc.seed
     sim.create_state_from_gsd(job.fn('initial_state.gsd'))
@@ -83,6 +85,9 @@ def make_md_simulation(job, device, method, gsd_filename, extra_loggables=[]):
         ThermodynamicQuantities is added by default, any more quantities should
         be in this list.
     """
+    import hoomd
+    from hoomd import md
+
     # pair force
     nlist = md.nlist.Cell(buffer=0.3)
     lj = md.pair.LJ(default_r_cut=2.5, default_r_on=2.0, nlist=nlist)
