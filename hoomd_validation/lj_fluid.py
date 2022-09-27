@@ -289,7 +289,7 @@ def make_mc_simulation(job,
 
     # integrator
     mc = hpmc.integrate.Sphere()
-    mc.shape[('A', 'A')] = dict(diameter=0.0)
+    mc.shape[('A', 'A')] = dict(diameter=0.0001)
 
     # pair potential
     epsilon = 1 / job.sp.kT  # noqa F841
