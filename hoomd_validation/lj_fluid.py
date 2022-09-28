@@ -45,7 +45,7 @@ def create_initial_state(job):
         traj.append(snap)
 
 
-def make_simulation(job, device, integrator, sim_mode, logger):
+def make_simulation(job, device, initial_state, integrator, sim_mode, logger):
     """Make a simulation.
 
     This operation returns a simulation with only the things needed for each
@@ -55,6 +55,7 @@ def make_simulation(job, device, integrator, sim_mode, logger):
     Args:
         job (`signac.Job`): signac job object.
         device (`hoomd.device.Device`): hoomd device object.
+        initial_state (str): Path to the gsd file to be used as an initial state.
         integrator (`hoomd.md.Integrator`): hoomd integrator object.
         sim_mode (str): String defining the simulation mode.
         logger (`hoomd.logging.Logger`):
@@ -65,7 +66,7 @@ def make_simulation(job, device, integrator, sim_mode, logger):
 
     sim = hoomd.Simulation(device)
     sim.seed = job.doc.seed
-    sim.create_state_from_gsd(job.fn('initial_state.gsd'))
+    sim.create_state_from_gsd(initial_state)
 
     sim.operations.integrator = integrator
 
@@ -93,17 +94,25 @@ def make_simulation(job, device, integrator, sim_mode, logger):
     return sim
 
 
-def make_md_simulation(job, device, method, sim_mode, extra_loggables=[]):
+def make_md_simulation(job, device, initial_state,method, sim_mode,
+                       extra_loggables=[]):
     """Make an MD simulation.
 
     Args:
-        job (`signac.job.Job`): Signac job object.
-        device (`hoomd.device.Device`): hoomd device object.
-        method (`hoomd.md.methods.Method`): hoomd integration method.
-        sim_mode (str): String identifying the simulation mode.
-        extra_loggables (list): List of quantities to add to the gsd logger.
-        ThermodynamicQuantities is added by default, any more quantities should
-        be in this list.
+        job (`signac.job.Job`):
+            Signac job object.
+        device (`hoomd.device.Device`):
+            hoomd device object.
+        initial_state (str):
+            Path to the gsd file to be used as an initial state for the
+            simulation.
+        method (`hoomd.md.methods.Method`):
+            hoomd integration method.
+        sim_mode (str):
+            String identifying the simulation mode.
+        extra_loggables (list):
+            List of quantities to add to the gsd logger. ThermodynamicQuantities
+            is added by default, any more quantities should be in this list.
     """
     import hoomd
     from hoomd import md
@@ -133,7 +142,8 @@ def make_md_simulation(job, device, method, sim_mode, extra_loggables=[]):
         logger.add(loggable)
 
     # simulation
-    sim = make_simulation(job, device, integrator, sim_mode, logger)
+    sim = make_simulation(job, device, initial_state, integrator, sim_mode,
+                          logger)
     sim.operations.add(thermo)
 
     # thermalize momenta
@@ -147,16 +157,18 @@ def make_md_simulation(job, device, method, sim_mode, extra_loggables=[]):
                                                    nranks=8))
 @LJFluid.pre.after(create_initial_state)
 @LJFluid.post.isfile('nvt_md_quantities.gsd')
+@LJFluid.post.isfile('nvt_md_trajectory.gsd')
 def run_nvt_md_sim(job):
     """Run the MD simulation in NVT."""
     import hoomd
     from hoomd import md
 
     device = hoomd.device.CPU()
+    initial_state = job.fn('initial_state.gsd')
     nvt = md.methods.NVT(hoomd.filter.All(), kT=job.sp.kT, tau=0.1)
     sim_mode = 'nvt_md'
 
-    sim = make_md_simulation(job, device, nvt, sim_mode)
+    sim = make_md_simulation(job, device, initial_state, nvt, sim_mode)
 
     # run
     sim.run(RUN_STEPS['nvt'])
@@ -231,7 +243,7 @@ def average_nvt_md_pressures(*jobs):
                                                    executable=CONFIG["executable"],
                                                    nranks=8))
 @LJFluid.pre(lambda job: job.doc.nvt_md.aggregate_pressure is not None)
-@LJFluid.pre.after(create_initial_state)
+@LJFluid.pre.after(run_nvt_md_sim)
 @LJFluid.post.isfile('npt_md_quantities.gsd')
 def run_npt_md_sim(job):
     """Run an npt simulation at the pressure computed by the NVT simulation."""
@@ -240,6 +252,7 @@ def run_npt_md_sim(job):
     from custom_actions import ComputeDensity
 
     device = hoomd.device.CPU()
+    initial_state = job.fn('nvt_md_trajectory.gsd')
     p = job.doc.nvt_md.aggregate_pressure
     npt = md.methods.NPT(hoomd.filter.All(),
                          kT=job.sp.kT,
@@ -252,6 +265,7 @@ def run_npt_md_sim(job):
 
     sim = make_md_simulation(job,
                              device,
+                             initial_state,
                              npt,
                              sim_mode,
                              extra_loggables=[density_compute])
@@ -289,16 +303,24 @@ def analyze_npt_md_sim(job):
 
 def make_mc_simulation(job,
                        device,
+                       initial_state,
                        sim_mode,
                        extra_loggables=[]):
     """Make an MC Simulation.
 
     Args:
-        job (`signac.job.Job`): Signac job object.
-        device (`hoomd.device.Device`): Device object.
-        sim_mode (str): String defining the simulation mode.
-        extra_loggables (list): List of extra loggables to log to gsd files.
-        Patch energies and type shapes are logged by default.
+        job (`signac.job.Job`):
+            Signac job object.
+        device (`hoomd.device.Device`):
+            Device object.
+        initial_state (str):
+            Path to the gsd file to be used as an initial state for the
+            simulation.
+        sim_mode (str):
+            String defining the simulation mode.
+        extra_loggables (list):
+            List of extra loggables to log to gsd files. Patch energies are
+            logged by default.
     """
     import hoomd
     from hoomd import hpmc
@@ -363,7 +385,7 @@ def make_mc_simulation(job,
         logger_gsd.add(loggable)
 
     # make simulation
-    sim = make_simulation(job, device, mc, sim_mode, logger_gsd)
+    sim = make_simulation(job, device, initial_state, mc, sim_mode, logger_gsd)
 
     # move size tuner
     mstuner = hpmc.tune.MoveSize.scale_solver(moves=['d'],
@@ -388,8 +410,9 @@ def run_nvt_mc_sim(job):
 
     # simulation
     dev = hoomd.device.CPU()
+    initial_state = job.fn('initial_state.gsd')
     sim_mode = 'nvt_mc'
-    sim = make_mc_simulation(job, dev, sim_mode)
+    sim = make_mc_simulation(job, dev, initial_state, sim_mode)
 
     # run
     sim.run(RUN_STEPS['nvt'])
@@ -419,7 +442,7 @@ def analyze_nvt_mc_sim(job):
 @LJFluid.operation.with_directives(directives=dict(walltime=48,
                                                    executable=CONFIG["executable"],
                                                    nranks=16))
-@LJFluid.pre.after(create_initial_state)
+@LJFluid.pre.after(run_nvt_md_sim)
 @LJFluid.pre(lambda job: job.doc.nvt_md.aggregate_pressure is not None)
 @LJFluid.post.isfile('npt_mc_quantities.gsd')
 def run_npt_mc_sim(job):
@@ -430,6 +453,7 @@ def run_npt_mc_sim(job):
 
     # device
     dev = hoomd.device.CPU()
+    initial_state = job.fn('nvt_md_trajectory.gsd')
     sim_mode = 'npt_mc'
 
     # compute the density
@@ -438,6 +462,7 @@ def run_npt_mc_sim(job):
     # simulation
     sim = make_mc_simulation(job,
                              dev,
+                             initial_state,
                              sim_mode,
                              extra_loggables=[compute_density])
 
