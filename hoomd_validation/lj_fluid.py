@@ -182,7 +182,7 @@ def run_nvt_md_sim(job):
 def analyze_nvt_md_sim(job):
     """Compute the pressure for use in NPT simulations to cross-validate."""
     import gsd.hoomd
-    from plotting import (get_energies, get_pressures, plot_energies,
+    from plotting import (get_log_quantity, plot_energies,
                           plot_pressures)
 
     # get trajectory
@@ -190,8 +190,10 @@ def analyze_nvt_md_sim(job):
     traj = traj[-FRAMES_ANALYZE['nvt']:]
 
     # get data
-    pressures = get_pressures(traj)
-    energies = get_energies(traj)
+    pressures = get_log_quantity(traj,
+                                 'md/compute/ThermodynamicQuantities/pressure')
+    energies = get_log_quantity(traj,
+                                'md/compute/ThermodynamicQuantities/potential_energy')
 
     # save the average value in a job doc parameter
     job.doc.nvt_md.pressure = np.mean(pressures)
@@ -280,16 +282,19 @@ def run_npt_md_sim(job):
 def analyze_npt_md_sim(job):
     """Compute the density to cross-validate with earlier NVT simulations."""
     import gsd.hoomd
-    from plotting import (get_log_quantity, get_pressures, get_energies,
-                          plot_pressures, plot_energies, plot_densities)
+    from plotting import (get_log_quantity, plot_pressures, plot_energies,
+                          plot_densities)
 
     traj = gsd.hoomd.open(job.fn('npt_md_quantities.gsd'))
     traj = traj[-FRAMES_ANALYZE['npt']:]
 
     # get data
-    pressures = get_pressures(traj)
-    energies = get_energies(traj)
-    densities = get_log_quantity(traj, 'custom_actions/ComputeDensity/density')
+    pressures = get_log_quantity(traj,
+                                 'md/compute/ThermodynamicQuantities/pressure')
+    energies = get_log_quantity(traj,
+                                'md/compute/ThermodynamicQuantities/potential_energy')
+    densities = get_log_quantity(traj,
+                                 'custom_actions/ComputeDensity/density')
 
     # save the average value in a job doc parameter
     job.doc.npt_md.density = np.mean(densities)
