@@ -24,7 +24,7 @@ def plot_quantity(data, savename, title, ylabel):
     """Plot a quanity using matplotlib.
 
     Args:
-        data (:math:`(N, )` :class:`np.ndarray`): One dimensional data to plot.
+        data (:math:`(N, )` `np.ndarray`): One dimensional data to plot.
         savename (str): File path for saving the plot.
         title (str): Title for the plot.
         ylabel (str): Y axis label for the plot.
@@ -40,8 +40,8 @@ def plot_pressures(data, save_filename):
     """Plot pressures using matplotlib.
 
     Args:
-        data (:math:`(N, )` :class:`np.ndarray`): One dimensional data to plot.
-        savename (str): File path for saving the plot.
+        data (:math:`(N, )` `np.ndarray`): One dimensional data to plot.
+        save_filename (str): File path for saving the plot.
     """
     plot_quantity(data, save_filename, title='Pressure vs. time', ylabel='$P$')
 
@@ -50,8 +50,8 @@ def plot_energies(data, save_filename):
     """Plot potential energies using matplotlib.
 
     Args:
-        data (:math:`(N, )` :class:`np.ndarray`): One dimensional data to plot.
-        savename (str): File path for saving the plot.
+        data (:math:`(N, )` `np.ndarray`): One dimensional data to plot.
+        save_filename (str): File path for saving the plot.
     """
     plot_quantity(data,
                   save_filename,
@@ -63,8 +63,8 @@ def plot_densities(data, save_filename):
     """Plot densities using matplotlib.
 
     Args:
-        data (:math:`(N, )` :class:`np.ndarray`): One dimensional data to plot.
-        savename (str): File path for saving the plot.
+        data (:math:`(N, )` `np.ndarray`): One dimensional data to plot.
+        save_filename (str): File path for saving the plot.
     """
     plot_quantity(data,
                   save_filename,

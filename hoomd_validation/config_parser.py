@@ -51,7 +51,6 @@ class ConfigFile(dict):
         needed by flow's directives. If no config file is present, we use the
         python executable used to run this code.
         """
-
         if not os.path.exists(self._config_path):
             return sys.executable
 
