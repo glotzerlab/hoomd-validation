@@ -472,8 +472,17 @@ def run_npt_mc_sim(job):
     boxmc = hpmc.update.BoxMC(betaP=job.doc.nvt_md.aggregate_pressure
                               / job.sp.kT,
                               trigger=hoomd.trigger.Periodic(10))
-    boxmc.volume = dict(weight=1.0, mode='standard', delta=25)
+    boxmc.volume = dict(weight=1.0, mode='ln', delta=0.001)
     sim.operations.add(boxmc)
+
+    boxmc_tuner = hpmc.tune.BoxMCMoveSize(trigger=hoomd.trigger.And(
+        [hoomd.trigger.Periodic(10),
+         hoomd.trigger.Before(10000)]),
+                                          boxmc=boxmc,
+                                          moves=['volume'],
+                                          target=0.2,
+                                          solver=hpmc.tune.ScaleSolver())
+    sim.operations.add(boxmc_tuner)
 
     # run
     sim.run(RUN_STEPS['npt'])
