@@ -34,4 +34,3 @@ def plot_quantity(data, savename, title, ylabel):
     plt.ylabel(ylabel)
     plt.savefig(savename, bbox_inches='tight')
     plt.close()
-
