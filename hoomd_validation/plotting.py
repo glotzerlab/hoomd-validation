@@ -35,38 +35,3 @@ def plot_quantity(data, savename, title, ylabel):
     plt.savefig(savename, bbox_inches='tight')
     plt.close()
 
-
-def plot_pressures(data, save_filename):
-    """Plot pressures using matplotlib.
-
-    Args:
-        data (:math:`(N, )` `np.ndarray`): One dimensional data to plot.
-        save_filename (str): File path for saving the plot.
-    """
-    plot_quantity(data, save_filename, title='Pressure vs. time', ylabel='$P$')
-
-
-def plot_energies(data, save_filename):
-    """Plot potential energies using matplotlib.
-
-    Args:
-        data (:math:`(N, )` `np.ndarray`): One dimensional data to plot.
-        save_filename (str): File path for saving the plot.
-    """
-    plot_quantity(data,
-                  save_filename,
-                  title='Potential Energy vs. time',
-                  ylabel='$U$')
-
-
-def plot_densities(data, save_filename):
-    """Plot densities using matplotlib.
-
-    Args:
-        data (:math:`(N, )` `np.ndarray`): One dimensional data to plot.
-        save_filename (str): File path for saving the plot.
-    """
-    plot_quantity(data,
-                  save_filename,
-                  title='Number Density vs. time',
-                  ylabel='$\\rho$')

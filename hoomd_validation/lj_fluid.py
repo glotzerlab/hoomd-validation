@@ -185,7 +185,7 @@ def run_nvt_md_sim(job):
 def analyze_nvt_md_sim(job):
     """Compute the pressure for use in NPT simulations to cross-validate."""
     import gsd.hoomd
-    from plotting import (get_log_quantity, plot_energies, plot_pressures)
+    from plotting import get_log_quantity, plot_quantity
 
     # get trajectory
     traj = gsd.hoomd.open(job.fn('nvt_md_quantities.gsd'))
@@ -202,8 +202,10 @@ def analyze_nvt_md_sim(job):
     job.doc.nvt_md.potential_energy = np.mean(energies)
 
     # make plots
-    plot_pressures(pressures, job.fn('nvt_md_pressure_vs_time.png'))
-    plot_energies(energies, job.fn('nvt_md_potential_energy_vs_time.png'))
+    plot_quantity(pressures, job.fn('nvt_md_pressure_vs_time.png'),
+                  title='Pressure vs. time', ylabel='$P$')
+    plot_quantity(energies, job.fn('nvt_md_potential_energy_vs_time.png'),
+                  title='Potential Energy vs. time', ylabel='$U$')
 
 
 def nvt_md_pressures_averaged(*jobs):
@@ -285,8 +287,7 @@ def run_npt_md_sim(job):
 def analyze_npt_md_sim(job):
     """Compute the density to cross-validate with earlier NVT simulations."""
     import gsd.hoomd
-    from plotting import (get_log_quantity, plot_pressures, plot_energies,
-                          plot_densities)
+    from plotting import get_log_quantity, plot_quantity
 
     traj = gsd.hoomd.open(job.fn('npt_md_quantities.gsd'))
     traj = traj[-FRAMES_ANALYZE['npt']:]
@@ -303,9 +304,12 @@ def analyze_npt_md_sim(job):
     job.doc.npt_md.potential_energy = np.mean(energies)
 
     # make plots
-    plot_pressures(pressures, job.fn('npt_md_pressure_vs_time.png'))
-    plot_energies(energies, job.fn('npt_md_potential_energy_vs_time.png'))
-    plot_densities(densities, job.fn('npt_md_density_vs_time.png'))
+    plot_quantity(pressures, job.fn('npt_md_pressure_vs_time.png'),
+                  title='Pressure vs. time', ylabel='$P$')
+    plot_quantity(energies, job.fn('npt_md_potential_energy_vs_time.png'),
+                  title='Potential Energy vs. time', ylabel='$U$')
+    plot_quantity(densities, job.fn('npt_md_density_vs_time.png'),
+                  title='Number Density vs. time', ylabel='$\\rho$')
 
 
 def make_mc_simulation(job,
@@ -427,7 +431,7 @@ def run_nvt_mc_sim(job):
 def analyze_nvt_mc_sim(job):
     """Compute the pressure for use in NPT simulations to cross-validate."""
     import gsd.hoomd
-    from plotting import get_log_quantity, plot_energies
+    from plotting import get_log_quantity, plot_quantity
 
     traj = gsd.hoomd.open(job.fn('nvt_mc_quantities.gsd'))
     traj = traj[-FRAMES_ANALYZE['nvt']:]
@@ -439,7 +443,8 @@ def analyze_nvt_mc_sim(job):
     energies *= job.sp.kT
     job.doc.nvt_mc.potential_energy = np.mean(energies)
 
-    plot_energies(energies, job.fn('nvt_mc_potential_energy_vs_time.png'))
+    plot_quantity(energies, job.fn('nvt_mc_potential_energy_vs_time.png'),
+                  title='Potential Energy vs. time', ylabel='$U$')
 
 
 @LJFluid.operation.with_directives(directives=dict(
@@ -495,7 +500,7 @@ def run_npt_mc_sim(job):
 def analyze_npt_mc_sim(job):
     """Compute the density to cross-validate with earlier NVT simulations."""
     import gsd.hoomd
-    from plotting import get_log_quantity, plot_energies, plot_densities
+    from plotting import get_log_quantity, plot_quantity
 
     traj = gsd.hoomd.open(job.fn('npt_mc_quantities.gsd'))
     traj = traj[-FRAMES_ANALYZE['npt']:]
@@ -509,8 +514,10 @@ def analyze_npt_mc_sim(job):
     job.doc.npt_mc.density = np.mean(densities)
 
     # plot
-    plot_energies(energies, job.fn('npt_mc_potential_energy_vs_time.png'))
-    plot_densities(densities, job.fn('npt_mc_density_vs_time.png'))
+    plot_quantity(energies, job.fn('npt_mc_potential_energy_vs_time.png'),
+                  title='Potential Energy vs. time', ylabel='$U$')
+    plot_quantity(densities, job.fn('npt_mc_density_vs_time.png'),
+                  title='Number Density vs. time', ylabel='$\\rho$')
 
 
 def all_sims_analyzed(*jobs):
