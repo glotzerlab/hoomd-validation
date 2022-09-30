@@ -475,13 +475,13 @@ def run_npt_mc_sim(job):
     boxmc.volume = dict(weight=1.0, mode='ln', delta=0.001)
     sim.operations.add(boxmc)
 
-    boxmc_tuner = hpmc.tune.BoxMCMoveSize(trigger=hoomd.trigger.And(
-        [hoomd.trigger.Periodic(10),
-         hoomd.trigger.Before(10000)]),
-                                          boxmc=boxmc,
-                                          moves=['volume'],
-                                          target=0.2,
-                                          solver=hpmc.tune.ScaleSolver())
+    boxmc_tuner = hpmc.tune.BoxMCMoveSize.scale_solver(
+        trigger=hoomd.trigger.And([hoomd.trigger.Periodic(10),
+                                   hoomd.trigger.Before(10000)]),
+        boxmc=boxmc,
+        moves=['volume'],
+        target=0.2
+    )
     sim.operations.add(boxmc_tuner)
 
     # run
