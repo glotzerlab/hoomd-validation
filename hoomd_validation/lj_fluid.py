@@ -167,7 +167,7 @@ def run_nvt_md_sim(job):
 
     device = hoomd.device.CPU()
     initial_state = job.fn('initial_state.gsd')
-    nvt = md.methods.NVT(hoomd.filter.All(), kT=job.sp.kT, tau=0.1)
+    nvt = md.methods.NVT(hoomd.filter.All(), kT=job.sp.kT, tau=1.0)
     sim_mode = 'nvt_md'
 
     sim = make_md_simulation(job, device, initial_state, nvt, sim_mode)
@@ -266,9 +266,9 @@ def run_npt_md_sim(job):
     p = job.doc.nvt_md.aggregate_pressure
     npt = md.methods.NPT(hoomd.filter.All(),
                          kT=job.sp.kT,
-                         tau=0.1,
+                         tau=1.0,
                          S=[p, p, p, 0, 0, 0],
-                         tauS=0.1,
+                         tauS=1.0,
                          couple='xyz')
     sim_mode = 'npt_md'
     density_compute = ComputeDensity()
@@ -488,17 +488,17 @@ def run_npt_mc_sim(job):
     # box updates
     boxmc = hpmc.update.BoxMC(betaP=job.doc.nvt_md.aggregate_pressure
                               / job.sp.kT,
-                              trigger=hoomd.trigger.Periodic(10))
+                              trigger=hoomd.trigger.Periodic(1))
     boxmc.volume = dict(weight=1.0, mode='ln', delta=0.001)
     sim.operations.add(boxmc)
 
     boxmc_tuner = hpmc.tune.BoxMCMoveSize.scale_solver(
         trigger=hoomd.trigger.And(
-            [hoomd.trigger.Periodic(10),
-             hoomd.trigger.Before(10000)]),
+            [hoomd.trigger.Periodic(200),
+             hoomd.trigger.Before(100000)]),
         boxmc=boxmc,
         moves=['volume'],
-        target=0.2)
+        target=0.5)
     sim.operations.add(boxmc_tuner)
 
     # run
