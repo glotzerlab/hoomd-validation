@@ -364,7 +364,7 @@ def make_mc_simulation(job,
                 // apply xplor smoothing
                 float r_on = {r_on:.15f};
                 float r_cut = {r_cut:.15f};
-                float r = sqrt(rsq);
+                float r = sqrtf(rsq);
                 if (r > r_on && r <= r_cut)
                 {{
                     // computing denominator for the shifting factor
@@ -417,7 +417,7 @@ def make_mc_simulation(job,
 
 
 @LJFluid.operation.with_directives(directives=dict(
-    walltime=48, executable=CONFIG["executable"], nranks=16))
+    walltime=48, executable=CONFIG["executable"], nranks=64))
 @LJFluid.pre.after(create_initial_state)
 @LJFluid.post.isfile('nvt_mc_quantities.gsd')
 def run_nvt_mc_sim(job):
@@ -460,7 +460,7 @@ def analyze_nvt_mc_sim(job):
 
 
 @LJFluid.operation.with_directives(directives=dict(
-    walltime=48, executable=CONFIG["executable"], nranks=16))
+    walltime=48, executable=CONFIG["executable"], nranks=64))
 @LJFluid.pre.after(run_nvt_md_sim)
 @LJFluid.pre(lambda job: job.doc.nvt_md.aggregate_pressure is not None)
 @LJFluid.post.isfile('npt_mc_quantities.gsd')
