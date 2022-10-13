@@ -9,10 +9,10 @@ from project_classes import LJFluid
 from flow import aggregator
 
 # Run parameters shared between simulations
-RUN_STEPS = {'nvt': 2e6, 'npt': 3e6}
+RUN_STEPS = {'nvt': 16e6, 'npt': 16e6}
 WRITE_PERIOD = 1000
 LOG_PERIOD = {'trajectory': 10000, 'quantities': 1000}
-FRAMES_ANALYZE = {'nvt': 1000, 'npt': 2000}
+FRAMES_ANALYZE = {'nvt': 10000, 'npt': 10000}
 LJ_PARAMS = {'epsilon': 1.0, 'sigma': 1.0, 'r_on': 2.0, 'r_cut': 2.5}
 
 
@@ -154,6 +154,64 @@ def make_md_simulation(job,
 
     return sim
 
+@LJFluid.operation.with_directives(directives=dict(
+    walltime=48, executable=CONFIG["executable"], nranks=8))
+@LJFluid.pre.after(create_initial_state)
+@LJFluid.post.isfile('langevin_md_quantities.gsd')
+@LJFluid.post.isfile('langevin_md_trajectory.gsd')
+def run_langevin_md_sim(job):
+    """Run the MD simulation in Langevin."""
+    import hoomd
+    from hoomd import md
+
+    device = hoomd.device.CPU()
+    initial_state = job.fn('initial_state.gsd')
+    langevin = md.methods.Langevin(hoomd.filter.All(), kT=job.sp.kT)
+    langevin.gamma.default = 0.5
+
+    sim_mode = 'langevin_md'
+
+    sim = make_md_simulation(job, device, initial_state, langevin, sim_mode)
+
+    # run
+    sim.run(RUN_STEPS['nvt'])
+
+
+@LJFluid.operation.with_directives(
+    directives=dict(executable=CONFIG["executable"]))
+@LJFluid.pre.after(run_langevin_md_sim)
+@LJFluid.post(lambda job: job.doc.langevin_md.pressure is not None)
+@LJFluid.post(lambda job: job.doc.langevin_md.potential_energy is not None)
+@LJFluid.post.isfile('langevin_md_pressure_vs_time.png')
+def analyze_langevin_md_sim(job):
+    """Compute the pressure for use in NVT and NPT simulations to cross-validate."""
+    import gsd.hoomd
+    from plotting import get_log_quantity, plot_quantity
+
+    # get trajectory
+    traj = gsd.hoomd.open(job.fn('langevin_md_quantities.gsd'))
+    traj = traj[-FRAMES_ANALYZE['nvt']:]
+
+    # get data
+    pressures = get_log_quantity(traj,
+                                 'md/compute/ThermodynamicQuantities/pressure')
+    energies = get_log_quantity(
+        traj, 'md/compute/ThermodynamicQuantities/potential_energy')
+
+    # save the average value in a job doc parameter
+    job.doc.langevin_md.pressure = np.mean(pressures)
+    job.doc.langevin_md.potential_energy = np.mean(energies)
+
+    # make plots
+    plot_quantity(pressures,
+                  job.fn('langevin_md_pressure_vs_time.png'),
+                  title='Pressure vs. time',
+                  ylabel='$P$')
+    plot_quantity(energies,
+                  job.fn('langevin_md_potential_energy_vs_time.png'),
+                  title='Potential Energy vs. time',
+                  ylabel='$U$')
+
 
 @LJFluid.operation.with_directives(directives=dict(
     walltime=48, executable=CONFIG["executable"], nranks=8))
@@ -220,10 +278,10 @@ def nvt_md_pressures_averaged(*jobs):
     return True
 
 
-def nvt_md_pressures_computed(*jobs):
+def langevin_md_pressures_computed(*jobs):
     """Make sure the pressures for nvt md sims are computed."""
     for job in jobs:
-        if job.doc.nvt_md.pressure is None:
+        if job.doc.langevin_md.pressure is None:
             return False
     return True
 
@@ -231,19 +289,19 @@ def nvt_md_pressures_computed(*jobs):
 @aggregator.groupby(['kT', 'density'])
 @LJFluid.operation.with_directives(
     directives=dict(executable=CONFIG["executable"]))
-@LJFluid.pre(nvt_md_pressures_computed)
+@LJFluid.pre(langevin_md_pressures_computed)
 @LJFluid.post(nvt_md_pressures_averaged)
-def average_nvt_md_pressures(*jobs):
+def average_langevin_md_pressures(*jobs):
     """Average the pressures from all replicates at a given LJ statepoint.
 
     This operation is used so the pressure setpoint for all the NPT simulation
     replicates will have the exact same pressure setpoint. Conceptually, this
-    operation is an MPI Allreduce, with the average operation, where each "rank"
+    uperation is an MPI Allreduce, with the average operation, where each "rank"
     is a simulation replicate.
     """
     pressures = []
     for job in jobs:
-        pressures.append(job.doc.nvt_md.pressure)
+        pressures.append(job.doc.langevin_md.pressure)
 
     avg = np.mean(pressures)
     for job in jobs:
@@ -545,7 +603,8 @@ def all_sims_analyzed(*jobs):
     for job in jobs:
         if job.doc.npt_mc.potential_energy is None or \
             job.doc.npt_md.potential_energy is None or \
-                job.doc.nvt_mc.potential_energy is None:
+                job.doc.nvt_mc.potential_energy is None or \
+                  job.doc.langevin_md.potential_energy is None:
             return False
     return True
 
@@ -566,7 +625,7 @@ def analyze_potential_energies(*jobs):
     density = jobs[0].sp.density
     num_particles = jobs[0].sp.num_particles
 
-    simulation_modes = ['nvt_md', 'npt_md', 'nvt_mc', 'npt_mc']
+    simulation_modes = ['langevin_md', 'nvt_md', 'npt_md', 'nvt_mc', 'npt_mc']
 
     # organize data from jobs
     energies = {mode: [] for mode in simulation_modes}

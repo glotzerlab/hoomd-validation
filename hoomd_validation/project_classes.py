@@ -38,7 +38,7 @@ class LJFluid(ValidationTestProject):
         """list(dict): A list of statepoints for this project."""
         list_sps = []
         num_particles = 10000
-        replicate_indices = range(4)
+        replicate_indices = range(8)
         params_list = [(1.5, 0.6), (1.0, 0.8), (1.25, 0.05)]
         for kT, density in params_list:
             for idx in replicate_indices:
@@ -60,6 +60,8 @@ class LJFluid(ValidationTestProject):
         params_list.append(('seed', int(id_str[:5])))
 
         # store values needed for each simulation to be run
+        params_list.append(('langevin_md', dict(pressure=None,
+                                                potential_energy=None)))
         params_list.append(('nvt_md',
                             dict(pressure=None,
                                  aggregate_pressure=None,
