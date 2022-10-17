@@ -37,14 +37,15 @@ class LJFluid(ValidationTestProject):
     def job_statepoints(self):
         """list(dict): A list of statepoints for this project."""
         list_sps = []
-        num_particles = 10000
+        num_particles = 12**3
         replicate_indices = range(8)
-        params_list = [(1.5, 0.6), (1.0, 0.8), (1.25, 0.05)]
-        for kT, density in params_list:
+        params_list = [(1.5, 0.6, 1.0269012977149137), (1.0, 0.8, 1.436546654584811), (1.25, 0.05, 0.053672588738181606)]
+        for kT, density, pressure in params_list:
             for idx in replicate_indices:
                 list_sps.append({
                     "kT": kT,
                     "density": density,
+                    "pressure": pressure,
                     "num_particles": num_particles,
                     "replicate_idx": idx
                 })
@@ -54,23 +55,5 @@ class LJFluid(ValidationTestProject):
         """list(tuple): A list of tuples (param, default) giving the job \
         document parameters and default values for this project."""
         params_list = []
-
-        # random seeds
-        id_str = str(int('0x' + job.id, base=16))
-        params_list.append(('seed', int(id_str[:5])))
-
-        # store values needed for each simulation to be run
-        params_list.append(('langevin_md', dict(pressure=None,
-                                                potential_energy=None)))
-        params_list.append(('nvt_md',
-                            dict(pressure=None,
-                                 aggregate_pressure=None,
-                                 potential_energy=None)))
-        params_list.append(('npt_md', dict(density=None,
-                                           potential_energy=None)))
-        params_list.append(('nvt_mc', dict(pressure=None,
-                                           potential_energy=None)))
-        params_list.append(('npt_mc', dict(density=None,
-                                           potential_energy=None)))
 
         return params_list

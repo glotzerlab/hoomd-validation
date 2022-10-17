@@ -9,41 +9,59 @@ from project_classes import LJFluid
 from flow import aggregator
 
 # Run parameters shared between simulations
-RUN_STEPS = {'nvt': 16e6, 'npt': 16e6}
+RANDOMIZE_STEPS = 1e4
+RUN_STEPS = 2e6
 WRITE_PERIOD = 1000
-LOG_PERIOD = {'trajectory': 10000, 'quantities': 1000}
-FRAMES_ANALYZE = {'nvt': 10000, 'npt': 10000}
+LOG_PERIOD = {'trajectory': 50000, 'quantities': 125}
+FRAMES_ANALYZE = int(RUN_STEPS / LOG_PERIOD['quantities'] * 2/3)
 LJ_PARAMS = {'epsilon': 1.0, 'sigma': 1.0, 'r_on': 2.0, 'r_cut': 2.5}
 
 
-@LJFluid.operation.with_directives(
-    directives=dict(executable=CONFIG["executable"]))
+@LJFluid.operation(
+    directives=dict(executable=CONFIG["executable"], nranks=8))
 @LJFluid.post.isfile('initial_state.gsd')
 def create_initial_state(job):
     """Create initial system configuration."""
-    import gsd.hoomd
+    import hoomd
     import itertools
 
     sp = job.sp
+    device = hoomd.device.CPU()
 
     box_volume = sp["num_particles"] / sp["density"]
     L = box_volume**(1 / 3.)
 
     N = int(np.ceil(sp["num_particles"]**(1. / 3.)))
     x = np.linspace(-L / 2, L / 2, N, endpoint=False)
+
+    if x[1] - x[0] < 1.0:
+        raise RuntimeError('density too high to initialize on cubic lattice')
+
     position = list(itertools.product(x, repeat=3))[:sp["num_particles"]]
 
     # create snapshot
-    snap = gsd.hoomd.Snapshot()
-    snap.particles.N = sp["num_particles"]
-    snap.particles.position = position
-    snap.particles.typeid = [0] * sp["num_particles"]
-    snap.particles.types = ['A']
+    snap = hoomd.Snapshot(device.communicator)
 
-    snap.configuration.box = [L, L, L, 0, 0, 0]
+    if device.communicator.rank == 0:
+        snap.particles.N = sp["num_particles"]
+        snap.particles.types = ['A']
+        snap.configuration.box = [L, L, L, 0, 0, 0]
+        snap.particles.position[:] = position
+        snap.particles.typeid[:] = [0] * sp["num_particles"]
 
-    with gsd.hoomd.open(job.fn("initial_state.gsd"), "wb") as traj:
-        traj.append(snap)
+    # Use hard sphere Monte-Carlo to randomize the initial configuration
+    mc = hoomd.hpmc.integrate.Sphere()
+    mc.shape['A'] = dict(diameter=1.0)
+
+    sim = hoomd.Simulation(device=device, seed=job.statepoint.replicate_idx)
+    sim.create_state_from_snapshot(snap)
+    sim.operations.integrator = mc
+
+    device.notice('Randomizing initial state...')
+    sim.run(RANDOMIZE_STEPS)
+    device.notice(f'Move counts: {mc.translate_moves}')
+
+    hoomd.write.GSD.write(state=sim.state, filename=job.fn("initial_state.gsd"), mode='wb')
 
 
 def make_simulation(job, device, initial_state, integrator, sim_mode, logger):
@@ -66,7 +84,7 @@ def make_simulation(job, device, initial_state, integrator, sim_mode, logger):
     import hoomd
 
     sim = hoomd.Simulation(device)
-    sim.seed = job.doc.seed
+    sim.seed = job.statepoint.replicate_idx
     sim.create_state_from_gsd(initial_state)
 
     sim.operations.integrator = integrator
@@ -120,7 +138,7 @@ def make_md_simulation(job,
     from hoomd import md
 
     # pair force
-    nlist = md.nlist.Cell(buffer=0.3)
+    nlist = md.nlist.Cell(buffer=0.5)
     lj = md.pair.LJ(default_r_cut=LJ_PARAMS['r_cut'],
                     default_r_on=LJ_PARAMS['r_on'],
                     nlist=nlist)
@@ -129,14 +147,15 @@ def make_md_simulation(job,
     lj.mode = 'xplor'
 
     # integrator
-    integrator = md.Integrator(dt=0.005, methods=[method], forces=[lj])
+    integrator = md.Integrator(dt=0.00244140625, methods=[method], forces=[lj])
 
     # compute thermo
     thermo = md.compute.ThermodynamicQuantities(hoomd.filter.All())
 
     # add gsd log quantities
-    logger = hoomd.logging.Logger(categories=['scalar'])
-    logger.add(thermo, quantities=['pressure', 'potential_energy'])
+    logger = hoomd.logging.Logger(categories=['scalar', 'sequence'])
+    logger.add(thermo, quantities=['pressure', 'potential_energy', 'kinetic_temperature'])
+    logger.add(integrator, quantities=['linear_momentum'])
     for loggable in extra_loggables:
         logger.add(loggable)
 
@@ -147,18 +166,18 @@ def make_md_simulation(job,
     for loggable in extra_loggables:
         # call attach explicitly so we can access sim state when computing the
         # loggable quantity
-        loggable.attach(sim)
+        if hasattr(loggable, 'attach'):
+            loggable.attach(sim)
 
     # thermalize momenta
     sim.state.thermalize_particle_momenta(hoomd.filter.All(), job.sp.kT)
 
     return sim
 
-@LJFluid.operation.with_directives(directives=dict(
+@LJFluid.operation(directives=dict(
     walltime=48, executable=CONFIG["executable"], nranks=8))
 @LJFluid.pre.after(create_initial_state)
-@LJFluid.post.isfile('langevin_md_quantities.gsd')
-@LJFluid.post.isfile('langevin_md_trajectory.gsd')
+@LJFluid.post.true('langevin_md_complete')
 def run_langevin_md_sim(job):
     """Run the MD simulation in Langevin."""
     import hoomd
@@ -167,57 +186,22 @@ def run_langevin_md_sim(job):
     device = hoomd.device.CPU()
     initial_state = job.fn('initial_state.gsd')
     langevin = md.methods.Langevin(hoomd.filter.All(), kT=job.sp.kT)
-    langevin.gamma.default = 0.5
+    langevin.gamma.default = 1.0
 
     sim_mode = 'langevin_md'
 
     sim = make_md_simulation(job, device, initial_state, langevin, sim_mode)
 
     # run
-    sim.run(RUN_STEPS['nvt'])
+    sim.run(RUN_STEPS)
+
+    job.document['langevin_md_complete'] = True
 
 
-@LJFluid.operation.with_directives(
-    directives=dict(executable=CONFIG["executable"]))
-@LJFluid.pre.after(run_langevin_md_sim)
-@LJFluid.post(lambda job: job.doc.langevin_md.pressure is not None)
-@LJFluid.post(lambda job: job.doc.langevin_md.potential_energy is not None)
-@LJFluid.post.isfile('langevin_md_pressure_vs_time.png')
-def analyze_langevin_md_sim(job):
-    """Compute the pressure for use in NVT and NPT simulations to cross-validate."""
-    import gsd.hoomd
-    from plotting import get_log_quantity, plot_quantity
-
-    # get trajectory
-    traj = gsd.hoomd.open(job.fn('langevin_md_quantities.gsd'))
-    traj = traj[-FRAMES_ANALYZE['nvt']:]
-
-    # get data
-    pressures = get_log_quantity(traj,
-                                 'md/compute/ThermodynamicQuantities/pressure')
-    energies = get_log_quantity(
-        traj, 'md/compute/ThermodynamicQuantities/potential_energy')
-
-    # save the average value in a job doc parameter
-    job.doc.langevin_md.pressure = np.mean(pressures)
-    job.doc.langevin_md.potential_energy = np.mean(energies)
-
-    # make plots
-    plot_quantity(pressures,
-                  job.fn('langevin_md_pressure_vs_time.png'),
-                  title='Pressure vs. time',
-                  ylabel='$P$')
-    plot_quantity(energies,
-                  job.fn('langevin_md_potential_energy_vs_time.png'),
-                  title='Potential Energy vs. time',
-                  ylabel='$U$')
-
-
-@LJFluid.operation.with_directives(directives=dict(
+@LJFluid.operation(directives=dict(
     walltime=48, executable=CONFIG["executable"], nranks=8))
 @LJFluid.pre.after(create_initial_state)
-@LJFluid.post.isfile('nvt_md_quantities.gsd')
-@LJFluid.post.isfile('nvt_md_trajectory.gsd')
+@LJFluid.post.true('nvt_md_complete')
 def run_nvt_md_sim(job):
     """Run the MD simulation in NVT."""
     import hoomd
@@ -225,108 +209,38 @@ def run_nvt_md_sim(job):
 
     device = hoomd.device.CPU()
     initial_state = job.fn('initial_state.gsd')
-    nvt = md.methods.NVT(hoomd.filter.All(), kT=job.sp.kT, tau=1.0)
+    nvt = md.methods.NVT(hoomd.filter.All(), kT=job.sp.kT, tau=0.5)
     sim_mode = 'nvt_md'
 
     sim = make_md_simulation(job, device, initial_state, nvt, sim_mode)
 
+    # thermalize the thermostat
+    sim.run(0)
+    nvt.thermalize_thermostat_dof()
+
     # run
-    sim.run(RUN_STEPS['nvt'])
+    sim.run(RUN_STEPS)
 
+    job.document['nvt_md_complete'] = True
 
-@LJFluid.operation.with_directives(
-    directives=dict(executable=CONFIG["executable"]))
-@LJFluid.pre.after(run_nvt_md_sim)
-@LJFluid.post(lambda job: job.doc.nvt_md.pressure is not None)
-@LJFluid.post(lambda job: job.doc.nvt_md.potential_energy is not None)
-@LJFluid.post.isfile('nvt_md_pressure_vs_time.png')
-def analyze_nvt_md_sim(job):
-    """Compute the pressure for use in NPT simulations to cross-validate."""
-    import gsd.hoomd
-    from plotting import get_log_quantity, plot_quantity
-
-    # get trajectory
-    traj = gsd.hoomd.open(job.fn('nvt_md_quantities.gsd'))
-    traj = traj[-FRAMES_ANALYZE['nvt']:]
-
-    # get data
-    pressures = get_log_quantity(traj,
-                                 'md/compute/ThermodynamicQuantities/pressure')
-    energies = get_log_quantity(
-        traj, 'md/compute/ThermodynamicQuantities/potential_energy')
-
-    # save the average value in a job doc parameter
-    job.doc.nvt_md.pressure = np.mean(pressures)
-    job.doc.nvt_md.potential_energy = np.mean(energies)
-
-    # make plots
-    plot_quantity(pressures,
-                  job.fn('nvt_md_pressure_vs_time.png'),
-                  title='Pressure vs. time',
-                  ylabel='$P$')
-    plot_quantity(energies,
-                  job.fn('nvt_md_potential_energy_vs_time.png'),
-                  title='Potential Energy vs. time',
-                  ylabel='$U$')
-
-
-def nvt_md_pressures_averaged(*jobs):
-    """Make sure the pressure setpoint is computed and added to job docs."""
-    for job in jobs:
-        if job.doc.nvt_md.aggregate_pressure is None:
-            return False
-    return True
-
-
-def langevin_md_pressures_computed(*jobs):
-    """Make sure the pressures for nvt md sims are computed."""
-    for job in jobs:
-        if job.doc.langevin_md.pressure is None:
-            return False
-    return True
-
-
-@aggregator.groupby(['kT', 'density'])
-@LJFluid.operation.with_directives(
-    directives=dict(executable=CONFIG["executable"]))
-@LJFluid.pre(langevin_md_pressures_computed)
-@LJFluid.post(nvt_md_pressures_averaged)
-def average_langevin_md_pressures(*jobs):
-    """Average the pressures from all replicates at a given LJ statepoint.
-
-    This operation is used so the pressure setpoint for all the NPT simulation
-    replicates will have the exact same pressure setpoint. Conceptually, this
-    uperation is an MPI Allreduce, with the average operation, where each "rank"
-    is a simulation replicate.
-    """
-    pressures = []
-    for job in jobs:
-        pressures.append(job.doc.langevin_md.pressure)
-
-    avg = np.mean(pressures)
-    for job in jobs:
-        job.doc.nvt_md.aggregate_pressure = avg
-
-
-@LJFluid.operation.with_directives(directives=dict(
+@LJFluid.operation(directives=dict(
     walltime=48, executable=CONFIG["executable"], nranks=8))
-@LJFluid.pre(lambda job: job.doc.nvt_md.aggregate_pressure is not None)
-@LJFluid.pre.after(run_nvt_md_sim)
-@LJFluid.post.isfile('npt_md_quantities.gsd')
+@LJFluid.pre.after(create_initial_state)
+@LJFluid.post.true('npt_md_complete')
 def run_npt_md_sim(job):
-    """Run an npt simulation at the pressure computed by the NVT simulation."""
+    """Run an NPT simulation at the pressure computed by the NVT simulation."""
     import hoomd
     from hoomd import md
     from custom_actions import ComputeDensity
 
     device = hoomd.device.CPU()
-    initial_state = job.fn('nvt_md_trajectory.gsd')
-    p = job.doc.nvt_md.aggregate_pressure
+    initial_state = job.fn('initial_state.gsd')
+    p = job.statepoint.pressure
     npt = md.methods.NPT(hoomd.filter.All(),
                          kT=job.sp.kT,
-                         tau=1.0,
+                         tau=0.5,
                          S=[p, p, p, 0, 0, 0],
-                         tauS=1.0,
+                         tauS=5,
                          couple='xyz')
     sim_mode = 'npt_md'
     density_compute = ComputeDensity()
@@ -338,46 +252,14 @@ def run_npt_md_sim(job):
                              sim_mode,
                              extra_loggables=[density_compute])
 
+    # thermalize the thermostat and barostat
+    sim.run(0)
+    npt.thermalize_thermostat_and_barostat_dof()
+
     # run
-    sim.run(RUN_STEPS['npt'])
+    sim.run(RUN_STEPS)
 
-
-@LJFluid.operation.with_directives(
-    directives=dict(executable=CONFIG["executable"]))
-@LJFluid.pre.after(run_npt_md_sim)
-@LJFluid.post(lambda job: job.doc.npt_md.potential_energy is not None)
-def analyze_npt_md_sim(job):
-    """Compute the density to cross-validate with earlier NVT simulations."""
-    import gsd.hoomd
-    from plotting import get_log_quantity, plot_quantity
-
-    traj = gsd.hoomd.open(job.fn('npt_md_quantities.gsd'))
-    traj = traj[-FRAMES_ANALYZE['npt']:]
-
-    # get data
-    pressures = get_log_quantity(traj,
-                                 'md/compute/ThermodynamicQuantities/pressure')
-    energies = get_log_quantity(
-        traj, 'md/compute/ThermodynamicQuantities/potential_energy')
-    densities = get_log_quantity(traj, 'custom_actions/ComputeDensity/density')
-
-    # save the average value in a job doc parameter
-    job.doc.npt_md.density = np.mean(densities)
-    job.doc.npt_md.potential_energy = np.mean(energies)
-
-    # make plots
-    plot_quantity(pressures,
-                  job.fn('npt_md_pressure_vs_time.png'),
-                  title='Pressure vs. time',
-                  ylabel='$P$')
-    plot_quantity(energies,
-                  job.fn('npt_md_potential_energy_vs_time.png'),
-                  title='Potential Energy vs. time',
-                  ylabel='$U$')
-    plot_quantity(densities,
-                  job.fn('npt_md_density_vs_time.png'),
-                  title='Number Density vs. time',
-                  ylabel='$\\rho$')
+    job.document['npt_md_complete'] = True
 
 
 def make_mc_simulation(job,
@@ -450,8 +332,9 @@ def make_mc_simulation(job,
     mc.pair_potential = patch
 
     # log to gsd
-    logger_gsd = hoomd.logging.Logger()
+    logger_gsd = hoomd.logging.Logger(categories=['scalar', 'sequence'])
     logger_gsd.add(patch, quantities=['energy'])
+    logger_gsd.add(mc, quantities=['translate_moves'])
     for loggable in extra_loggables:
         logger_gsd.add(loggable)
 
@@ -460,7 +343,8 @@ def make_mc_simulation(job,
     for loggable in extra_loggables:
         # call attach method explicitly so we can access simulation state when
         # computing the loggable quantity
-        loggable.attach(sim)
+        if hasattr(loggable, 'attach'):
+            loggable.attach(sim)
 
     # move size tuner
     mstuner = hpmc.tune.MoveSize.scale_solver(moves=['d'],
@@ -474,10 +358,10 @@ def make_mc_simulation(job,
     return sim
 
 
-@LJFluid.operation.with_directives(directives=dict(
-    walltime=48, executable=CONFIG["executable"], nranks=64))
+@LJFluid.operation(directives=dict(
+    walltime=48, executable=CONFIG["executable"], nranks=8))
 @LJFluid.pre.after(create_initial_state)
-@LJFluid.post.isfile('nvt_mc_quantities.gsd')
+@LJFluid.post.true('nvt_mc_complete')
 def run_nvt_mc_sim(job):
     """Run MC sim in NVT."""
     import hoomd
@@ -489,39 +373,14 @@ def run_nvt_mc_sim(job):
     sim = make_mc_simulation(job, dev, initial_state, sim_mode)
 
     # run
-    sim.run(RUN_STEPS['nvt'])
+    sim.run(RUN_STEPS)
 
+    job.document['nvt_mc_complete'] = True
 
-@LJFluid.operation.with_directives(
-    directives=dict(executable=CONFIG["executable"]))
-@LJFluid.pre.after(run_nvt_mc_sim)
-@LJFluid.post(lambda job: job.doc.nvt_mc.potential_energy is not None)
-def analyze_nvt_mc_sim(job):
-    """Compute the pressure for use in NPT simulations to cross-validate."""
-    import gsd.hoomd
-    from plotting import get_log_quantity, plot_quantity
-
-    traj = gsd.hoomd.open(job.fn('nvt_mc_quantities.gsd'))
-    traj = traj[-FRAMES_ANALYZE['nvt']:]
-
-    energies = get_log_quantity(traj, 'hpmc/pair/user/CPPPotential/energy')
-
-    # need to scale this energy by kT, since the simulation uses epsilon=1/kT,
-    # so we can compare back to the energies of the MD simulations
-    energies *= job.sp.kT
-    job.doc.nvt_mc.potential_energy = np.mean(energies)
-
-    plot_quantity(energies,
-                  job.fn('nvt_mc_potential_energy_vs_time.png'),
-                  title='Potential Energy vs. time',
-                  ylabel='$U$')
-
-
-@LJFluid.operation.with_directives(directives=dict(
-    walltime=48, executable=CONFIG["executable"], nranks=64))
-@LJFluid.pre.after(run_nvt_md_sim)
-@LJFluid.pre(lambda job: job.doc.nvt_md.aggregate_pressure is not None)
-@LJFluid.post.isfile('npt_mc_quantities.gsd')
+@LJFluid.operation(directives=dict(
+    walltime=48, executable=CONFIG["executable"], nranks=8))
+@LJFluid.pre.after(create_initial_state)
+@LJFluid.post.true('npt_mc_complete')
 def run_npt_mc_sim(job):
     """Run MC sim in NPT."""
     import hoomd
@@ -530,24 +389,25 @@ def run_npt_mc_sim(job):
 
     # device
     dev = hoomd.device.CPU()
-    initial_state = job.fn('nvt_md_trajectory.gsd')
+    initial_state = job.fn('initial_state.gsd')
     sim_mode = 'npt_mc'
 
     # compute the density
     compute_density = ComputeDensity()
+
+    # box updates
+    boxmc = hpmc.update.BoxMC(betaP=job.statepoint.pressure
+                              / job.sp.kT,
+                              trigger=hoomd.trigger.Periodic(1))
+    boxmc.volume = dict(weight=1.0, mode='ln', delta=0.001)
 
     # simulation
     sim = make_mc_simulation(job,
                              dev,
                              initial_state,
                              sim_mode,
-                             extra_loggables=[compute_density])
+                             extra_loggables=[compute_density, boxmc])
 
-    # box updates
-    boxmc = hpmc.update.BoxMC(betaP=job.doc.nvt_md.aggregate_pressure
-                              / job.sp.kT,
-                              trigger=hoomd.trigger.Periodic(1))
-    boxmc.volume = dict(weight=1.0, mode='ln', delta=0.001)
     sim.operations.add(boxmc)
 
     boxmc_tuner = hpmc.tune.BoxMCMoveSize.scale_solver(
@@ -560,112 +420,82 @@ def run_npt_mc_sim(job):
     sim.operations.add(boxmc_tuner)
 
     # run
-    sim.run(RUN_STEPS['npt'])
+    sim.run(RUN_STEPS)
+
+    job.document['npt_mc_complete'] = True
+
+# def all_sims_analyzed(*jobs):
+#     """Make sure all sims have values for potential energy computed.
+
+#     Implicit here is the nvt_md sim, whose analysis is a precondition for
+#     running the other modes of simulation.
+#     """
+#     for job in jobs:
+#         if job.doc.npt_mc.potential_energy is None or \
+#             job.doc.npt_md.potential_energy is None or \
+#                 job.doc.nvt_mc.potential_energy is None or \
+#                   job.doc.langevin_md.potential_energy is None:
+#             return False
+#     return True
 
 
-@LJFluid.operation.with_directives(
-    directives=dict(executable=CONFIG["executable"]))
-@LJFluid.pre.after(run_npt_mc_sim)
-@LJFluid.post(lambda job: job.doc.npt_mc.potential_energy is not None)
-def analyze_npt_mc_sim(job):
-    """Compute the density to cross-validate with earlier NVT simulations."""
-    import gsd.hoomd
-    from plotting import get_log_quantity, plot_quantity
+# @aggregator.groupby(['kT', 'density'])
+# @LJFluid.operation.with_directives(
+#     directives=dict(executable=CONFIG["executable"]))
+# @LJFluid.pre(all_sims_analyzed)
+# def analyze_potential_energies(*jobs):
+#     """Plot standard error of the mean of the potential energies.
 
-    traj = gsd.hoomd.open(job.fn('npt_mc_quantities.gsd'))
-    traj = traj[-FRAMES_ANALYZE['npt']:]
+#     This will average the potential energy value reported in the replicates.
+#     """
+#     import matplotlib.pyplot as plt
 
-    energies = get_log_quantity(traj, 'hpmc/pair/user/CPPPotential/energy')
-    densities = get_log_quantity(traj, 'custom_actions/ComputeDensity/density')
+#     # grab the common statepoint parameters
+#     kT = jobs[0].sp.kT
+#     density = jobs[0].sp.density
+#     num_particles = jobs[0].sp.num_particles
 
-    # save the average value in a job doc parameter
-    energies *= job.sp.kT
-    job.doc.npt_mc.potential_energy = np.mean(energies)
-    job.doc.npt_mc.density = np.mean(densities)
+#     simulation_modes = ['langevin_md', 'nvt_md', 'npt_md', 'nvt_mc', 'npt_mc']
 
-    # plot
-    plot_quantity(energies,
-                  job.fn('npt_mc_potential_energy_vs_time.png'),
-                  title='Potential Energy vs. time',
-                  ylabel='$U$')
-    plot_quantity(densities,
-                  job.fn('npt_mc_density_vs_time.png'),
-                  title='Number Density vs. time',
-                  ylabel='$\\rho$')
+#     # organize data from jobs
+#     energies = {mode: [] for mode in simulation_modes}
+#     for jb in jobs:
+#         for sim_mode in simulation_modes:
+#             energies[sim_mode].append(
+#                 getattr(getattr(jb.doc, sim_mode), 'potential_energy'))
 
+#     # compute stats with data
+#     avg_energy_pp = {
+#         sim_mode: np.mean(energies[sim_mode]) / num_particles
+#         for sim_mode in simulation_modes
+#     }
+#     stderr_energy_pp = {
+#         sim_mode: 2 * np.std(energies[sim_mode])
+#         / np.sqrt(len(energies[sim_mode])) / num_particles
+#         for sim_mode in simulation_modes
+#     }
 
-def all_sims_analyzed(*jobs):
-    """Make sure all sims have values for potential energy computed.
+#     # compute the energy differences
+#     egy_pp_list = [avg_energy_pp[mode] for mode in simulation_modes]
+#     stderr_pp_list = [stderr_energy_pp[mode] for mode in simulation_modes]
+#     avg_across_modes = np.mean(egy_pp_list)
+#     egy_diff_list = np.array(egy_pp_list) - avg_across_modes
 
-    Implicit here is the nvt_md sim, whose analysis is a precondition for
-    running the other modes of simulation.
-    """
-    for job in jobs:
-        if job.doc.npt_mc.potential_energy is None or \
-            job.doc.npt_md.potential_energy is None or \
-                job.doc.nvt_mc.potential_energy is None or \
-                  job.doc.langevin_md.potential_energy is None:
-            return False
-    return True
-
-
-@aggregator.groupby(['kT', 'density'])
-@LJFluid.operation.with_directives(
-    directives=dict(executable=CONFIG["executable"]))
-@LJFluid.pre(all_sims_analyzed)
-def analyze_potential_energies(*jobs):
-    """Plot standard error of the mean of the potential energies.
-
-    This will average the potential energy value reported in the replicates.
-    """
-    import matplotlib.pyplot as plt
-
-    # grab the common statepoint parameters
-    kT = jobs[0].sp.kT
-    density = jobs[0].sp.density
-    num_particles = jobs[0].sp.num_particles
-
-    simulation_modes = ['langevin_md', 'nvt_md', 'npt_md', 'nvt_mc', 'npt_mc']
-
-    # organize data from jobs
-    energies = {mode: [] for mode in simulation_modes}
-    for jb in jobs:
-        for sim_mode in simulation_modes:
-            energies[sim_mode].append(
-                getattr(getattr(jb.doc, sim_mode), 'potential_energy'))
-
-    # compute stats with data
-    avg_energy_pp = {
-        sim_mode: np.mean(energies[sim_mode]) / num_particles
-        for sim_mode in simulation_modes
-    }
-    stderr_energy_pp = {
-        sim_mode: 2 * np.std(energies[sim_mode])
-        / np.sqrt(len(energies[sim_mode])) / num_particles
-        for sim_mode in simulation_modes
-    }
-
-    # compute the energy differences
-    egy_pp_list = [avg_energy_pp[mode] for mode in simulation_modes]
-    stderr_pp_list = [stderr_energy_pp[mode] for mode in simulation_modes]
-    avg_across_modes = np.mean(egy_pp_list)
-    egy_diff_list = np.array(egy_pp_list) - avg_across_modes
-
-    # make plot
-    plt.bar(range(len(simulation_modes)),
-            height=egy_diff_list,
-            yerr=stderr_pp_list,
-            alpha=0.5,
-            ecolor='black',
-            capsize=10)
-    plt.xticks(range(len(simulation_modes)), simulation_modes)
-    plt.title(f"$kT={kT}$, $\\rho={density}$, $N={num_particles}$")
-    plt.ylabel("$(U - <U>) / N$")
-    plt.savefig(f'potential_energies_kT{kT}_density{density}.png',
-                bbox_inches='tight')
-    plt.show()
-    plt.close()
+#     # make plot
+#     plt.bar(range(len(simulation_modes)),
+#             height=egy_diff_list,
+#             yerr=stderr_pp_list,
+#             alpha=0.5,
+#             ecolor='black',
+#             capsize=10)
+#     plt.xticks(range(len(simulation_modes)), simulation_modes)
+#     plt.title(f"$kT={kT}$, $\\rho={density}$, $N={num_particles}$")
+#     plt.ylabel("$(U - <U>) / N$")
+#     plt.savefig(f'potential_energies_kT{kT}_density{density}.png',
+#                 bbox_inches='tight')
+#     plt.show()
+#     plt.close()
 
 
 if __name__ == "__main__":
-    LJFluid.get_project(test_project_dict["LJFluid"].root_directory()).main()
+    LJFluid.get_project(test_project_dict["LJFluid"].path).main()

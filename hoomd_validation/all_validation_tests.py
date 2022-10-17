@@ -24,4 +24,4 @@ def run_all_workflows(job):
 
 
 if __name__ == "__main__":
-    AllValidationTests.get_project(all_validation_tests.root_directory()).main()
+    AllValidationTests.get_project(all_validation_tests.path).main()

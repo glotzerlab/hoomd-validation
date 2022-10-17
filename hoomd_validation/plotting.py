@@ -16,12 +16,15 @@ def get_log_quantity(traj, quantity):
     """
     qty_values = np.zeros(len(traj))
     for i, frame in enumerate(traj):
-        qty_values[i] = frame.log[quantity]
+        if len(frame.log[quantity] == 1):
+            qty_values[i] = frame.log[quantity][0]
+        else:
+            qty_values[i] = frame.log[quantity]
     return qty_values
 
 
 def plot_quantity(data, savename, title, ylabel):
-    """Plot a quanity using matplotlib.
+    """Plot a quantity using matplotlib.
 
     Args:
         data (:math:`(N, )` `np.ndarray`): One dimensional data to plot.
