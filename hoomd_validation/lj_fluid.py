@@ -9,7 +9,7 @@ from project_classes import LJFluid
 from flow import aggregator
 
 # Run parameters shared between simulations
-RANDOMIZE_STEPS = 1e4
+RANDOMIZE_STEPS = 1e5
 RUN_STEPS = 2e6
 WRITE_PERIOD = 1000
 LOG_PERIOD = {'trajectory': 50000, 'quantities': 125}
@@ -50,7 +50,7 @@ def create_initial_state(job):
         snap.particles.typeid[:] = [0] * sp["num_particles"]
 
     # Use hard sphere Monte-Carlo to randomize the initial configuration
-    mc = hoomd.hpmc.integrate.Sphere()
+    mc = hoomd.hpmc.integrate.Sphere(nselect=1)
     mc.shape['A'] = dict(diameter=1.0)
 
     sim = hoomd.Simulation(device=device, seed=job.statepoint.replicate_idx)
@@ -60,6 +60,22 @@ def create_initial_state(job):
     device.notice('Randomizing initial state...')
     sim.run(RANDOMIZE_STEPS)
     device.notice(f'Move counts: {mc.translate_moves}')
+
+    # equilibrate the initial configuration
+    nlist = hoomd.md.nlist.Cell(buffer=0.5)
+    lj = hoomd.md.pair.LJ(default_r_cut=LJ_PARAMS['r_cut'],
+                    default_r_on=LJ_PARAMS['r_on'],
+                    nlist=nlist)
+    lj.params[('A', 'A')] = dict(sigma=LJ_PARAMS['sigma'],
+                                 epsilon=LJ_PARAMS['epsilon'])
+    lj.mode = 'xplor'
+
+    # integrator
+    langevin = hoomd.md.methods.Langevin(hoomd.filter.All(), kT=job.sp.kT)
+    langevin.gamma.default = 1.0
+    sim.operations.integrator = hoomd.md.Integrator(dt=0.00244140625, methods=[langevin], forces=[lj])
+
+    sim.run(RANDOMIZE_STEPS)
 
     hoomd.write.GSD.write(state=sim.state, filename=job.fn("initial_state.gsd"), mode='wb')
 
