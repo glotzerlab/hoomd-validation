@@ -50,7 +50,7 @@ def create_initial_state(job):
         snap.particles.typeid[:] = [0] * sp["num_particles"]
 
     # Use hard sphere Monte-Carlo to randomize the initial configuration
-    mc = hoomd.hpmc.integrate.Sphere(nselect=1)
+    mc = hoomd.hpmc.integrate.Sphere()
     mc.shape['A'] = dict(diameter=1.0)
 
     sim = hoomd.Simulation(device=device, seed=job.statepoint.replicate_idx)
@@ -300,7 +300,7 @@ def make_mc_simulation(job,
     from hoomd import hpmc
 
     # integrator
-    mc = hpmc.integrate.Sphere()
+    mc = hpmc.integrate.Sphere(nselect=1)
     mc.shape[('A', 'A')] = dict(diameter=0.0)
 
     # pair potential
