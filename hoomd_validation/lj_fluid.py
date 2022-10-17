@@ -59,10 +59,10 @@ def create_initial_state(job):
 
     device.notice('Randomizing initial state...')
     sim.run(RANDOMIZE_STEPS)
-    device.notice(f'Move counts: {mc.translate_moves}')
+    device.notice(f'Done. Move counts: {mc.translate_moves}')
 
     # equilibrate the initial configuration
-    nlist = hoomd.md.nlist.Cell(buffer=0.5)
+    nlist = hoomd.md.nlist.Cell(buffer=0.4)
     lj = hoomd.md.pair.LJ(default_r_cut=LJ_PARAMS['r_cut'],
                     default_r_on=LJ_PARAMS['r_on'],
                     nlist=nlist)
@@ -75,7 +75,9 @@ def create_initial_state(job):
     langevin.gamma.default = 1.0
     sim.operations.integrator = hoomd.md.Integrator(dt=0.00244140625, methods=[langevin], forces=[lj])
 
+    device.notice(f'Equilibrating...')
     sim.run(RANDOMIZE_STEPS)
+    device.notice(f'Done.')
 
     hoomd.write.GSD.write(state=sim.state, filename=job.fn("initial_state.gsd"), mode='wb')
 
@@ -154,7 +156,7 @@ def make_md_simulation(job,
     from hoomd import md
 
     # pair force
-    nlist = md.nlist.Cell(buffer=0.5)
+    nlist = md.nlist.Cell(buffer=0.4)
     lj = md.pair.LJ(default_r_cut=LJ_PARAMS['r_cut'],
                     default_r_on=LJ_PARAMS['r_on'],
                     nlist=nlist)
@@ -225,7 +227,7 @@ def run_nvt_md_sim(job):
 
     device = hoomd.device.CPU()
     initial_state = job.fn('initial_state.gsd')
-    nvt = md.methods.NVT(hoomd.filter.All(), kT=job.sp.kT, tau=0.5)
+    nvt = md.methods.NVT(hoomd.filter.All(), kT=job.sp.kT, tau=0.24)
     sim_mode = 'nvt_md'
 
     sim = make_md_simulation(job, device, initial_state, nvt, sim_mode)
@@ -254,9 +256,9 @@ def run_npt_md_sim(job):
     p = job.statepoint.pressure
     npt = md.methods.NPT(hoomd.filter.All(),
                          kT=job.sp.kT,
-                         tau=0.5,
+                         tau=0.24,
                          S=[p, p, p, 0, 0, 0],
-                         tauS=5,
+                         tauS=2.4,
                          couple='xyz')
     sim_mode = 'npt_md'
     density_compute = ComputeDensity()
