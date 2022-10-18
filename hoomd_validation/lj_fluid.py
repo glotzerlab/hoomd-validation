@@ -10,9 +10,9 @@ from flow import aggregator
 
 # Run parameters shared between simulations
 RANDOMIZE_STEPS = 2e5
-RUN_STEPS = 4e6
+RUN_STEPS = 8e6
 WRITE_PERIOD = 1000
-LOG_PERIOD = {'trajectory': 50000, 'quantities': 1000}
+LOG_PERIOD = {'trajectory': 50000, 'quantities': 500}
 FRAMES_ANALYZE = int(RUN_STEPS / LOG_PERIOD['quantities'] * 2/3)
 LJ_PARAMS = {'epsilon': 1.0, 'sigma': 1.0, 'r_on': 2.0, 'r_cut': 2.5}
 

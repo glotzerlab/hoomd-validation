@@ -38,8 +38,8 @@ class LJFluid(ValidationTestProject):
         """list(dict): A list of statepoints for this project."""
         list_sps = []
         num_particles = 12**3
-        replicate_indices = range(8)
-        params_list = [(1.5, 0.6, 1.02691109326633), (1.0, 0.8, 1.43578269551893), (1.25, 0.05, 0.05366571224626898)]
+        replicate_indices = range(16)
+        params_list = [(1.5, 0.6, 1.0270905797770546), (1.0, 0.8, 1.4363805638963822), (1.25, 0.05, 0.05363574413661169)]
         for kT, density, pressure in params_list:
             for idx in replicate_indices:
                 list_sps.append({
