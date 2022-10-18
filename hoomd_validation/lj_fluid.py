@@ -9,7 +9,7 @@ from project_classes import LJFluid
 from flow import aggregator
 
 # Run parameters shared between simulations
-RANDOMIZE_STEPS = 2e5
+RANDOMIZE_STEPS = 1e5
 RUN_STEPS = 4e6
 WRITE_PERIOD = 1000
 LOG_PERIOD = {'trajectory': 50000, 'quantities': 1000}
@@ -26,7 +26,7 @@ def create_initial_state(job):
     import itertools
 
     sp = job.sp
-    device = hoomd.device.CPU()
+    device = hoomd.device.CPU(msg_file=job.fn('create_initial_state.log'))
 
     box_volume = sp["num_particles"] / sp["density"]
     L = box_volume**(1 / 3.)
@@ -60,24 +60,6 @@ def create_initial_state(job):
     device.notice('Randomizing initial state...')
     sim.run(RANDOMIZE_STEPS)
     device.notice(f'Done. Move counts: {mc.translate_moves}')
-
-    # equilibrate the initial configuration
-    nlist = hoomd.md.nlist.Cell(buffer=0.4)
-    lj = hoomd.md.pair.LJ(default_r_cut=LJ_PARAMS['r_cut'],
-                    default_r_on=LJ_PARAMS['r_on'],
-                    nlist=nlist)
-    lj.params[('A', 'A')] = dict(sigma=LJ_PARAMS['sigma'],
-                                 epsilon=LJ_PARAMS['epsilon'])
-    lj.mode = 'xplor'
-
-    # integrator
-    langevin = hoomd.md.methods.Langevin(hoomd.filter.All(), kT=job.sp.kT)
-    langevin.gamma.default = 1.0
-    sim.operations.integrator = hoomd.md.Integrator(dt=0.00244140625, methods=[langevin], forces=[lj])
-
-    device.notice(f'Equilibrating...')
-    sim.run(RANDOMIZE_STEPS)
-    device.notice(f'Done.')
 
     hoomd.write.GSD.write(state=sim.state, filename=job.fn("initial_state.gsd"), mode='wb')
 
@@ -165,7 +147,7 @@ def make_md_simulation(job,
     lj.mode = 'xplor'
 
     # integrator
-    integrator = md.Integrator(dt=0.00244140625, methods=[method], forces=[lj])
+    integrator = md.Integrator(dt=0.0025, methods=[method], forces=[lj])
 
     # compute thermo
     thermo = md.compute.ThermodynamicQuantities(hoomd.filter.All())
@@ -201,7 +183,7 @@ def run_langevin_md_sim(job):
     import hoomd
     from hoomd import md
 
-    device = hoomd.device.CPU()
+    device = hoomd.device.CPU(msg_file=job.fn('run_langevin_md_sim.log'))
     initial_state = job.fn('initial_state.gsd')
     langevin = md.methods.Langevin(hoomd.filter.All(), kT=job.sp.kT)
     langevin.gamma.default = 1.0
@@ -210,8 +192,15 @@ def run_langevin_md_sim(job):
 
     sim = make_md_simulation(job, device, initial_state, langevin, sim_mode)
 
+    # equilibrate
+    device.notice('Equilibrating...')
+    sim.run(RANDOMIZE_STEPS)
+    device.notice('Done.')
+
     # run
+    device.notice('Running...')
     sim.run(RUN_STEPS)
+    device.notice('Done.')
 
     job.document['langevin_md_complete'] = True
 
@@ -225,9 +214,9 @@ def run_nvt_md_sim(job):
     import hoomd
     from hoomd import md
 
-    device = hoomd.device.CPU()
+    device = hoomd.device.CPU(msg_file=job.fn('run_nvt_md_sim.log'))
     initial_state = job.fn('initial_state.gsd')
-    nvt = md.methods.NVT(hoomd.filter.All(), kT=job.sp.kT, tau=0.24)
+    nvt = md.methods.NVT(hoomd.filter.All(), kT=job.sp.kT, tau=0.25)
     sim_mode = 'nvt_md'
 
     sim = make_md_simulation(job, device, initial_state, nvt, sim_mode)
@@ -236,8 +225,15 @@ def run_nvt_md_sim(job):
     sim.run(0)
     nvt.thermalize_thermostat_dof()
 
+    # equilibrate
+    device.notice('Equilibrating...')
+    sim.run(RANDOMIZE_STEPS)
+    device.notice('Done.')
+
     # run
+    device.notice('Running...')
     sim.run(RUN_STEPS)
+    device.notice('Done.')
 
     job.document['nvt_md_complete'] = True
 
@@ -251,14 +247,15 @@ def run_npt_md_sim(job):
     from hoomd import md
     from custom_actions import ComputeDensity
 
-    device = hoomd.device.CPU()
+    device = hoomd.device.CPU(msg_file=job.fn('run_npt_md_sim.log'))
     initial_state = job.fn('initial_state.gsd')
     p = job.statepoint.pressure
+    nvt = md.methods.NVT(hoomd.filter.All(), kT=job.sp.kT, tau=0.25)
     npt = md.methods.NPT(hoomd.filter.All(),
                          kT=job.sp.kT,
-                         tau=0.24,
+                         tau=0.25,
                          S=[p, p, p, 0, 0, 0],
-                         tauS=2.4,
+                         tauS=3,
                          couple='xyz')
     sim_mode = 'npt_md'
     density_compute = ComputeDensity()
@@ -266,16 +263,27 @@ def run_npt_md_sim(job):
     sim = make_md_simulation(job,
                              device,
                              initial_state,
-                             npt,
+                             nvt,
                              sim_mode,
                              extra_loggables=[density_compute])
 
-    # thermalize the thermostat and barostat
+    # thermalize the thermostat
     sim.run(0)
-    npt.thermalize_thermostat_and_barostat_dof()
+    nvt.thermalize_thermostat_dof()
+
+    # equilibrate in NVT
+    device.notice('Equilibrating...')
+    sim.run(RANDOMIZE_STEPS)
+    device.notice('Done.')
+
+    # switch to NPT
+    # thermalize the thermostat and barostat
+    sim.operations.integrator.methods[0] = npt
 
     # run
+    device.notice('Running...')
     sim.run(RUN_STEPS)
+    device.notice('Done.')
 
     job.document['npt_md_complete'] = True
 
@@ -368,8 +376,8 @@ def make_mc_simulation(job,
     mstuner = hpmc.tune.MoveSize.scale_solver(moves=['d'],
                                               target=0.2,
                                               trigger=hoomd.trigger.And([
-                                                  hoomd.trigger.Periodic(10),
-                                                  hoomd.trigger.Before(10000)
+                                                  hoomd.trigger.Periodic(100),
+                                                  hoomd.trigger.Before(int(RANDOMIZE_STEPS))
                                               ]))
     sim.operations.add(mstuner)
 
@@ -385,13 +393,26 @@ def run_nvt_mc_sim(job):
     import hoomd
 
     # simulation
-    dev = hoomd.device.CPU()
+    device = hoomd.device.CPU(msg_file=job.fn('run_nvt_mc_sim.log'))
     initial_state = job.fn('initial_state.gsd')
     sim_mode = 'nvt_mc'
-    sim = make_mc_simulation(job, dev, initial_state, sim_mode)
+    sim = make_mc_simulation(job, device, initial_state, sim_mode)
+
+    # equilibrate
+    device.notice('Equilibrating...')
+    sim.run(RANDOMIZE_STEPS)
+    sim.run(RANDOMIZE_STEPS)
+    device.notice('Done.')
+
+    # Print acceptance ratio
+    translate_moves = sim.operations.integrator.translate_moves
+    translate_acceptance = translate_moves[0] / sum(translate_moves)
+    device.notice(f'Translate move acceptance: {translate_acceptance}')
 
     # run
+    device.notice('Running...')
     sim.run(RUN_STEPS)
+    device.notice('Done.')
 
     job.document['nvt_mc_complete'] = True
 
@@ -406,7 +427,7 @@ def run_npt_mc_sim(job):
     from custom_actions import ComputeDensity
 
     # device
-    dev = hoomd.device.CPU()
+    device = hoomd.device.CPU(msg_file=job.fn('run_npt_mc_sim.log'))
     initial_state = job.fn('initial_state.gsd')
     sim_mode = 'npt_mc'
 
@@ -421,7 +442,7 @@ def run_npt_mc_sim(job):
 
     # simulation
     sim = make_mc_simulation(job,
-                             dev,
+                             device,
                              initial_state,
                              sim_mode,
                              extra_loggables=[compute_density, boxmc])
@@ -431,14 +452,31 @@ def run_npt_mc_sim(job):
     boxmc_tuner = hpmc.tune.BoxMCMoveSize.scale_solver(
         trigger=hoomd.trigger.And(
             [hoomd.trigger.Periodic(200),
-             hoomd.trigger.Before(100000)]),
+             hoomd.trigger.Before(int(RANDOMIZE_STEPS))]),
         boxmc=boxmc,
         moves=['volume'],
         target=0.5)
     sim.operations.add(boxmc_tuner)
 
+    # equilibrate
+    device.notice('Equilibrating...')
+    sim.run(RANDOMIZE_STEPS)
+    sim.run(RANDOMIZE_STEPS)
+    device.notice('Done.')
+
+    # Print acceptance ratio
+    translate_moves = sim.operations.integrator.translate_moves
+    translate_acceptance = translate_moves[0] / sum(translate_moves)
+    device.notice(f'Translate move acceptance: {translate_acceptance}')
+
+    volume_moves = boxmc.volume_moves
+    volume_acceptance = volume_moves[0] / sum(volume_moves)
+    device.notice(f'Volume move acceptance: {volume_acceptance}')
+
     # run
+    device.notice('Running...')
     sim.run(RUN_STEPS)
+    device.notice('Done.')
 
     job.document['npt_mc_complete'] = True
 
