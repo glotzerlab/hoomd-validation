@@ -375,9 +375,10 @@ def make_mc_simulation(job,
     # move size tuner
     mstuner = hpmc.tune.MoveSize.scale_solver(moves=['d'],
                                               target=0.2,
+                                              max_translation_move=0.5,
                                               trigger=hoomd.trigger.And([
                                                   hoomd.trigger.Periodic(100),
-                                                  hoomd.trigger.Before(int(RANDOMIZE_STEPS))
+                                                  hoomd.trigger.Before(sim.timestep + int(RANDOMIZE_STEPS))
                                               ]))
     sim.operations.add(mstuner)
 
@@ -408,6 +409,7 @@ def run_nvt_mc_sim(job):
     translate_moves = sim.operations.integrator.translate_moves
     translate_acceptance = translate_moves[0] / sum(translate_moves)
     device.notice(f'Translate move acceptance: {translate_acceptance}')
+    device.notice(f'Trial move size: {sim.operations.integrator.d["A"]}')
 
     # run
     device.notice('Running...')
@@ -452,7 +454,7 @@ def run_npt_mc_sim(job):
     boxmc_tuner = hpmc.tune.BoxMCMoveSize.scale_solver(
         trigger=hoomd.trigger.And(
             [hoomd.trigger.Periodic(200),
-             hoomd.trigger.Before(int(RANDOMIZE_STEPS))]),
+             hoomd.trigger.Before(sim.timestep + int(RANDOMIZE_STEPS))]),
         boxmc=boxmc,
         moves=['volume'],
         target=0.5)
@@ -468,10 +470,12 @@ def run_npt_mc_sim(job):
     translate_moves = sim.operations.integrator.translate_moves
     translate_acceptance = translate_moves[0] / sum(translate_moves)
     device.notice(f'Translate move acceptance: {translate_acceptance}')
+    device.notice(f'Trial move size: {sim.operations.integrator.d["A"]}')
 
     volume_moves = boxmc.volume_moves
     volume_acceptance = volume_moves[0] / sum(volume_moves)
     device.notice(f'Volume move acceptance: {volume_acceptance}')
+    device.notice(f'Volume move size: {boxmc.volume["delta"]}')
 
     # run
     device.notice('Running...')
