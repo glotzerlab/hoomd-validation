@@ -9,10 +9,10 @@ from project_classes import LJFluid
 from flow import aggregator
 
 # Run parameters shared between simulations
-RANDOMIZE_STEPS = 1e5
-RUN_STEPS = 2e6
+RANDOMIZE_STEPS = 2e5
+RUN_STEPS = 4e6
 WRITE_PERIOD = 1000
-LOG_PERIOD = {'trajectory': 50000, 'quantities': 125}
+LOG_PERIOD = {'trajectory': 50000, 'quantities': 1000}
 FRAMES_ANALYZE = int(RUN_STEPS / LOG_PERIOD['quantities'] * 2/3)
 LJ_PARAMS = {'epsilon': 1.0, 'sigma': 1.0, 'r_on': 2.0, 'r_cut': 2.5}
 
@@ -301,7 +301,7 @@ def make_mc_simulation(job,
 
     # integrator
     mc = hpmc.integrate.Sphere(nselect=1)
-    mc.shape[('A', 'A')] = dict(diameter=0.0)
+    mc.shape['A'] = dict(diameter=0.0)
 
     # pair potential
     epsilon = LJ_PARAMS['epsilon'] / job.sp.kT  # noqa F841
