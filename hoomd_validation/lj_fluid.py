@@ -9,7 +9,7 @@ from project_classes import LJFluid
 from flow import aggregator
 
 # Run parameters shared between simulations
-RANDOMIZE_STEPS = 1e5
+RANDOMIZE_STEPS = 2e5
 RUN_STEPS = 4e6
 WRITE_PERIOD = 1000
 LOG_PERIOD = {'trajectory': 50000, 'quantities': 1000}
@@ -147,7 +147,7 @@ def make_md_simulation(job,
     lj.mode = 'xplor'
 
     # integrator
-    integrator = md.Integrator(dt=0.0025, methods=[method], forces=[lj])
+    integrator = md.Integrator(dt=0.001953125, methods=[method], forces=[lj])
 
     # compute thermo
     thermo = md.compute.ThermodynamicQuantities(hoomd.filter.All())
