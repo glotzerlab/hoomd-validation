@@ -39,7 +39,7 @@ class LJFluid(ValidationTestProject):
         list_sps = []
         num_particles = 12**3
         replicate_indices = range(8)
-        params_list = [(1.5, 0.6, 1.0269012977149137), (1.0, 0.8, 1.436546654584811), (1.25, 0.05, 0.053672588738181606)]
+        params_list = [(1.5, 0.6, 1.02691109326633), (1.0, 0.8, 1.43578269551893), (1.25, 0.05, 0.05366571224626898)]
         for kT, density, pressure in params_list:
             for idx in replicate_indices:
                 list_sps.append({
