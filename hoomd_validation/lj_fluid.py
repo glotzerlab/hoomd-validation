@@ -9,11 +9,11 @@ from project_classes import LJFluid
 from flow import aggregator
 
 # Run parameters shared between simulations
-RANDOMIZE_STEPS = 2e5
-RUN_STEPS = 8e6
-WRITE_PERIOD = 1000
-LOG_PERIOD = {'trajectory': 50000, 'quantities': 500}
-FRAMES_ANALYZE = int(RUN_STEPS / LOG_PERIOD['quantities'] * 2/3)
+RANDOMIZE_STEPS = 5e4
+RUN_STEPS = 5e5
+WRITE_PERIOD = 4000
+LOG_PERIOD = {'trajectory': 50000, 'quantities': 2000}
+FRAMES_ANALYZE = int(RUN_STEPS / LOG_PERIOD['quantities'] * 1/2)
 LJ_PARAMS = {'epsilon': 1.0, 'sigma': 1.0, 'r_on': 2.0, 'r_cut': 2.5}
 
 
@@ -320,22 +320,25 @@ def make_mc_simulation(job,
     # the potential will have xplor smoothing with r_on=2
     lj_str = """// standard lj energy with sigma set to 1
                 float rsq = dot(r_ij, r_ij);
-                float sigma = {sigma:.15f};
+                float r_cut = {r_cut};
+                float r_cutsq = r_cut * r_cut;
+
+                if (rsq >= r_cutsq)
+                    return 0.0f;
+
+                float sigma = {sigma};
                 float sigsq = sigma * sigma;
                 float rsqinv = sigsq / rsq;
                 float r6inv = rsqinv * rsqinv * rsqinv;
                 float r12inv = r6inv * r6inv;
-                float energy = 4 * {epsilon:.15f} * (r12inv - r6inv);
+                float energy = 4 * {epsilon} * (r12inv - r6inv);
 
                 // apply xplor smoothing
-                float r_on = {r_on:.15f};
-                float r_cut = {r_cut:.15f};
-                float r = sqrtf(rsq);
-                if (r > r_on && r <= r_cut)
+                float r_on = {r_on};
+                float r_onsq = r_on * r_on;
+                if (rsq > r_onsq)
                 {{
                     // computing denominator for the shifting factor
-                    float r_onsq = r_on * r_on;
-                    float r_cutsq = r_cut * r_cut;
                     float diff = r_cutsq - r_onsq;
                     float denom = diff * diff * diff;
 

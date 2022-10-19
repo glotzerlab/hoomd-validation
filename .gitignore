@@ -1,5 +1,6 @@
 AllValidationTests
 LJFluid
 
-hoomd_validation/*.out
+*.out
+hoomd_validation/__pycache__
 hoomd_validation/config.json
