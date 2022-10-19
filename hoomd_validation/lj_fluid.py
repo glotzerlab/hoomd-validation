@@ -643,78 +643,89 @@ def analyze(job):
 
     job.document['analysis_complete'] = True
 
-# def all_sims_analyzed(*jobs):
-#     """Make sure all sims have values for potential energy computed.
+def all_sims_analyzed(*jobs):
+    """Check that all simulations have been analyzed."""
+    for job in jobs:
+        if 'analysis_complete' not in job.document or not job.document['analysis_complete']:
+            return False
+    return True
 
-#     Implicit here is the nvt_md sim, whose analysis is a precondition for
-#     running the other modes of simulation.
-#     """
-#     for job in jobs:
-#         if job.doc.npt_mc.potential_energy is None or \
-#             job.doc.npt_md.potential_energy is None or \
-#                 job.doc.nvt_mc.potential_energy is None or \
-#                   job.doc.langevin_md.potential_energy is None:
-#             return False
-#     return True
+@aggregator.groupby(['kT', 'density', 'num_particles'])
+@LJFluid.operation.with_directives(
+    directives=dict(executable=CONFIG["executable"]))
+@LJFluid.pre(all_sims_analyzed)
+def compare_modes(*jobs):
+    """Compares the pressures, densities, and energies of the tested simulation modes."""
+    import numpy
+    import matplotlib, matplotlib.style, matplotlib.figure
+    import scipy.stats
+    matplotlib.style.use('ggplot')
 
+    sim_modes = ['langevin_md', 'nvt_md', 'npt_md', 'nvt_mc', 'npt_mc']
+    quantity_names = ['density', 'pressure', 'potential_energy']
 
-# @aggregator.groupby(['kT', 'density'])
-# @LJFluid.operation.with_directives(
-#     directives=dict(executable=CONFIG["executable"]))
-# @LJFluid.pre(all_sims_analyzed)
-# def analyze_potential_energies(*jobs):
-#     """Plot standard error of the mean of the potential energies.
+    # grab the common statepoint parameters
+    kT = jobs[0].sp.kT
+    set_density = jobs[0].sp.density
+    set_pressure = jobs[0].sp.pressure
+    num_particles = jobs[0].sp.num_particles
 
-#     This will average the potential energy value reported in the replicates.
-#     """
-#     import matplotlib.pyplot as plt
+    quantity_reference = dict(density=set_density, pressure=set_pressure, potential_energy=None)
 
-#     # grab the common statepoint parameters
-#     kT = jobs[0].sp.kT
-#     density = jobs[0].sp.density
-#     num_particles = jobs[0].sp.num_particles
+    fig = matplotlib.figure.Figure(figsize=(8, 8/1.618*3), layout='tight')
+    fig.suptitle(f"$kT={kT}$, $\\rho={set_density}$, $N={num_particles}$")
 
-#     simulation_modes = ['langevin_md', 'nvt_md', 'npt_md', 'nvt_mc', 'npt_mc']
+    for i, quantity_name in enumerate(quantity_names):
+        ax = fig.add_subplot(3, 1, i+1)
 
-#     # organize data from jobs
-#     energies = {mode: [] for mode in simulation_modes}
-#     for jb in jobs:
-#         for sim_mode in simulation_modes:
-#             energies[sim_mode].append(
-#                 getattr(getattr(jb.doc, sim_mode), 'potential_energy'))
+        # organize data from jobs
+        quantities = {mode: [] for mode in sim_modes}
+        for jb in jobs:
+            for mode in sim_modes:
+                quantities[mode].append(
+                    getattr(getattr(jb.doc, mode), quantity_name))
 
-#     # compute stats with data
-#     avg_energy_pp = {
-#         sim_mode: np.mean(energies[sim_mode]) / num_particles
-#         for sim_mode in simulation_modes
-#     }
-#     stderr_energy_pp = {
-#         sim_mode: 2 * np.std(energies[sim_mode])
-#         / np.sqrt(len(energies[sim_mode])) / num_particles
-#         for sim_mode in simulation_modes
-#     }
+        # compute stats with data
+        avg_quantity = {
+            mode: numpy.mean(quantities[mode])
+            for mode in sim_modes
+        }
+        stderr_quantity = {
+            mode: 2 * numpy.std(quantities[mode])
+            / numpy.sqrt(len(quantities[mode]))
+            for mode in sim_modes
+        }
 
-#     # compute the energy differences
-#     egy_pp_list = [avg_energy_pp[mode] for mode in simulation_modes]
-#     stderr_pp_list = [stderr_energy_pp[mode] for mode in simulation_modes]
-#     avg_across_modes = np.mean(egy_pp_list)
-#     egy_diff_list = np.array(egy_pp_list) - avg_across_modes
+        # compute the energy differences
+        quantity_list = [avg_quantity[mode] for mode in sim_modes]
+        stderr_list = numpy.array([stderr_quantity[mode] for mode in sim_modes])
 
-#     # make plot
-#     plt.bar(range(len(simulation_modes)),
-#             height=egy_diff_list,
-#             yerr=stderr_pp_list,
-#             alpha=0.5,
-#             ecolor='black',
-#             capsize=10)
-#     plt.xticks(range(len(simulation_modes)), simulation_modes)
-#     plt.title(f"$kT={kT}$, $\\rho={density}$, $N={num_particles}$")
-#     plt.ylabel("$(U - <U>) / N$")
-#     plt.savefig(f'potential_energies_kT{kT}_density{density}.png',
-#                 bbox_inches='tight')
-#     plt.show()
-#     plt.close()
+        if quantity_reference[quantity_name] is not None:
+            reference = quantity_reference[quantity_name]
+        else:
+            reference = numpy.mean(quantity_list)
 
+        quantity_diff_list = numpy.array(quantity_list) - reference
+
+        ax.errorbar(x=range(len(sim_modes)), y=quantity_diff_list / reference / 1e-3, yerr=stderr_list / reference / 1e-3, fmt='s')
+        ax.set_xticks(range(len(sim_modes)), sim_modes)
+        ax.set_ylabel(quantity_name + ' relative error / 1e-3')
+        ax.hlines(y=0, xmin=0, xmax=len(sim_modes)-1, linestyles='dashed', colors='k')
+
+        # Remove nan values, then run ANOVA test
+        if quantity_name == 'pressure' and 'nvt_mc' in quantities:
+            del quantities['nvt_mc']
+        unpacked_quantities = list(quantities.values())
+        f, p = scipy.stats.f_oneway(*unpacked_quantities)
+
+        if p > 0.05:
+            result = "$\\checkmark$"
+        else:
+            result = "XX"
+
+        ax.set_title(label=result + f' ANOVA p-value: {p:0.3f}')
+
+        fig.savefig(f'compare_kT{kT}_density{round(set_density, 2)}.svg', bbox_inches='tight')
 
 if __name__ == "__main__":
     LJFluid.get_project(test_project_dict["LJFluid"].path).main()
