@@ -3,37 +3,33 @@
 
 """Helper functions for grabbing data and plotting."""
 
-import numpy as np
-import matplotlib.pyplot as plt
+import copy
+import numpy
 
 
-def get_log_quantity(traj, quantity):
-    """Get logged values from a gsd trajectory.
+def read_gsd_log_trajectory(traj):
+    """Read the log values from a GSD trajectory.
 
     Args:
         traj (`gsd.hoomd.Trajectory`): trajectory to read data from
-        quantity (str): name of the quantity to read
+
+    Reading GSD file is expensive, call `read_gsd_log_trajectory` once, then call
+    `get_log_quantity` multiple times to extract individual log quantities.
     """
-    qty_values = np.zeros(len(traj))
-    for i, frame in enumerate(traj):
-        if len(frame.log[quantity] == 1):
-            qty_values[i] = frame.log[quantity][0]
-        else:
-            qty_values[i] = frame.log[quantity]
-    return qty_values
+    return [copy.copy(frame.log) for frame in traj]
 
 
-def plot_quantity(data, savename, title, ylabel):
-    """Plot a quantity using matplotlib.
+def get_log_quantity(log_traj, quantity):
+    """Get logged values from the return value of `read_gsd_log_trajectory`.
 
     Args:
-        data (:math:`(N, )` `np.ndarray`): One dimensional data to plot.
-        savename (str): File path for saving the plot.
-        title (str): Title for the plot.
-        ylabel (str): Y axis label for the plot.
+        log_traj: trajectory to read data from
+        quantity (str): name of the quantity to read
     """
-    plt.plot(data)
-    plt.title(title)
-    plt.ylabel(ylabel)
-    plt.savefig(savename, bbox_inches='tight')
-    plt.close()
+    if len(log_traj[0][quantity]) == 1:
+        qty_values = [frame[quantity][0] for frame in log_traj]
+    else:
+        qty_values = [frame[quantity] for frame in log_traj]
+
+    return numpy.array(qty_values)
+

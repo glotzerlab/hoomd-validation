@@ -3,7 +3,6 @@
 
 """Lennard Jones phase behavior validation test."""
 
-import numpy as np
 from config import test_project_dict, CONFIG
 from project_classes import LJFluid
 from flow import aggregator
@@ -23,6 +22,7 @@ LJ_PARAMS = {'epsilon': 1.0, 'sigma': 1.0, 'r_on': 2.0, 'r_cut': 2.5}
 def create_initial_state(job):
     """Create initial system configuration."""
     import hoomd
+    import numpy
     import itertools
 
     sp = job.sp
@@ -31,8 +31,8 @@ def create_initial_state(job):
     box_volume = sp["num_particles"] / sp["density"]
     L = box_volume**(1 / 3.)
 
-    N = int(np.ceil(sp["num_particles"]**(1. / 3.)))
-    x = np.linspace(-L / 2, L / 2, N, endpoint=False)
+    N = int(numpy.ceil(sp["num_particles"]**(1. / 3.)))
+    x = numpy.linspace(-L / 2, L / 2, N, endpoint=False)
 
     if x[1] - x[0] < 1.0:
         raise RuntimeError('density too high to initialize on cubic lattice')
@@ -486,6 +486,162 @@ def run_npt_mc_sim(job):
     device.notice('Done.')
 
     job.document['npt_mc_complete'] = True
+
+
+@LJFluid.operation(directives=dict(
+    walltime=1, executable=CONFIG["executable"], nranks=1))
+@LJFluid.pre.after(run_langevin_md_sim)
+@LJFluid.pre.after(run_nvt_md_sim)
+@LJFluid.pre.after(run_npt_md_sim)
+@LJFluid.pre.after(run_nvt_mc_sim)
+@LJFluid.pre.after(run_npt_mc_sim)
+@LJFluid.post.true('analysis_complete')
+def analyze(job):
+    """Analyze the output of all simulation modes."""
+    import gsd.hoomd
+    import numpy
+    import math
+    import matplotlib, matplotlib.style, matplotlib.figure
+    matplotlib.style.use('ggplot')
+    from plotting import read_gsd_log_trajectory, get_log_quantity
+
+    constant = dict(langevin_md='density', nvt_md='density', nvt_mc='density', npt_md='pressure', npt_mc='pressure')
+    sim_modes = ['langevin_md', 'nvt_md', 'npt_md', 'nvt_mc', 'npt_mc']
+
+    energies = {}
+    pressures = {}
+    densities = {}
+    linear_momentum = {}
+    kinetic_temperature = {}
+
+    for sim_mode in sim_modes:
+        traj = gsd.hoomd.open(job.fn(sim_mode + '_quantities.gsd'))
+
+        # read GSD file once
+        traj = read_gsd_log_trajectory(traj)
+
+        if sim_mode.endswith('md'):
+            energies[sim_mode] = get_log_quantity(
+                traj, 'md/compute/ThermodynamicQuantities/potential_energy')
+        else:
+            energies[sim_mode] = numpy.array(get_log_quantity(
+                traj, 'hpmc/pair/user/CPPPotential/energy')) * job.statepoint.kT
+
+        if constant[sim_mode] == 'density' and sim_mode.endswith('md'):
+            pressures[sim_mode] = get_log_quantity(traj,
+                                     'md/compute/ThermodynamicQuantities/pressure')
+        elif constant[sim_mode] == 'density' and sim_mode.endswith('mc'):
+            pressures[sim_mode] = numpy.full(len(energies[sim_mode]), numpy.nan)
+        else:
+            pressures[sim_mode] = numpy.ones(len(energies[sim_mode])) * job.statepoint.pressure
+
+        if constant[sim_mode] == 'pressure':
+            densities[sim_mode] = get_log_quantity(traj, 'custom_actions/ComputeDensity/density')
+        else:
+            densities[sim_mode] = numpy.ones(len(energies[sim_mode])) * job.statepoint.density
+
+        if sim_mode.endswith('md') and not sim_mode.startswith('langevin'):
+            momentum_vector = get_log_quantity(traj, 'md/Integrator/linear_momentum')
+            linear_momentum[sim_mode] = [math.sqrt(v[0]**2 + v[1]**2 + v[2]**2) for v in momentum_vector]
+        else:
+            linear_momentum[sim_mode] = numpy.zeros(len(energies[sim_mode]))
+
+        if sim_mode.endswith('md'):
+            kinetic_temperature[sim_mode] = get_log_quantity(traj, 'md/compute/ThermodynamicQuantities/kinetic_temperature')
+        else:
+            kinetic_temperature[sim_mode] = numpy.ones(len(energies[sim_mode])) * job.statepoint.kT
+
+    # save averages
+    for mode in sim_modes:
+        job.document[mode] = dict(pressure = float(numpy.mean(pressures[mode][-FRAMES_ANALYZE:])),
+                                  potential_energy = float(numpy.mean(energies[mode][-FRAMES_ANALYZE:])),
+                                  density = float(numpy.mean(densities[mode][-FRAMES_ANALYZE:])))
+
+    # Plot results
+    fig = matplotlib.figure.Figure(figsize=(20, 20/3.24 * 2), layout='tight')
+    ax = fig.add_subplot(3, 2, 1)
+
+    for mode in sim_modes:
+        ax.plot(densities[mode], label=mode)
+        ax.set_xlabel('frame')
+        ax.set_ylabel(r'$\rho$')
+        ax.legend()
+
+    ax.hlines(y=job.statepoint.density, xmin=0, xmax=len(densities[sim_modes[0]]), linestyles='dashed', colors='k')
+
+    ax = fig.add_subplot(3, 2, 2)
+    for mode in sim_modes:
+        ax.plot(pressures[mode], label=mode)
+        ax.set_xlabel('frame')
+        ax.set_ylabel('$P$')
+
+    ax.hlines(y=job.statepoint.pressure, xmin=0, xmax=len(densities[sim_modes[0]]), linestyles='dashed', colors='k')
+
+    ax = fig.add_subplot(3, 2, 3)
+    for mode in sim_modes:
+        ax.plot(numpy.array(energies[mode]) / job.statepoint.num_particles, label=mode)
+        ax.set_xlabel('frame')
+        ax.set_ylabel('$U / N$')
+
+    ax = fig.add_subplot(3, 2, 4)
+    for mode in sim_modes:
+        ax.plot(kinetic_temperature[mode], label=mode)
+        ax.set_xlabel('frame')
+        ax.set_ylabel('kinetic temperature')
+
+    ax.hlines(y=job.statepoint.kT, xmin=0, xmax=len(densities[sim_modes[0]]), linestyles='dashed', colors='k')
+
+    ax = fig.add_subplot(3, 2, 5)
+    for mode in sim_modes:
+        ax.plot(numpy.array(linear_momentum[mode]) / job.statepoint.num_particles, label=mode)
+        ax.set_xlabel('frame')
+        ax.set_ylabel(r'$|\vec{p}| / N$')
+
+    # determine range for density and pressure histograms
+    density_range = [numpy.min(densities[sim_modes[0]][-FRAMES_ANALYZE:]), numpy.max(densities[sim_modes[0]][-FRAMES_ANALYZE:])]
+    pressure_range = [numpy.min(pressures[sim_modes[0]][-FRAMES_ANALYZE:]), numpy.max(pressures[sim_modes[0]][-FRAMES_ANALYZE:])]
+
+    for mode in sim_modes[1:]:
+        density_range[0] = min(density_range[0], numpy.min(densities[mode][-FRAMES_ANALYZE:]))
+        density_range[1] = max(density_range[1], numpy.max(densities[mode][-FRAMES_ANALYZE:]))
+        pressure_range[0] = min(pressure_range[0], numpy.min(pressures[mode][-FRAMES_ANALYZE:]))
+        pressure_range[1] = max(pressure_range[1], numpy.max(pressures[mode][-FRAMES_ANALYZE:]))
+
+    ax = fig.add_subplot(3, 4, 11)
+    max_density_histogram = 0
+    for mode in sim_modes:
+        density_histogram, bin_edges = numpy.histogram(densities[mode][-FRAMES_ANALYZE:], bins=100, range=density_range)
+        if constant[mode] == 'density':
+            density_histogram[:] = 0
+
+        max_density_histogram = max(max_density_histogram, numpy.max(density_histogram))
+
+        ax.plot(bin_edges[:-1], density_histogram, label=mode)
+        ax.set_xlabel(r'$\rho$')
+        ax.set_ylabel('frequency')
+
+    ax.vlines(x=job.statepoint.density, ymin=0, ymax=max_density_histogram, linestyles='dashed', colors='k')
+
+    ax = fig.add_subplot(3, 4, 12)
+    max_pressure_histogram = 0
+    for mode in sim_modes:
+        pressure_histogram, bin_edges = numpy.histogram(pressures[mode][-FRAMES_ANALYZE:], bins=100, range=pressure_range)
+        if constant[mode] == 'pressure':
+            pressure_histogram[:] = 0
+
+        max_pressure_histogram = max(max_pressure_histogram, numpy.max(pressure_histogram))
+
+        ax.plot(bin_edges[:-1], pressure_histogram, label=mode)
+        ax.set_xlabel(r'$P$')
+        ax.set_ylabel('frequency')
+
+    ax.vlines(x=job.statepoint.pressure, ymin=0, ymax=max_pressure_histogram, linestyles='dashed', colors='k')
+
+    fig.suptitle(f"$kT={job.statepoint.kT}$, $\\rho={job.statepoint.density}$, $N={job.statepoint.num_particles}$, replicate={job.statepoint.replicate_idx}")
+    fig.savefig(job.fn('plots.svg'),
+                bbox_inches='tight')
+
+    job.document['analysis_complete'] = True
 
 # def all_sims_analyzed(*jobs):
 #     """Make sure all sims have values for potential energy computed.
