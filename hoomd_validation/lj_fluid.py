@@ -84,6 +84,10 @@ def make_simulation(job, device, initial_state, integrator, sim_mode, logger):
     """
     import hoomd
 
+    suffix = 'cpu'
+    if isinstance(device, hoomd.device.GPU):
+        suffix = 'gpu'
+
     sim = hoomd.Simulation(device)
     sim.seed = job.statepoint.replicate_idx
     sim.create_state_from_gsd(initial_state)
@@ -99,7 +103,7 @@ def make_simulation(job, device, initial_state, integrator, sim_mode, logger):
 
     # write particle trajectory to gsd file
     trajectory_writer = hoomd.write.GSD(
-        filename=job.fn(f"{sim_mode}_trajectory.gsd"),
+        filename=job.fn(f"{sim_mode}_{suffix}_trajectory.gsd"),
         trigger=hoomd.trigger.Periodic(LOG_PERIOD['trajectory']),
         mode='wb')
     sim.operations.add(trajectory_writer)
@@ -107,7 +111,7 @@ def make_simulation(job, device, initial_state, integrator, sim_mode, logger):
     # write logged quantities to gsd file
     quantity_writer = hoomd.write.GSD(
         filter=hoomd.filter.Null(),
-        filename=job.fn(f"{sim_mode}_quantities.gsd"),
+        filename=job.fn(f"{sim_mode}_{suffix}_quantities.gsd"),
         trigger=hoomd.trigger.Periodic(LOG_PERIOD['quantities']),
         mode='wb',
         log=logger)
@@ -175,16 +179,12 @@ def make_md_simulation(job,
 
     return sim
 
-@LJFluid.operation(directives=dict(
-    walltime=48, executable=CONFIG["executable"], nranks=8))
-@LJFluid.pre.after(create_initial_state)
-@LJFluid.post.true('langevin_md_complete')
-def run_langevin_md_sim(job):
+
+def run_langevin_md_sim(job, device):
     """Run the MD simulation in Langevin."""
     import hoomd
     from hoomd import md
 
-    device = hoomd.device.CPU(msg_file=job.fn('run_langevin_md_sim.log'))
     initial_state = job.fn('initial_state.gsd')
     langevin = md.methods.Langevin(hoomd.filter.All(), kT=job.sp.kT)
     langevin.gamma.default = 1.0
@@ -203,19 +203,36 @@ def run_langevin_md_sim(job):
     sim.run(RUN_STEPS)
     device.notice('Done.')
 
-    job.document['langevin_md_complete'] = True
+
+@LJFluid.operation(directives=dict(
+    walltime=2, executable=CONFIG["executable"], nranks=8))
+@LJFluid.pre.after(create_initial_state)
+@LJFluid.post.true('langevin_md_cpu_complete')
+def langevin_md_cpu(job):
+    """Run Langevin MD on the CPU."""
+    import hoomd
+    device = hoomd.device.CPU(msg_file=job.fn('run_langevin_md_cpu.log'))
+    run_langevin_md_sim(job, device)
+    job.document['langevin_md_cpu_complete'] = True
 
 
 @LJFluid.operation(directives=dict(
-    walltime=48, executable=CONFIG["executable"], nranks=8))
+    walltime=2, executable=CONFIG["executable"], nranks=1, ngpu=1))
 @LJFluid.pre.after(create_initial_state)
-@LJFluid.post.true('nvt_md_complete')
-def run_nvt_md_sim(job):
+@LJFluid.post.true('langevin_md_gpu_complete')
+def langevin_md_gpu(job):
+    """Run Langevin MD on the GPU."""
+    import hoomd
+    device = hoomd.device.GPU(msg_file=job.fn('run_langevin_md_gpu.log'))
+    run_langevin_md_sim(job, device)
+    job.document['langevin_md_gpu_complete'] = True
+
+
+def run_nvt_md_sim(job, device):
     """Run the MD simulation in NVT."""
     import hoomd
     from hoomd import md
 
-    device = hoomd.device.CPU(msg_file=job.fn('run_nvt_md_sim.log'))
     initial_state = job.fn('initial_state.gsd')
     nvt = md.methods.NVT(hoomd.filter.All(), kT=job.sp.kT, tau=0.25)
     sim_mode = 'nvt_md'
@@ -236,19 +253,37 @@ def run_nvt_md_sim(job):
     sim.run(RUN_STEPS)
     device.notice('Done.')
 
-    job.document['nvt_md_complete'] = True
 
 @LJFluid.operation(directives=dict(
-    walltime=48, executable=CONFIG["executable"], nranks=8))
+    walltime=2, executable=CONFIG["executable"], nranks=8))
 @LJFluid.pre.after(create_initial_state)
-@LJFluid.post.true('npt_md_complete')
-def run_npt_md_sim(job):
+@LJFluid.post.true('nvt_md_cpu_complete')
+def nvt_md_cpu(job):
+    """Run NVT MD on the CPU."""
+    import hoomd
+    device = hoomd.device.CPU(msg_file=job.fn('run_nvt_md_cpu.log'))
+    run_nvt_md_sim(job, device)
+    job.document['nvt_md_cpu_complete'] = True
+
+
+@LJFluid.operation(directives=dict(
+    walltime=2, executable=CONFIG["executable"], nranks=1, ngpu=1))
+@LJFluid.pre.after(create_initial_state)
+@LJFluid.post.true('nvt_md_gpu_complete')
+def nvt_md_gpu(job):
+    """Run NVT MD on the GPU."""
+    import hoomd
+    device = hoomd.device.GPU(msg_file=job.fn('run_nvt_md_gpu.log'))
+    run_nvt_md_sim(job, device)
+    job.document['nvt_md_gpu_complete'] = True
+
+
+def run_npt_md_sim(job, device):
     """Run an NPT simulation at the pressure computed by the NVT simulation."""
     import hoomd
     from hoomd import md
     from custom_actions import ComputeDensity
 
-    device = hoomd.device.CPU(msg_file=job.fn('run_npt_md_sim.log'))
     initial_state = job.fn('initial_state.gsd')
     p = job.statepoint.pressure
     nvt = md.methods.NVT(hoomd.filter.All(), kT=job.sp.kT, tau=0.25)
@@ -286,7 +321,29 @@ def run_npt_md_sim(job):
     sim.run(RUN_STEPS)
     device.notice('Done.')
 
-    job.document['npt_md_complete'] = True
+
+@LJFluid.operation(directives=dict(
+    walltime=2, executable=CONFIG["executable"], nranks=8))
+@LJFluid.pre.after(create_initial_state)
+@LJFluid.post.true('npt_md_cpu_complete')
+def npt_md_cpu(job):
+    """Run NPT MD on the CPU."""
+    import hoomd
+    device = hoomd.device.CPU(msg_file=job.fn('run_npt_md_cpu.log'))
+    run_npt_md_sim(job, device)
+    job.document['npt_md_cpu_complete'] = True
+
+
+@LJFluid.operation(directives=dict(
+    walltime=2, executable=CONFIG["executable"], nranks=1, ngpu=1))
+@LJFluid.pre.after(create_initial_state)
+@LJFluid.post.true('npt_md_gpu_complete')
+def npt_md_gpu(job):
+    """Run NPT MD on the GPU."""
+    import hoomd
+    device = hoomd.device.GPU(msg_file=job.fn('run_npt_md_gpu.log'))
+    run_npt_md_sim(job, device)
+    job.document['npt_md_gpu_complete'] = True
 
 
 def make_mc_simulation(job,
@@ -389,16 +446,11 @@ def make_mc_simulation(job,
     return sim
 
 
-@LJFluid.operation(directives=dict(
-    walltime=48, executable=CONFIG["executable"], nranks=8))
-@LJFluid.pre.after(create_initial_state)
-@LJFluid.post.true('nvt_mc_complete')
-def run_nvt_mc_sim(job):
+def run_nvt_mc_sim(job, device):
     """Run MC sim in NVT."""
     import hoomd
 
     # simulation
-    device = hoomd.device.CPU(msg_file=job.fn('run_nvt_mc_sim.log'))
     initial_state = job.fn('initial_state.gsd')
     sim_mode = 'nvt_mc'
     sim = make_mc_simulation(job, device, initial_state, sim_mode)
@@ -420,20 +472,38 @@ def run_nvt_mc_sim(job):
     sim.run(RUN_STEPS)
     device.notice('Done.')
 
-    job.document['nvt_mc_complete'] = True
 
 @LJFluid.operation(directives=dict(
-    walltime=48, executable=CONFIG["executable"], nranks=8))
+    walltime=2, executable=CONFIG["executable"], nranks=8))
 @LJFluid.pre.after(create_initial_state)
-@LJFluid.post.true('npt_mc_complete')
-def run_npt_mc_sim(job):
+@LJFluid.post.true('nvt_mc_cpu_complete')
+def nvt_mc_cpu(job):
+    """Run NVT MC on the CPU."""
+    import hoomd
+    device = hoomd.device.CPU(msg_file=job.fn('run_nvt_mc_cpu.log'))
+    run_nvt_mc_sim(job, device)
+    job.document['nvt_mc_cpu_complete'] = True
+
+
+@LJFluid.operation(directives=dict(
+    walltime=2, executable=CONFIG["executable"], nranks=1, ngpu=1))
+@LJFluid.pre.after(create_initial_state)
+@LJFluid.post.true('nvt_mc_gpu_complete')
+def nvt_mc_gpu(job):
+    """Run NVT MC on the GPU."""
+    import hoomd
+    device = hoomd.device.GPU(msg_file=job.fn('run_nvt_mc_gpu.log'))
+    run_nvt_mc_sim(job, device)
+    job.document['nvt_mc_gpu_complete'] = True
+
+
+def run_npt_mc_sim(job, device):
     """Run MC sim in NPT."""
     import hoomd
     from hoomd import hpmc
     from custom_actions import ComputeDensity
 
     # device
-    device = hoomd.device.CPU(msg_file=job.fn('run_npt_mc_sim.log'))
     initial_state = job.fn('initial_state.gsd')
     sim_mode = 'npt_mc'
 
@@ -486,16 +556,30 @@ def run_npt_mc_sim(job):
     sim.run(RUN_STEPS)
     device.notice('Done.')
 
-    job.document['npt_mc_complete'] = True
+
+@LJFluid.operation(directives=dict(
+    walltime=2, executable=CONFIG["executable"], nranks=8))
+@LJFluid.pre.after(create_initial_state)
+@LJFluid.post.true('npt_mc_cpu_complete')
+def npt_mc_cpu(job):
+    """Run NPT MC on the CPU."""
+    import hoomd
+    device = hoomd.device.CPU(msg_file=job.fn('run_npt_mc_cpu.log'))
+    run_npt_mc_sim(job, device)
+    job.document['npt_mc_cpu_complete'] = True
 
 
 @LJFluid.operation(directives=dict(
-    walltime=1, executable=CONFIG["executable"], nranks=1))
-@LJFluid.pre.after(run_langevin_md_sim)
-@LJFluid.pre.after(run_nvt_md_sim)
-@LJFluid.pre.after(run_npt_md_sim)
-@LJFluid.pre.after(run_nvt_mc_sim)
-@LJFluid.pre.after(run_npt_mc_sim)
+    walltime=1, executable=CONFIG["executable"]))
+@LJFluid.pre.after(langevin_md_cpu)
+@LJFluid.pre.after(langevin_md_gpu)
+@LJFluid.pre.after(nvt_md_cpu)
+@LJFluid.pre.after(nvt_md_gpu)
+@LJFluid.pre.after(npt_md_cpu)
+@LJFluid.pre.after(npt_md_gpu)
+@LJFluid.pre.after(nvt_mc_cpu)
+@LJFluid.pre.after(nvt_mc_gpu)
+@LJFluid.pre.after(npt_mc_cpu)
 @LJFluid.post.true('analysis_complete')
 def analyze(job):
     """Analyze the output of all simulation modes."""
@@ -506,8 +590,8 @@ def analyze(job):
     matplotlib.style.use('ggplot')
     from plotting import read_gsd_log_trajectory, get_log_quantity
 
-    constant = dict(langevin_md='density', nvt_md='density', nvt_mc='density', npt_md='pressure', npt_mc='pressure')
-    sim_modes = ['langevin_md', 'nvt_md', 'npt_md', 'nvt_mc', 'npt_mc']
+    constant = dict(langevin_md_cpu='density', langevin_md_gpu='density', nvt_md_cpu='density', nvt_md_gpu='density', nvt_mc_cpu='density', nvt_mc_gpu='density', npt_md_cpu='pressure', npt_md_gpu='pressure', npt_mc_cpu='pressure', npt_mc_gpu='pressure',)
+    sim_modes = ['langevin_md_cpu', 'langevin_md_gpu', 'nvt_md_cpu', 'nvt_md_gpu', 'npt_md_cpu', 'npt_md_gpu', 'nvt_mc_cpu', 'nvt_mc_gpu', 'npt_mc_cpu']
 
     energies = {}
     pressures = {}
@@ -521,17 +605,17 @@ def analyze(job):
         # read GSD file once
         traj = read_gsd_log_trajectory(traj)
 
-        if sim_mode.endswith('md'):
+        if 'md' in sim_mode:
             energies[sim_mode] = get_log_quantity(
                 traj, 'md/compute/ThermodynamicQuantities/potential_energy')
         else:
             energies[sim_mode] = numpy.array(get_log_quantity(
                 traj, 'hpmc/pair/user/CPPPotential/energy')) * job.statepoint.kT
 
-        if constant[sim_mode] == 'density' and sim_mode.endswith('md'):
+        if constant[sim_mode] == 'density' and 'md' in sim_mode:
             pressures[sim_mode] = get_log_quantity(traj,
                                      'md/compute/ThermodynamicQuantities/pressure')
-        elif constant[sim_mode] == 'density' and sim_mode.endswith('mc'):
+        elif constant[sim_mode] == 'density' and 'mc' in sim_mode:
             pressures[sim_mode] = numpy.full(len(energies[sim_mode]), numpy.nan)
         else:
             pressures[sim_mode] = numpy.ones(len(energies[sim_mode])) * job.statepoint.pressure
@@ -541,13 +625,13 @@ def analyze(job):
         else:
             densities[sim_mode] = numpy.ones(len(energies[sim_mode])) * job.statepoint.density
 
-        if sim_mode.endswith('md') and not sim_mode.startswith('langevin'):
+        if 'md' in sim_mode and not sim_mode.startswith('langevin'):
             momentum_vector = get_log_quantity(traj, 'md/Integrator/linear_momentum')
             linear_momentum[sim_mode] = [math.sqrt(v[0]**2 + v[1]**2 + v[2]**2) for v in momentum_vector]
         else:
             linear_momentum[sim_mode] = numpy.zeros(len(energies[sim_mode]))
 
-        if sim_mode.endswith('md'):
+        if 'md' in sim_mode:
             kinetic_temperature[sim_mode] = get_log_quantity(traj, 'md/compute/ThermodynamicQuantities/kinetic_temperature')
         else:
             kinetic_temperature[sim_mode] = numpy.ones(len(energies[sim_mode])) * job.statepoint.kT
@@ -664,7 +748,7 @@ def compare_modes(*jobs):
     import scipy.stats
     matplotlib.style.use('ggplot')
 
-    sim_modes = ['langevin_md', 'nvt_md', 'npt_md', 'nvt_mc', 'npt_mc']
+    sim_modes = ['langevin_md_cpu', 'langevin_md_gpu', 'nvt_md_cpu', 'nvt_md_gpu', 'npt_md_cpu', 'npt_md_gpu', 'nvt_mc_cpu', 'nvt_mc_gpu', 'npt_mc_cpu']
     quantity_names = ['density', 'pressure', 'potential_energy']
 
     # grab the common statepoint parameters
