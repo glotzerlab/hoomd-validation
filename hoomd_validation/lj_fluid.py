@@ -13,12 +13,11 @@ RANDOMIZE_STEPS = 5e4
 RUN_STEPS = 5e5
 WRITE_PERIOD = 4000
 LOG_PERIOD = {'trajectory': 50000, 'quantities': 2000}
-FRAMES_ANALYZE = int(RUN_STEPS / LOG_PERIOD['quantities'] * 1/2)
+FRAMES_ANALYZE = int(RUN_STEPS / LOG_PERIOD['quantities'] * 1 / 2)
 LJ_PARAMS = {'epsilon': 1.0, 'sigma': 1.0, 'r_on': 2.0, 'r_cut': 2.5}
 
 
-@LJFluid.operation(
-    directives=dict(executable=CONFIG["executable"], nranks=8))
+@LJFluid.operation(directives=dict(executable=CONFIG["executable"], nranks=8))
 @LJFluid.post.isfile('initial_state.gsd')
 def create_initial_state(job):
     """Create initial system configuration."""
@@ -62,7 +61,9 @@ def create_initial_state(job):
     sim.run(RANDOMIZE_STEPS)
     device.notice(f'Done. Move counts: {mc.translate_moves}')
 
-    hoomd.write.GSD.write(state=sim.state, filename=job.fn("initial_state.gsd"), mode='wb')
+    hoomd.write.GSD.write(state=sim.state,
+                          filename=job.fn("initial_state.gsd"),
+                          mode='wb')
 
 
 def make_simulation(job, device, initial_state, integrator, sim_mode, logger):
@@ -159,7 +160,9 @@ def make_md_simulation(job,
 
     # add gsd log quantities
     logger = hoomd.logging.Logger(categories=['scalar', 'sequence'])
-    logger.add(thermo, quantities=['pressure', 'potential_energy', 'kinetic_temperature'])
+    logger.add(
+        thermo,
+        quantities=['pressure', 'potential_energy', 'kinetic_temperature'])
     logger.add(integrator, quantities=['linear_momentum'])
     for loggable in extra_loggables:
         logger.add(loggable)
@@ -204,8 +207,9 @@ def run_langevin_md_sim(job, device):
     device.notice('Done.')
 
 
-@LJFluid.operation(directives=dict(
-    walltime=2, executable=CONFIG["executable"], nranks=8))
+@LJFluid.operation(directives=dict(walltime=2,
+                                   executable=CONFIG["executable"],
+                                   nranks=8))
 @LJFluid.pre.after(create_initial_state)
 @LJFluid.post.true('langevin_md_cpu_complete')
 def langevin_md_cpu(job):
@@ -216,8 +220,10 @@ def langevin_md_cpu(job):
     job.document['langevin_md_cpu_complete'] = True
 
 
-@LJFluid.operation(directives=dict(
-    walltime=2, executable=CONFIG["executable"], nranks=1, ngpu=1))
+@LJFluid.operation(directives=dict(walltime=2,
+                                   executable=CONFIG["executable"],
+                                   nranks=1,
+                                   ngpu=1))
 @LJFluid.pre.after(create_initial_state)
 @LJFluid.post.true('langevin_md_gpu_complete')
 def langevin_md_gpu(job):
@@ -254,8 +260,9 @@ def run_nvt_md_sim(job, device):
     device.notice('Done.')
 
 
-@LJFluid.operation(directives=dict(
-    walltime=2, executable=CONFIG["executable"], nranks=8))
+@LJFluid.operation(directives=dict(walltime=2,
+                                   executable=CONFIG["executable"],
+                                   nranks=8))
 @LJFluid.pre.after(create_initial_state)
 @LJFluid.post.true('nvt_md_cpu_complete')
 def nvt_md_cpu(job):
@@ -266,8 +273,10 @@ def nvt_md_cpu(job):
     job.document['nvt_md_cpu_complete'] = True
 
 
-@LJFluid.operation(directives=dict(
-    walltime=2, executable=CONFIG["executable"], nranks=1, ngpu=1))
+@LJFluid.operation(directives=dict(walltime=2,
+                                   executable=CONFIG["executable"],
+                                   nranks=1,
+                                   ngpu=1))
 @LJFluid.pre.after(create_initial_state)
 @LJFluid.post.true('nvt_md_gpu_complete')
 def nvt_md_gpu(job):
@@ -322,8 +331,9 @@ def run_npt_md_sim(job, device):
     device.notice('Done.')
 
 
-@LJFluid.operation(directives=dict(
-    walltime=2, executable=CONFIG["executable"], nranks=8))
+@LJFluid.operation(directives=dict(walltime=2,
+                                   executable=CONFIG["executable"],
+                                   nranks=8))
 @LJFluid.pre.after(create_initial_state)
 @LJFluid.post.true('npt_md_cpu_complete')
 def npt_md_cpu(job):
@@ -334,8 +344,10 @@ def npt_md_cpu(job):
     job.document['npt_md_cpu_complete'] = True
 
 
-@LJFluid.operation(directives=dict(
-    walltime=2, executable=CONFIG["executable"], nranks=1, ngpu=1))
+@LJFluid.operation(directives=dict(walltime=2,
+                                   executable=CONFIG["executable"],
+                                   nranks=1,
+                                   ngpu=1))
 @LJFluid.pre.after(create_initial_state)
 @LJFluid.post.true('npt_md_gpu_complete')
 def npt_md_gpu(job):
@@ -434,13 +446,14 @@ def make_mc_simulation(job,
             loggable.attach(sim)
 
     # move size tuner
-    mstuner = hpmc.tune.MoveSize.scale_solver(moves=['d'],
-                                              target=0.2,
-                                              max_translation_move=0.5,
-                                              trigger=hoomd.trigger.And([
-                                                  hoomd.trigger.Periodic(100),
-                                                  hoomd.trigger.Before(sim.timestep + int(RANDOMIZE_STEPS))
-                                              ]))
+    mstuner = hpmc.tune.MoveSize.scale_solver(
+        moves=['d'],
+        target=0.2,
+        max_translation_move=0.5,
+        trigger=hoomd.trigger.And([
+            hoomd.trigger.Periodic(100),
+            hoomd.trigger.Before(sim.timestep + int(RANDOMIZE_STEPS))
+        ]))
     sim.operations.add(mstuner)
 
     return sim
@@ -448,8 +461,6 @@ def make_mc_simulation(job,
 
 def run_nvt_mc_sim(job, device):
     """Run MC sim in NVT."""
-    import hoomd
-
     # simulation
     initial_state = job.fn('initial_state.gsd')
     sim_mode = 'nvt_mc'
@@ -473,8 +484,9 @@ def run_nvt_mc_sim(job, device):
     device.notice('Done.')
 
 
-@LJFluid.operation(directives=dict(
-    walltime=2, executable=CONFIG["executable"], nranks=8))
+@LJFluid.operation(directives=dict(walltime=2,
+                                   executable=CONFIG["executable"],
+                                   nranks=8))
 @LJFluid.pre.after(create_initial_state)
 @LJFluid.post.true('nvt_mc_cpu_complete')
 def nvt_mc_cpu(job):
@@ -485,8 +497,10 @@ def nvt_mc_cpu(job):
     job.document['nvt_mc_cpu_complete'] = True
 
 
-@LJFluid.operation(directives=dict(
-    walltime=2, executable=CONFIG["executable"], nranks=1, ngpu=1))
+@LJFluid.operation(directives=dict(walltime=2,
+                                   executable=CONFIG["executable"],
+                                   nranks=1,
+                                   ngpu=1))
 @LJFluid.pre.after(create_initial_state)
 @LJFluid.post.true('nvt_mc_gpu_complete')
 def nvt_mc_gpu(job):
@@ -511,8 +525,7 @@ def run_npt_mc_sim(job, device):
     compute_density = ComputeDensity()
 
     # box updates
-    boxmc = hpmc.update.BoxMC(betaP=job.statepoint.pressure
-                              / job.sp.kT,
+    boxmc = hpmc.update.BoxMC(betaP=job.statepoint.pressure / job.sp.kT,
                               trigger=hoomd.trigger.Periodic(1))
     boxmc.volume = dict(weight=1.0, mode='ln', delta=0.001)
 
@@ -526,9 +539,10 @@ def run_npt_mc_sim(job, device):
     sim.operations.add(boxmc)
 
     boxmc_tuner = hpmc.tune.BoxMCMoveSize.scale_solver(
-        trigger=hoomd.trigger.And(
-            [hoomd.trigger.Periodic(200),
-             hoomd.trigger.Before(sim.timestep + int(RANDOMIZE_STEPS))]),
+        trigger=hoomd.trigger.And([
+            hoomd.trigger.Periodic(200),
+            hoomd.trigger.Before(sim.timestep + int(RANDOMIZE_STEPS))
+        ]),
         boxmc=boxmc,
         moves=['volume'],
         target=0.5)
@@ -557,8 +571,9 @@ def run_npt_mc_sim(job, device):
     device.notice('Done.')
 
 
-@LJFluid.operation(directives=dict(
-    walltime=2, executable=CONFIG["executable"], nranks=8))
+@LJFluid.operation(directives=dict(walltime=2,
+                                   executable=CONFIG["executable"],
+                                   nranks=8))
 @LJFluid.pre.after(create_initial_state)
 @LJFluid.post.true('npt_mc_cpu_complete')
 def npt_mc_cpu(job):
@@ -569,8 +584,7 @@ def npt_mc_cpu(job):
     job.document['npt_mc_cpu_complete'] = True
 
 
-@LJFluid.operation(directives=dict(
-    walltime=1, executable=CONFIG["executable"]))
+@LJFluid.operation(directives=dict(walltime=1, executable=CONFIG["executable"]))
 @LJFluid.pre.after(langevin_md_cpu)
 @LJFluid.pre.after(langevin_md_gpu)
 @LJFluid.pre.after(nvt_md_cpu)
@@ -586,12 +600,28 @@ def analyze(job):
     import gsd.hoomd
     import numpy
     import math
-    import matplotlib, matplotlib.style, matplotlib.figure
+    import matplotlib
+    import matplotlib.style
+    import matplotlib.figure
     matplotlib.style.use('ggplot')
     from plotting import read_gsd_log_trajectory, get_log_quantity
 
-    constant = dict(langevin_md_cpu='density', langevin_md_gpu='density', nvt_md_cpu='density', nvt_md_gpu='density', nvt_mc_cpu='density', nvt_mc_gpu='density', npt_md_cpu='pressure', npt_md_gpu='pressure', npt_mc_cpu='pressure', npt_mc_gpu='pressure',)
-    sim_modes = ['langevin_md_cpu', 'langevin_md_gpu', 'nvt_md_cpu', 'nvt_md_gpu', 'npt_md_cpu', 'npt_md_gpu', 'nvt_mc_cpu', 'nvt_mc_gpu', 'npt_mc_cpu']
+    constant = dict(
+        langevin_md_cpu='density',
+        langevin_md_gpu='density',
+        nvt_md_cpu='density',
+        nvt_md_gpu='density',
+        nvt_mc_cpu='density',
+        nvt_mc_gpu='density',
+        npt_md_cpu='pressure',
+        npt_md_gpu='pressure',
+        npt_mc_cpu='pressure',
+        npt_mc_gpu='pressure',
+    )
+    sim_modes = [
+        'langevin_md_cpu', 'langevin_md_gpu', 'nvt_md_cpu', 'nvt_md_gpu',
+        'npt_md_cpu', 'npt_md_gpu', 'nvt_mc_cpu', 'nvt_mc_gpu', 'npt_mc_cpu'
+    ]
 
     energies = {}
     pressures = {}
@@ -609,41 +639,53 @@ def analyze(job):
             energies[sim_mode] = get_log_quantity(
                 traj, 'md/compute/ThermodynamicQuantities/potential_energy')
         else:
-            energies[sim_mode] = numpy.array(get_log_quantity(
-                traj, 'hpmc/pair/user/CPPPotential/energy')) * job.statepoint.kT
+            energies[sim_mode] = numpy.array(
+                get_log_quantity(
+                    traj,
+                    'hpmc/pair/user/CPPPotential/energy')) * job.statepoint.kT
 
         if constant[sim_mode] == 'density' and 'md' in sim_mode:
-            pressures[sim_mode] = get_log_quantity(traj,
-                                     'md/compute/ThermodynamicQuantities/pressure')
+            pressures[sim_mode] = get_log_quantity(
+                traj, 'md/compute/ThermodynamicQuantities/pressure')
         elif constant[sim_mode] == 'density' and 'mc' in sim_mode:
             pressures[sim_mode] = numpy.full(len(energies[sim_mode]), numpy.nan)
         else:
-            pressures[sim_mode] = numpy.ones(len(energies[sim_mode])) * job.statepoint.pressure
+            pressures[sim_mode] = numpy.ones(len(
+                energies[sim_mode])) * job.statepoint.pressure
 
         if constant[sim_mode] == 'pressure':
-            densities[sim_mode] = get_log_quantity(traj, 'custom_actions/ComputeDensity/density')
+            densities[sim_mode] = get_log_quantity(
+                traj, 'custom_actions/ComputeDensity/density')
         else:
-            densities[sim_mode] = numpy.ones(len(energies[sim_mode])) * job.statepoint.density
+            densities[sim_mode] = numpy.ones(len(
+                energies[sim_mode])) * job.statepoint.density
 
         if 'md' in sim_mode and not sim_mode.startswith('langevin'):
-            momentum_vector = get_log_quantity(traj, 'md/Integrator/linear_momentum')
-            linear_momentum[sim_mode] = [math.sqrt(v[0]**2 + v[1]**2 + v[2]**2) for v in momentum_vector]
+            momentum_vector = get_log_quantity(traj,
+                                               'md/Integrator/linear_momentum')
+            linear_momentum[sim_mode] = [
+                math.sqrt(v[0]**2 + v[1]**2 + v[2]**2) for v in momentum_vector
+            ]
         else:
             linear_momentum[sim_mode] = numpy.zeros(len(energies[sim_mode]))
 
         if 'md' in sim_mode:
-            kinetic_temperature[sim_mode] = get_log_quantity(traj, 'md/compute/ThermodynamicQuantities/kinetic_temperature')
+            kinetic_temperature[sim_mode] = get_log_quantity(
+                traj, 'md/compute/ThermodynamicQuantities/kinetic_temperature')
         else:
-            kinetic_temperature[sim_mode] = numpy.ones(len(energies[sim_mode])) * job.statepoint.kT
+            kinetic_temperature[sim_mode] = numpy.ones(len(
+                energies[sim_mode])) * job.statepoint.kT
 
     # save averages
     for mode in sim_modes:
-        job.document[mode] = dict(pressure = float(numpy.mean(pressures[mode][-FRAMES_ANALYZE:])),
-                                  potential_energy = float(numpy.mean(energies[mode][-FRAMES_ANALYZE:])),
-                                  density = float(numpy.mean(densities[mode][-FRAMES_ANALYZE:])))
+        job.document[mode] = dict(
+            pressure=float(numpy.mean(pressures[mode][-FRAMES_ANALYZE:])),
+            potential_energy=float(numpy.mean(
+                energies[mode][-FRAMES_ANALYZE:])),
+            density=float(numpy.mean(densities[mode][-FRAMES_ANALYZE:])))
 
     # Plot results
-    fig = matplotlib.figure.Figure(figsize=(20, 20/3.24 * 2), layout='tight')
+    fig = matplotlib.figure.Figure(figsize=(20, 20 / 3.24 * 2), layout='tight')
     ax = fig.add_subplot(3, 2, 1)
 
     for mode in sim_modes:
@@ -652,7 +694,11 @@ def analyze(job):
         ax.set_ylabel(r'$\rho$')
         ax.legend()
 
-    ax.hlines(y=job.statepoint.density, xmin=0, xmax=len(densities[sim_modes[0]]), linestyles='dashed', colors='k')
+    ax.hlines(y=job.statepoint.density,
+              xmin=0,
+              xmax=len(densities[sim_modes[0]]),
+              linestyles='dashed',
+              colors='k')
 
     ax = fig.add_subplot(3, 2, 2)
     for mode in sim_modes:
@@ -660,11 +706,16 @@ def analyze(job):
         ax.set_xlabel('frame')
         ax.set_ylabel('$P$')
 
-    ax.hlines(y=job.statepoint.pressure, xmin=0, xmax=len(densities[sim_modes[0]]), linestyles='dashed', colors='k')
+    ax.hlines(y=job.statepoint.pressure,
+              xmin=0,
+              xmax=len(densities[sim_modes[0]]),
+              linestyles='dashed',
+              colors='k')
 
     ax = fig.add_subplot(3, 2, 3)
     for mode in sim_modes:
-        ax.plot(numpy.array(energies[mode]) / job.statepoint.num_particles, label=mode)
+        ax.plot(numpy.array(energies[mode]) / job.statepoint.num_particles,
+                label=mode)
         ax.set_xlabel('frame')
         ax.set_ylabel('$U / N$')
 
@@ -674,59 +725,91 @@ def analyze(job):
         ax.set_xlabel('frame')
         ax.set_ylabel('kinetic temperature')
 
-    ax.hlines(y=job.statepoint.kT, xmin=0, xmax=len(densities[sim_modes[0]]), linestyles='dashed', colors='k')
+    ax.hlines(y=job.statepoint.kT,
+              xmin=0,
+              xmax=len(densities[sim_modes[0]]),
+              linestyles='dashed',
+              colors='k')
 
     ax = fig.add_subplot(3, 2, 5)
     for mode in sim_modes:
-        ax.plot(numpy.array(linear_momentum[mode]) / job.statepoint.num_particles, label=mode)
+        ax.plot(numpy.array(linear_momentum[mode])
+                / job.statepoint.num_particles,
+                label=mode)
         ax.set_xlabel('frame')
         ax.set_ylabel(r'$|\vec{p}| / N$')
 
     # determine range for density and pressure histograms
-    density_range = [numpy.min(densities[sim_modes[0]][-FRAMES_ANALYZE:]), numpy.max(densities[sim_modes[0]][-FRAMES_ANALYZE:])]
-    pressure_range = [numpy.min(pressures[sim_modes[0]][-FRAMES_ANALYZE:]), numpy.max(pressures[sim_modes[0]][-FRAMES_ANALYZE:])]
+    density_range = [
+        numpy.min(densities[sim_modes[0]][-FRAMES_ANALYZE:]),
+        numpy.max(densities[sim_modes[0]][-FRAMES_ANALYZE:])
+    ]
+    pressure_range = [
+        numpy.min(pressures[sim_modes[0]][-FRAMES_ANALYZE:]),
+        numpy.max(pressures[sim_modes[0]][-FRAMES_ANALYZE:])
+    ]
 
     for mode in sim_modes[1:]:
-        density_range[0] = min(density_range[0], numpy.min(densities[mode][-FRAMES_ANALYZE:]))
-        density_range[1] = max(density_range[1], numpy.max(densities[mode][-FRAMES_ANALYZE:]))
-        pressure_range[0] = min(pressure_range[0], numpy.min(pressures[mode][-FRAMES_ANALYZE:]))
-        pressure_range[1] = max(pressure_range[1], numpy.max(pressures[mode][-FRAMES_ANALYZE:]))
+        density_range[0] = min(density_range[0],
+                               numpy.min(densities[mode][-FRAMES_ANALYZE:]))
+        density_range[1] = max(density_range[1],
+                               numpy.max(densities[mode][-FRAMES_ANALYZE:]))
+        pressure_range[0] = min(pressure_range[0],
+                                numpy.min(pressures[mode][-FRAMES_ANALYZE:]))
+        pressure_range[1] = max(pressure_range[1],
+                                numpy.max(pressures[mode][-FRAMES_ANALYZE:]))
 
     ax = fig.add_subplot(3, 4, 11)
     max_density_histogram = 0
     for mode in sim_modes:
-        density_histogram, bin_edges = numpy.histogram(densities[mode][-FRAMES_ANALYZE:], bins=100, range=density_range)
+        density_histogram, bin_edges = numpy.histogram(
+            densities[mode][-FRAMES_ANALYZE:], bins=100, range=density_range)
         if constant[mode] == 'density':
             density_histogram[:] = 0
 
-        max_density_histogram = max(max_density_histogram, numpy.max(density_histogram))
+        max_density_histogram = max(max_density_histogram,
+                                    numpy.max(density_histogram))
 
         ax.plot(bin_edges[:-1], density_histogram, label=mode)
         ax.set_xlabel(r'$\rho$')
         ax.set_ylabel('frequency')
 
-    ax.vlines(x=job.statepoint.density, ymin=0, ymax=max_density_histogram, linestyles='dashed', colors='k')
+    ax.vlines(x=job.statepoint.density,
+              ymin=0,
+              ymax=max_density_histogram,
+              linestyles='dashed',
+              colors='k')
 
     ax = fig.add_subplot(3, 4, 12)
     max_pressure_histogram = 0
     for mode in sim_modes:
-        pressure_histogram, bin_edges = numpy.histogram(pressures[mode][-FRAMES_ANALYZE:], bins=100, range=pressure_range)
+        pressure_histogram, bin_edges = numpy.histogram(
+            pressures[mode][-FRAMES_ANALYZE:], bins=100, range=pressure_range)
         if constant[mode] == 'pressure':
             pressure_histogram[:] = 0
 
-        max_pressure_histogram = max(max_pressure_histogram, numpy.max(pressure_histogram))
+        max_pressure_histogram = max(max_pressure_histogram,
+                                     numpy.max(pressure_histogram))
 
         ax.plot(bin_edges[:-1], pressure_histogram, label=mode)
         ax.set_xlabel(r'$P$')
         ax.set_ylabel('frequency')
 
-    ax.vlines(x=job.statepoint.pressure, ymin=0, ymax=max_pressure_histogram, linestyles='dashed', colors='k')
+    ax.vlines(x=job.statepoint.pressure,
+              ymin=0,
+              ymax=max_pressure_histogram,
+              linestyles='dashed',
+              colors='k')
 
-    fig.suptitle(f"$kT={job.statepoint.kT}$, $\\rho={job.statepoint.density}$, $N={job.statepoint.num_particles}$, replicate={job.statepoint.replicate_idx}")
-    fig.savefig(job.fn('plots.svg'),
-                bbox_inches='tight')
+    fig.suptitle(
+        f"$kT={job.statepoint.kT}$, $\\rho={job.statepoint.density}$, "
+        f"$N={job.statepoint.num_particles}$, "
+        f"replicate={job.statepoint.replicate_idx}"
+    )
+    fig.savefig(job.fn('plots.svg'), bbox_inches='tight')
 
     job.document['analysis_complete'] = True
+
 
 def true_all(*jobs, key):
     """Check that a given key is true in all jobs."""
@@ -736,19 +819,25 @@ def true_all(*jobs, key):
     return True
 
 
-@aggregator.groupby(key=['kT', 'density', 'num_particles'], sort_by='replicate_idx')
+@aggregator.groupby(key=['kT', 'density', 'num_particles'],
+                    sort_by='replicate_idx')
 @LJFluid.operation.with_directives(
     directives=dict(executable=CONFIG["executable"]))
 @LJFluid.pre(lambda *jobs: true_all(*jobs, key='analysis_complete'))
 @LJFluid.post(lambda *jobs: true_all(*jobs, key='compare_modes_complete'))
 def compare_modes(*jobs):
-    """Compares the pressures, densities, and energies of the tested simulation modes."""
+    """Compares the tested simulation modes."""
     import numpy
-    import matplotlib, matplotlib.style, matplotlib.figure
+    import matplotlib
+    import matplotlib.style
+    import matplotlib.figure
     import scipy.stats
     matplotlib.style.use('ggplot')
 
-    sim_modes = ['langevin_md_cpu', 'langevin_md_gpu', 'nvt_md_cpu', 'nvt_md_gpu', 'npt_md_cpu', 'npt_md_gpu', 'nvt_mc_cpu', 'nvt_mc_gpu', 'npt_mc_cpu']
+    sim_modes = [
+        'langevin_md_cpu', 'langevin_md_gpu', 'nvt_md_cpu', 'nvt_md_gpu',
+        'npt_md_cpu', 'npt_md_gpu', 'nvt_mc_cpu', 'nvt_mc_gpu', 'npt_mc_cpu'
+    ]
     quantity_names = ['density', 'pressure', 'potential_energy']
 
     # grab the common statepoint parameters
@@ -757,13 +846,15 @@ def compare_modes(*jobs):
     set_pressure = jobs[0].sp.pressure
     num_particles = jobs[0].sp.num_particles
 
-    quantity_reference = dict(density=set_density, pressure=set_pressure, potential_energy=None)
+    quantity_reference = dict(density=set_density,
+                              pressure=set_pressure,
+                              potential_energy=None)
 
-    fig = matplotlib.figure.Figure(figsize=(8, 8/1.618*3), layout='tight')
+    fig = matplotlib.figure.Figure(figsize=(8, 8 / 1.618 * 3), layout='tight')
     fig.suptitle(f"$kT={kT}$, $\\rho={set_density}$, $N={num_particles}$")
 
     for i, quantity_name in enumerate(quantity_names):
-        ax = fig.add_subplot(3, 1, i+1)
+        ax = fig.add_subplot(3, 1, i + 1)
 
         # organize data from jobs
         quantities = {mode: [] for mode in sim_modes}
@@ -774,12 +865,11 @@ def compare_modes(*jobs):
 
         # compute stats with data
         avg_quantity = {
-            mode: numpy.mean(quantities[mode])
-            for mode in sim_modes
+            mode: numpy.mean(quantities[mode]) for mode in sim_modes
         }
         stderr_quantity = {
-            mode: 2 * numpy.std(quantities[mode])
-            / numpy.sqrt(len(quantities[mode]))
+            mode:
+            2 * numpy.std(quantities[mode]) / numpy.sqrt(len(quantities[mode]))
             for mode in sim_modes
         }
 
@@ -794,10 +884,17 @@ def compare_modes(*jobs):
 
         quantity_diff_list = numpy.array(quantity_list) - reference
 
-        ax.errorbar(x=range(len(sim_modes)), y=quantity_diff_list / reference / 1e-3, yerr=stderr_list / reference / 1e-3, fmt='s')
+        ax.errorbar(x=range(len(sim_modes)),
+                    y=quantity_diff_list / reference / 1e-3,
+                    yerr=stderr_list / reference / 1e-3,
+                    fmt='s')
         ax.set_xticks(range(len(sim_modes)), sim_modes)
         ax.set_ylabel(quantity_name + ' relative error / 1e-3')
-        ax.hlines(y=0, xmin=0, xmax=len(sim_modes)-1, linestyles='dashed', colors='k')
+        ax.hlines(y=0,
+                  xmin=0,
+                  xmax=len(sim_modes) - 1,
+                  linestyles='dashed',
+                  colors='k')
 
         # Remove nan values, then run ANOVA test
         if quantity_name == 'pressure' and 'nvt_mc' in quantities:
@@ -813,7 +910,8 @@ def compare_modes(*jobs):
         ax.set_title(label=result + f' ANOVA p-value: {p:0.3f}')
 
     filename = f'compare_kT{kT}_density{round(set_density, 2)}.svg'
-    fig.savefig(os.path.join(jobs[0]._project.path, filename), bbox_inches='tight')
+    fig.savefig(os.path.join(jobs[0]._project.path, filename),
+                bbox_inches='tight')
 
     for job in jobs:
         job.document['compare_modes_complete'] = True

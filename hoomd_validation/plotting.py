@@ -13,8 +13,8 @@ def read_gsd_log_trajectory(traj):
     Args:
         traj (`gsd.hoomd.Trajectory`): trajectory to read data from
 
-    Reading GSD file is expensive, call `read_gsd_log_trajectory` once, then call
-    `get_log_quantity` multiple times to extract individual log quantities.
+    Reading GSD file is expensive, call `read_gsd_log_trajectory` once, then
+    call `get_log_quantity` multiple times to extract individual log quantities.
     """
     return [copy.copy(frame.log) for frame in traj]
 
@@ -32,4 +32,3 @@ def get_log_quantity(log_traj, quantity):
         qty_values = [frame[quantity] for frame in log_traj]
 
     return numpy.array(qty_values)
-

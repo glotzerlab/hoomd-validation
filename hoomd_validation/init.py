@@ -8,8 +8,7 @@ from config import all_validation_tests, test_project_dict
 # initialize jobs for the manager project
 for project_name_str, project_class in test_project_dict.items():
     manager_project_job = all_validation_tests.open_job(
-        dict(project_name=project_name_str,
-             path=project_class.path))
+        dict(project_name=project_name_str, path=project_class.path))
     if manager_project_job not in all_validation_tests:
         manager_project_job.init()
 
