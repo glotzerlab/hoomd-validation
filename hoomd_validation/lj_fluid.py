@@ -6,6 +6,7 @@
 from config import test_project_dict, CONFIG
 from project_classes import LJFluid
 from flow import aggregator
+import os
 
 # Run parameters shared between simulations
 RANDOMIZE_STEPS = 5e4
@@ -643,17 +644,19 @@ def analyze(job):
 
     job.document['analysis_complete'] = True
 
-def all_sims_analyzed(*jobs):
-    """Check that all simulations have been analyzed."""
+def true_all(*jobs, key):
+    """Check that a given key is true in all jobs."""
     for job in jobs:
-        if 'analysis_complete' not in job.document or not job.document['analysis_complete']:
+        if key not in job.document or not job.document[key]:
             return False
     return True
 
-@aggregator.groupby(['kT', 'density', 'num_particles'])
+
+@aggregator.groupby(key=['kT', 'density', 'num_particles'], sort_by='replicate_idx')
 @LJFluid.operation.with_directives(
     directives=dict(executable=CONFIG["executable"]))
-@LJFluid.pre(all_sims_analyzed)
+@LJFluid.pre(lambda *jobs: true_all(*jobs, key='analysis_complete'))
+@LJFluid.post(lambda *jobs: true_all(*jobs, key='compare_modes_complete'))
 def compare_modes(*jobs):
     """Compares the pressures, densities, and energies of the tested simulation modes."""
     import numpy
@@ -725,7 +728,12 @@ def compare_modes(*jobs):
 
         ax.set_title(label=result + f' ANOVA p-value: {p:0.3f}')
 
-        fig.savefig(f'compare_kT{kT}_density{round(set_density, 2)}.svg', bbox_inches='tight')
+    filename = f'compare_kT{kT}_density{round(set_density, 2)}.svg'
+    fig.savefig(os.path.join(jobs[0]._project.path, filename), bbox_inches='tight')
+
+    for job in jobs:
+        job.document['compare_modes_complete'] = True
+
 
 if __name__ == "__main__":
     LJFluid.get_project(test_project_dict["LJFluid"].path).main()
