@@ -44,6 +44,7 @@ and replace `<path-to>` with the absolute path to the directory containing
 `software.sif`. Add any options before the path, such as
 `--bind /scratch,/gpfs <path-to>/software.sif`.
 
+See `config_parser.py` for full documentation on all options in the config file.
 
 ## Usage
 
