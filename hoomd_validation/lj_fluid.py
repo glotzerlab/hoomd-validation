@@ -886,7 +886,7 @@ def compare_modes(*jobs):
                     y=quantity_diff_list / reference / 1e-3,
                     yerr=numpy.fabs(stderr_list / reference / 1e-3),
                     fmt='s')
-        ax.set_xticks(range(len(sim_modes)), sim_modes)
+        ax.set_xticks(range(len(sim_modes)), sim_modes, rotation=45)
         ax.set_ylabel(quantity_name + ' relative error / 1e-3')
         ax.hlines(y=0,
                   xmin=0,
@@ -895,8 +895,10 @@ def compare_modes(*jobs):
                   colors='k')
 
         # Remove nan values, then run ANOVA test
-        if quantity_name == 'pressure' and 'nvt_mc' in quantities:
-            del quantities['nvt_mc']
+        if quantity_name == 'pressure' and 'nvt_mc_cpu' in quantities:
+            del quantities['nvt_mc_cpu']
+        if quantity_name == 'pressure' and 'nvt_mc_gpu' in quantities:
+            del quantities['nvt_mc_gpu']
         unpacked_quantities = list(quantities.values())
         f, p = scipy.stats.f_oneway(*unpacked_quantities)
 
