@@ -43,7 +43,7 @@ class LJFluid(ValidationTestProject):
                        (1.25, 0.049963649769543844, 0.05363574413661169)]
         for kT, density, pressure in params_list:
             for idx in replicate_indices:
-                yield({
+                yield ({
                     "kT": kT,
                     "density": density,
                     "pressure": pressure,
