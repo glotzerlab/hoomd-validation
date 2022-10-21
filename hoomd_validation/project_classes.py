@@ -36,7 +36,6 @@ class LJFluid(ValidationTestProject):
     @property
     def job_statepoints(self):
         """list(dict): A list of statepoints for this project."""
-        list_sps = []
         num_particles = 12**3
         replicate_indices = range(4)
         params_list = [(1.5, 0.5998286671851658, 1.0270905797770546),
@@ -44,18 +43,15 @@ class LJFluid(ValidationTestProject):
                        (1.25, 0.049963649769543844, 0.05363574413661169)]
         for kT, density, pressure in params_list:
             for idx in replicate_indices:
-                list_sps.append({
+                yield({
                     "kT": kT,
                     "density": density,
                     "pressure": pressure,
                     "num_particles": num_particles,
                     "replicate_idx": idx
                 })
-        return list_sps
 
     def job_document_params(self, job):
         """list(tuple): A list of tuples (param, default) giving the job \
         document parameters and default values for this project."""
-        params_list = []
-
-        return params_list
+        return []
