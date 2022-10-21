@@ -884,7 +884,7 @@ def compare_modes(*jobs):
 
         ax.errorbar(x=range(len(sim_modes)),
                     y=quantity_diff_list / reference / 1e-3,
-                    yerr=stderr_list / reference / 1e-3,
+                    yerr=numpy.fabs(stderr_list / reference / 1e-3),
                     fmt='s')
         ax.set_xticks(range(len(sim_modes)), sim_modes)
         ax.set_ylabel(quantity_name + ' relative error / 1e-3')
