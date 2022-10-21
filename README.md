@@ -1,28 +1,79 @@
 # HOOMD-blue Validation
 
-This repository contains longer running validation tests for HOOMD-blue. Use
-this repository to test your installation of hoomd. The validation test
-workflows in this repository are organized into signac projects.
+This repository contains longer running validation tests for HOOMD-blue. The
+validation test workflows in this repository are organized into signac projects.
 
 ## Requirements
 
-* HOOMD-blue v3
-* signac
-* signac-flow
-* signac-dashboard (optional)
+* signac >=1.8.0
+* signac-flow >= 1.22.0
+* Simulation workflow steps require either the [glotzerlab-software container]
+  or the following software:
+    * HOOMD-blue >=3.0 *(with MPI, GPU, and LLVM support enabled)*
+* Analysis workflow steps require either the [glotzerlab-software container] or
+  the following software:
+    * matplotlib
+    * gsd
+    * numpy
+    * scipy
+* Workstation or HPC system with at least 8 CPU cores and 1 GPU supported by
+  HOOMD-blue.
+
+## Preparation
+
+Clone this repository:
+
+```bash
+$ git clone https://github.com/glotzerlab/hoomd-validation.git
+$ cd hoomd-validation
+```
+
+## Configuration
+
+Install the prerequisites into a Python environment of your choice. To use the
+[glotzerlab-software container], create the file `hoomd_validation/config.json`
+with the following contents:
+```
+{
+    "executable": {
+        "container_path": "<path-to>/software.sif"
+    }
+}
+```
+and replace `<path-to>` with the absolute path to the directory containing
+`software.sif`. Add any options before the path, such as
+`--bind /scratch,/gpfs <path-to>/software.sif`.
+
 
 ## Usage
 
-1. Clone this repository:
-    * `git clone https://github.com/glotzerlab/hoomd-validation.git`
-    * `cd hoomd-validation/hoomd_validation`
-2. Initialize the signac project directories, populate them with jobs and job
+1. Initialize the signac project directories, populate them with jobs and job
 documents:
-    * `python init.py`
-3. Run the validation tests:
-    * `python all_validation_tests.py run`
+    ```bash
+    python3 hoomd_validation/init.py
+    ```
+2. Run and analyze all validation tests:
+    * On a workstation (this takes a long time to complete):
+        ```
+        $ python all_validation_tests.py run
+        ```
+    * On Great Lakes:
+        1. Create the simulation initial states:
+            ```
+            $ python hoomd_validation/lj_fluid.py submit -o create_initial_state
+            ```
+            *(wait for all jobs to complete)*
+        2. Run the simulations
+            ```
+            $ ./submit_simulations_gl.sh
+            ```
+            *(wait for all jobs to complete)*
+        3. Run the analysis (assuming you have the analysis workflow prerequisites in your Python environment):
+            ```
+            $ python hoomd_validation/lj_fluid.py run
+            ```
+            *(alternately, submit the analysis in stages until no jobs remain eligible)*
+3. Inspect the plots produced in:
+    * `LJFluid/*.svg`
 
-## Validation Tests
-
-There is only one dummy validation test right now, `LJFluid`, which will be
-made a full validation test in the future.
+[glotzerlab-software container]: https://glotzerlab-software.readthedocs.io/

@@ -2,7 +2,7 @@
 
 ## Design Goals
 
-The code in this repoitory is designed to run validation tests using HOOMD-blue
+The code in this repository is designed to run validation tests using HOOMD-blue
 for longer periods of time than CI testing can handle. Users of this repository
 should be able to:
 
