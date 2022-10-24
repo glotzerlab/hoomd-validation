@@ -40,7 +40,6 @@ class ConfigFile(dict):
     DEFAULT_CONFIG_PATH = str(Path(__file__).parent / "config.json")
 
     def __init__(self, config_file_path=DEFAULT_CONFIG_PATH):
-        super().__init__()
         self._config_path = config_file_path
         self["executable"] = self._parse_executable_string()
 
