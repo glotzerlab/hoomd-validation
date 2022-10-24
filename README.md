@@ -58,18 +58,20 @@ documents:
         ```
         $ python all_validation_tests.py run
         ```
-    * On Great Lakes:
-        1. Create the simulation initial states:
+    * On a cluster:
+        1. Populate the flow script template(s) or your shell environment appropriately.
+        2. Create the simulation initial states:
             ```
             $ python hoomd_validation/lj_fluid.py submit -o create_initial_state
             ```
             *(wait for all jobs to complete)*
-        2. Run the simulations
+        3. Run the simulations (adjust partition names according to your cluster)
             ```
-            $ ./submit_simulations_gl.sh
+            $ python3 hoomd_validation/lj_fluid.py submit -o '.*_cpu' --partition cpu
+            $ python3 hoomd_validation/lj_fluid.py submit -o '.*_gpu' --partition gpu
             ```
             *(wait for all jobs to complete)*
-        3. Run the analysis (assuming you have the analysis workflow prerequisites in your Python environment):
+        4. Run the analysis (assuming you have the analysis workflow prerequisites in your Python environment):
             ```
             $ python hoomd_validation/lj_fluid.py run
             ```
