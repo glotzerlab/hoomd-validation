@@ -828,10 +828,7 @@ def analyze(job):
 
 def true_all(*jobs, key):
     """Check that a given key is true in all jobs."""
-    for job in jobs:
-        if key not in job.document or not job.document[key]:
-            return False
-    return True
+    return all(job.get(key, False) for job in jobs)
 
 
 @aggregator.groupby(key=['kT', 'density', 'num_particles'],
