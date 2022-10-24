@@ -821,7 +821,7 @@ def analyze(job):
     fig.suptitle(f"$kT={job.statepoint.kT}$, $\\rho={job.statepoint.density}$, "
                  f"$N={job.statepoint.num_particles}$, "
                  f"replicate={job.statepoint.replicate_idx}")
-    fig.savefig(job.fn('plots.svg'), bbox_inches='tight')
+    fig.savefig(job.fn('nvt_npt_plots.svg'), bbox_inches='tight')
 
     job.document['analysis_complete'] = True
 
