@@ -217,7 +217,9 @@ def langevin_md_cpu(job):
     import hoomd
     device = hoomd.device.CPU(msg_file=job.fn('run_langevin_md_cpu.log'))
     run_langevin_md_sim(job, device)
-    job.document['langevin_md_cpu_complete'] = True
+
+    if device.communicator.rank == 0:
+        job.document['langevin_md_cpu_complete'] = True
 
 
 @LJFluid.operation(directives=dict(walltime=2,
@@ -231,7 +233,9 @@ def langevin_md_gpu(job):
     import hoomd
     device = hoomd.device.GPU(msg_file=job.fn('run_langevin_md_gpu.log'))
     run_langevin_md_sim(job, device)
-    job.document['langevin_md_gpu_complete'] = True
+
+    if device.communicator.rank == 0:
+        job.document['langevin_md_gpu_complete'] = True
 
 
 def run_nvt_md_sim(job, device):
@@ -270,7 +274,9 @@ def nvt_md_cpu(job):
     import hoomd
     device = hoomd.device.CPU(msg_file=job.fn('run_nvt_md_cpu.log'))
     run_nvt_md_sim(job, device)
-    job.document['nvt_md_cpu_complete'] = True
+
+    if device.communicator.rank == 0:
+        job.document['nvt_md_cpu_complete'] = True
 
 
 @LJFluid.operation(directives=dict(walltime=2,
@@ -284,7 +290,9 @@ def nvt_md_gpu(job):
     import hoomd
     device = hoomd.device.GPU(msg_file=job.fn('run_nvt_md_gpu.log'))
     run_nvt_md_sim(job, device)
-    job.document['nvt_md_gpu_complete'] = True
+
+    if device.communicator.rank == 0:
+        job.document['nvt_md_gpu_complete'] = True
 
 
 def run_npt_md_sim(job, device):
@@ -341,7 +349,9 @@ def npt_md_cpu(job):
     import hoomd
     device = hoomd.device.CPU(msg_file=job.fn('run_npt_md_cpu.log'))
     run_npt_md_sim(job, device)
-    job.document['npt_md_cpu_complete'] = True
+
+    if device.communicator.rank == 0:
+        job.document['npt_md_cpu_complete'] = True
 
 
 @LJFluid.operation(directives=dict(walltime=2,
@@ -355,7 +365,9 @@ def npt_md_gpu(job):
     import hoomd
     device = hoomd.device.GPU(msg_file=job.fn('run_npt_md_gpu.log'))
     run_npt_md_sim(job, device)
-    job.document['npt_md_gpu_complete'] = True
+
+    if device.communicator.rank == 0:
+        job.document['npt_md_gpu_complete'] = True
 
 
 def make_mc_simulation(job,
@@ -494,7 +506,9 @@ def nvt_mc_cpu(job):
     import hoomd
     device = hoomd.device.CPU(msg_file=job.fn('run_nvt_mc_cpu.log'))
     run_nvt_mc_sim(job, device)
-    job.document['nvt_mc_cpu_complete'] = True
+
+    if device.communicator.rank == 0:
+        job.document['nvt_mc_cpu_complete'] = True
 
 
 @LJFluid.operation(directives=dict(walltime=2,
@@ -508,7 +522,9 @@ def nvt_mc_gpu(job):
     import hoomd
     device = hoomd.device.GPU(msg_file=job.fn('run_nvt_mc_gpu.log'))
     run_nvt_mc_sim(job, device)
-    job.document['nvt_mc_gpu_complete'] = True
+
+    if device.communicator.rank == 0:
+        job.document['nvt_mc_gpu_complete'] = True
 
 
 def run_npt_mc_sim(job, device):
@@ -581,7 +597,9 @@ def npt_mc_cpu(job):
     import hoomd
     device = hoomd.device.CPU(msg_file=job.fn('run_npt_mc_cpu.log'))
     run_npt_mc_sim(job, device)
-    job.document['npt_mc_cpu_complete'] = True
+
+    if device.communicator.rank == 0:
+        job.document['npt_mc_cpu_complete'] = True
 
 
 @LJFluid.operation(directives=dict(walltime=1, executable=CONFIG["executable"]))
