@@ -67,6 +67,5 @@ class ConfigFile(dict):
             return_string += (executable_options["container_path"] + " ")
 
         return_string += executable_options.get(
-            "python_exec",
-            "python" if using_container else sys.executable)
+            "python_exec", "python" if using_container else sys.executable)
         return return_string

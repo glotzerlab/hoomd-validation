@@ -438,13 +438,13 @@ def make_mc_simulation(job,
             """.format(epsilon=epsilon, sigma=sigma, r_on=r_on, r_cut=r_cut)
 
     lj_jit_potential = hpmc.pair.user.CPPPotential(r_cut=r_cut,
-                                        code=lj_str,
-                                        param_array=[])
+                                                   code=lj_str,
+                                                   param_array=[])
     mc.pair_potential = lj_jit_potential
 
     # log to gsd
     logger_gsd = hoomd.logging.Logger(categories=['scalar', 'sequence'])
-    logger_gsd.add(patch, quantities=['energy'])
+    logger_gsd.add(lj_jit_potential, quantities=['energy'])
     logger_gsd.add(mc, quantities=['translate_moves'])
     for loggable in extra_loggables:
         logger_gsd.add(loggable)
