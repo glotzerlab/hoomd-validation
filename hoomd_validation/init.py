@@ -12,8 +12,7 @@ import lj_fluid
 
 subprojects = [lj_fluid]
 
-project = signac.init_project(name="hoomd-validation",
-                              root=config.project_root)
+project = signac.init_project(name="hoomd-validation", root=config.project_root)
 
 # initialize jobs for validation test projects
 for subproject in subprojects:
