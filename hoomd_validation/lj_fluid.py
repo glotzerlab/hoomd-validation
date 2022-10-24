@@ -604,7 +604,7 @@ def analyze(job):
     import matplotlib.style
     import matplotlib.figure
     matplotlib.style.use('ggplot')
-    from plotting import read_gsd_log_trajectory, get_log_quantity
+    from util import read_gsd_log_trajectory, get_log_quantity
 
     constant = dict(
         langevin_md_cpu='density',
