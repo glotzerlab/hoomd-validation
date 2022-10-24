@@ -648,10 +648,9 @@ def analyze(job):
     kinetic_temperature = {}
 
     for sim_mode in sim_modes:
-        traj = gsd.hoomd.open(job.fn(sim_mode + '_quantities.gsd'))
-
-        # read GSD file once
-        traj = read_gsd_log_trajectory(traj)
+        with gsd.hoomd.open(job.fn(sim_mode + '_quantities.gsd')) as gsd_traj:
+            # read GSD file once
+            traj = read_gsd_log_trajectory(gsd_traj)
 
         if 'md' in sim_mode:
             energies[sim_mode] = get_log_quantity(
