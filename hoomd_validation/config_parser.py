@@ -66,9 +66,7 @@ class ConfigFile(dict):
                 return_string += "singularity exec --nv "
                 return_string += (executable_options["container_path"] + " ")
 
-            if "python_exec" in executable_options:
-                return_string += executable_options["python_exec"]
-            else:
-                return_string += ("python"
-                                  if using_container else sys.executable)
+            return_string += executable_options.get(
+                "python_exec",
+                "python" if using_container else sys.executable)
         return return_string
