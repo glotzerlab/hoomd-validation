@@ -1,4 +1,5 @@
 workspace
+templates
 *.out
 *.svg
 hoomd_validation/__pycache__
