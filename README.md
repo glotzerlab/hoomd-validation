@@ -59,24 +59,28 @@ documents:
         $ python all_validation_tests.py run
         ```
     * On a cluster:
-        1. Populate the flow script template(s) or your shell environment appropriately.
+        1. Populate the flow script template or your shell environment appropriately.
+            ```
+            $ flow template create
+            $ vim templates/script.sh  # make changes to e.g. load modules
+            ```
         2. Create the simulation initial states:
             ```
-            $ python hoomd_validation/lj_fluid.py submit -o create_initial_state
+            $ python hoomd_validation/project.py submit -o '.*create_initial_state'
             ```
             *(wait for all jobs to complete)*
         3. Run the simulations (adjust partition names according to your cluster)
             ```
-            $ python3 hoomd_validation/lj_fluid.py submit -o '.*_cpu' --partition standard
-            $ python3 hoomd_validation/lj_fluid.py submit -o '.*_gpu' --partition gpu
+            $ python3 hoomd_validation/project.py submit -o '.*_cpu' --partition standard
+            $ python3 hoomd_validation/project.py submit -o '.*_gpu' --partition gpu
             ```
             *(wait for all jobs to complete)*
         4. Run the analysis (assuming you have the analysis workflow prerequisites in your Python environment):
             ```
-            $ python hoomd_validation/lj_fluid.py run
+            $ python hoomd_validation/project.py run
             ```
             *(alternately, submit the analysis in stages until no jobs remain eligible)*
 3. Inspect the plots produced in:
-    * `LJFluid/*.svg`
+    * `workspace/*.svg`
 
 [glotzerlab-software container]: https://glotzerlab-software.readthedocs.io/
