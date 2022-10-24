@@ -67,7 +67,7 @@ documents:
             *(wait for all jobs to complete)*
         3. Run the simulations (adjust partition names according to your cluster)
             ```
-            $ python3 hoomd_validation/lj_fluid.py submit -o '.*_cpu' --partition cpu
+            $ python3 hoomd_validation/lj_fluid.py submit -o '.*_cpu' --partition standard
             $ python3 hoomd_validation/lj_fluid.py submit -o '.*_gpu' --partition gpu
             ```
             *(wait for all jobs to complete)*
