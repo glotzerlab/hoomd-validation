@@ -437,10 +437,10 @@ def make_mc_simulation(job,
                 return energy;
             """.format(epsilon=epsilon, sigma=sigma, r_on=r_on, r_cut=r_cut)
 
-    patch = hpmc.pair.user.CPPPotential(r_cut=r_cut,
+    lj_jit_potential = hpmc.pair.user.CPPPotential(r_cut=r_cut,
                                         code=lj_str,
                                         param_array=[])
-    mc.pair_potential = patch
+    mc.pair_potential = lj_jit_potential
 
     # log to gsd
     logger_gsd = hoomd.logging.Logger(categories=['scalar', 'sequence'])
