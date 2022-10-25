@@ -56,7 +56,7 @@ documents:
 2. Run and analyze all validation tests:
     * On a workstation (this takes a long time to complete):
         ```
-        $ python hoomd_validation/all_validation_tests.py run
+        $ python hoomd_validation/project.py run
         ```
     * On a cluster:
         1. Populate the flow script template or your shell environment appropriately.
