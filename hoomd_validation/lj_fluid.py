@@ -3,8 +3,8 @@
 
 """Lennard Jones phase behavior validation test."""
 
-from config import test_project_dict, CONFIG
-from project_classes import LJFluid
+from config import CONFIG
+from project_class import Project
 from flow import aggregator
 import os
 
@@ -17,9 +17,34 @@ FRAMES_ANALYZE = int(RUN_STEPS / LOG_PERIOD['quantities'] * 1 / 2)
 LJ_PARAMS = {'epsilon': 1.0, 'sigma': 1.0, 'r_on': 2.0, 'r_cut': 2.5}
 
 
-@LJFluid.operation(directives=dict(executable=CONFIG["executable"], nranks=8))
-@LJFluid.post.isfile('initial_state.gsd')
-def create_initial_state(job):
+def job_statepoints():
+    """list(dict): A list of statepoints for this subproject."""
+    num_particles = 12**3
+    replicate_indices = range(4)
+    params_list = [(1.5, 0.5998286671851658, 1.0270905797770546),
+                   (1.0, 0.7999550814681395, 1.4363805638963822),
+                   (1.25, 0.049963649769543844, 0.05363574413661169)]
+    for kT, density, pressure in params_list:
+        for idx in replicate_indices:
+            yield ({
+                "subproject": "lj_fluid",
+                "kT": kT,
+                "density": density,
+                "pressure": pressure,
+                "num_particles": num_particles,
+                "replicate_idx": idx
+            })
+
+
+def is_lj_fluid(job):
+    """Test if a given job is part of the lj_fluid subproject."""
+    return job.statepoint['subproject'] == 'lj_fluid'
+
+
+@Project.operation(directives=dict(executable=CONFIG["executable"], nranks=8))
+@Project.pre(is_lj_fluid)
+@Project.post.isfile('initial_state.gsd')
+def lj_fluid_create_initial_state(job):
     """Create initial system configuration."""
     import hoomd
     import numpy
@@ -207,12 +232,12 @@ def run_langevin_md_sim(job, device):
     device.notice('Done.')
 
 
-@LJFluid.operation(directives=dict(walltime=2,
+@Project.operation(directives=dict(walltime=2,
                                    executable=CONFIG["executable"],
                                    nranks=8))
-@LJFluid.pre.after(create_initial_state)
-@LJFluid.post.true('langevin_md_cpu_complete')
-def langevin_md_cpu(job):
+@Project.pre.after(lj_fluid_create_initial_state)
+@Project.post.true('langevin_md_cpu_complete')
+def lj_fluid_langevin_md_cpu(job):
     """Run Langevin MD on the CPU."""
     import hoomd
     device = hoomd.device.CPU(msg_file=job.fn('run_langevin_md_cpu.log'))
@@ -222,13 +247,13 @@ def langevin_md_cpu(job):
         job.document['langevin_md_cpu_complete'] = True
 
 
-@LJFluid.operation(directives=dict(walltime=2,
+@Project.operation(directives=dict(walltime=2,
                                    executable=CONFIG["executable"],
                                    nranks=1,
                                    ngpu=1))
-@LJFluid.pre.after(create_initial_state)
-@LJFluid.post.true('langevin_md_gpu_complete')
-def langevin_md_gpu(job):
+@Project.pre.after(lj_fluid_create_initial_state)
+@Project.post.true('langevin_md_gpu_complete')
+def lj_fluid_langevin_md_gpu(job):
     """Run Langevin MD on the GPU."""
     import hoomd
     device = hoomd.device.GPU(msg_file=job.fn('run_langevin_md_gpu.log'))
@@ -264,12 +289,12 @@ def run_nvt_md_sim(job, device):
     device.notice('Done.')
 
 
-@LJFluid.operation(directives=dict(walltime=2,
+@Project.operation(directives=dict(walltime=2,
                                    executable=CONFIG["executable"],
                                    nranks=8))
-@LJFluid.pre.after(create_initial_state)
-@LJFluid.post.true('nvt_md_cpu_complete')
-def nvt_md_cpu(job):
+@Project.pre.after(lj_fluid_create_initial_state)
+@Project.post.true('nvt_md_cpu_complete')
+def lj_fluid_nvt_md_cpu(job):
     """Run NVT MD on the CPU."""
     import hoomd
     device = hoomd.device.CPU(msg_file=job.fn('run_nvt_md_cpu.log'))
@@ -279,13 +304,13 @@ def nvt_md_cpu(job):
         job.document['nvt_md_cpu_complete'] = True
 
 
-@LJFluid.operation(directives=dict(walltime=2,
+@Project.operation(directives=dict(walltime=2,
                                    executable=CONFIG["executable"],
                                    nranks=1,
                                    ngpu=1))
-@LJFluid.pre.after(create_initial_state)
-@LJFluid.post.true('nvt_md_gpu_complete')
-def nvt_md_gpu(job):
+@Project.pre.after(lj_fluid_create_initial_state)
+@Project.post.true('nvt_md_gpu_complete')
+def lj_fluid_nvt_md_gpu(job):
     """Run NVT MD on the GPU."""
     import hoomd
     device = hoomd.device.GPU(msg_file=job.fn('run_nvt_md_gpu.log'))
@@ -339,12 +364,12 @@ def run_npt_md_sim(job, device):
     device.notice('Done.')
 
 
-@LJFluid.operation(directives=dict(walltime=2,
+@Project.operation(directives=dict(walltime=2,
                                    executable=CONFIG["executable"],
                                    nranks=8))
-@LJFluid.pre.after(create_initial_state)
-@LJFluid.post.true('npt_md_cpu_complete')
-def npt_md_cpu(job):
+@Project.pre.after(lj_fluid_create_initial_state)
+@Project.post.true('npt_md_cpu_complete')
+def lj_fluid_npt_md_cpu(job):
     """Run NPT MD on the CPU."""
     import hoomd
     device = hoomd.device.CPU(msg_file=job.fn('run_npt_md_cpu.log'))
@@ -354,13 +379,13 @@ def npt_md_cpu(job):
         job.document['npt_md_cpu_complete'] = True
 
 
-@LJFluid.operation(directives=dict(walltime=2,
+@Project.operation(directives=dict(walltime=2,
                                    executable=CONFIG["executable"],
                                    nranks=1,
                                    ngpu=1))
-@LJFluid.pre.after(create_initial_state)
-@LJFluid.post.true('npt_md_gpu_complete')
-def npt_md_gpu(job):
+@Project.pre.after(lj_fluid_create_initial_state)
+@Project.post.true('npt_md_gpu_complete')
+def lj_fluid_npt_md_gpu(job):
     """Run NPT MD on the GPU."""
     import hoomd
     device = hoomd.device.GPU(msg_file=job.fn('run_npt_md_gpu.log'))
@@ -496,12 +521,12 @@ def run_nvt_mc_sim(job, device):
     device.notice('Done.')
 
 
-@LJFluid.operation(directives=dict(walltime=2,
+@Project.operation(directives=dict(walltime=2,
                                    executable=CONFIG["executable"],
                                    nranks=8))
-@LJFluid.pre.after(create_initial_state)
-@LJFluid.post.true('nvt_mc_cpu_complete')
-def nvt_mc_cpu(job):
+@Project.pre.after(lj_fluid_create_initial_state)
+@Project.post.true('nvt_mc_cpu_complete')
+def lj_fluid_nvt_mc_cpu(job):
     """Run NVT MC on the CPU."""
     import hoomd
     device = hoomd.device.CPU(msg_file=job.fn('run_nvt_mc_cpu.log'))
@@ -511,13 +536,13 @@ def nvt_mc_cpu(job):
         job.document['nvt_mc_cpu_complete'] = True
 
 
-@LJFluid.operation(directives=dict(walltime=2,
+@Project.operation(directives=dict(walltime=2,
                                    executable=CONFIG["executable"],
                                    nranks=1,
                                    ngpu=1))
-@LJFluid.pre.after(create_initial_state)
-@LJFluid.post.true('nvt_mc_gpu_complete')
-def nvt_mc_gpu(job):
+@Project.pre.after(lj_fluid_create_initial_state)
+@Project.post.true('nvt_mc_gpu_complete')
+def lj_fluid_nvt_mc_gpu(job):
     """Run NVT MC on the GPU."""
     import hoomd
     device = hoomd.device.GPU(msg_file=job.fn('run_nvt_mc_gpu.log'))
@@ -587,12 +612,12 @@ def run_npt_mc_sim(job, device):
     device.notice('Done.')
 
 
-@LJFluid.operation(directives=dict(walltime=2,
+@Project.operation(directives=dict(walltime=2,
                                    executable=CONFIG["executable"],
                                    nranks=8))
-@LJFluid.pre.after(create_initial_state)
-@LJFluid.post.true('npt_mc_cpu_complete')
-def npt_mc_cpu(job):
+@Project.pre.after(lj_fluid_create_initial_state)
+@Project.post.true('npt_mc_cpu_complete')
+def lj_fluid_npt_mc_cpu(job):
     """Run NPT MC on the CPU."""
     import hoomd
     device = hoomd.device.CPU(msg_file=job.fn('run_npt_mc_cpu.log'))
@@ -602,18 +627,18 @@ def npt_mc_cpu(job):
         job.document['npt_mc_cpu_complete'] = True
 
 
-@LJFluid.operation(directives=dict(walltime=1, executable=CONFIG["executable"]))
-@LJFluid.pre.after(langevin_md_cpu)
-@LJFluid.pre.after(langevin_md_gpu)
-@LJFluid.pre.after(nvt_md_cpu)
-@LJFluid.pre.after(nvt_md_gpu)
-@LJFluid.pre.after(npt_md_cpu)
-@LJFluid.pre.after(npt_md_gpu)
-@LJFluid.pre.after(nvt_mc_cpu)
-@LJFluid.pre.after(nvt_mc_gpu)
-@LJFluid.pre.after(npt_mc_cpu)
-@LJFluid.post.true('analysis_complete')
-def analyze(job):
+@Project.operation(directives=dict(walltime=1, executable=CONFIG["executable"]))
+@Project.pre.after(lj_fluid_langevin_md_cpu)
+@Project.pre.after(lj_fluid_langevin_md_gpu)
+@Project.pre.after(lj_fluid_nvt_md_cpu)
+@Project.pre.after(lj_fluid_nvt_md_gpu)
+@Project.pre.after(lj_fluid_npt_md_cpu)
+@Project.pre.after(lj_fluid_npt_md_gpu)
+@Project.pre.after(lj_fluid_nvt_mc_cpu)
+@Project.pre.after(lj_fluid_nvt_mc_gpu)
+@Project.pre.after(lj_fluid_npt_mc_cpu)
+@Project.post.true('analysis_complete')
+def lj_fluid_analyze(job):
     """Analyze the output of all simulation modes."""
     import gsd.hoomd
     import numpy
@@ -828,16 +853,17 @@ def analyze(job):
 
 def true_all(*jobs, key):
     """Check that a given key is true in all jobs."""
-    return all(job.get(key, False) for job in jobs)
+    return all(job.document.get(key, False) for job in jobs)
 
 
 @aggregator.groupby(key=['kT', 'density', 'num_particles'],
-                    sort_by='replicate_idx')
-@LJFluid.operation.with_directives(
+                    sort_by='replicate_idx',
+                    select=is_lj_fluid)
+@Project.operation.with_directives(
     directives=dict(executable=CONFIG["executable"]))
-@LJFluid.pre(lambda *jobs: true_all(*jobs, key='analysis_complete'))
-@LJFluid.post(lambda *jobs: true_all(*jobs, key='compare_modes_complete'))
-def compare_modes(*jobs):
+@Project.pre(lambda *jobs: true_all(*jobs, key='analysis_complete'))
+@Project.post(lambda *jobs: true_all(*jobs, key='compare_modes_complete'))
+def lj_fluid_compare_modes(*jobs):
     """Compares the tested simulation modes."""
     import numpy
     import matplotlib
@@ -923,13 +949,9 @@ def compare_modes(*jobs):
 
         ax.set_title(label=result + f' ANOVA p-value: {p:0.3f}')
 
-    filename = f'compare_kT{kT}_density{round(set_density, 2)}.svg'
+    filename = f'lj_fluid_compare_kT{kT}_density{round(set_density, 2)}.svg'
     fig.savefig(os.path.join(jobs[0]._project.path, filename),
                 bbox_inches='tight')
 
     for job in jobs:
         job.document['compare_modes_complete'] = True
-
-
-if __name__ == "__main__":
-    LJFluid.get_project(test_project_dict["LJFluid"].path).main()
