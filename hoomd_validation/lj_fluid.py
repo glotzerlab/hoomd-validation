@@ -859,8 +859,7 @@ def true_all(*jobs, key):
 @aggregator.groupby(key=['kT', 'density', 'num_particles'],
                     sort_by='replicate_idx',
                     select=is_lj_fluid)
-@Project.operation.with_directives(
-    directives=dict(executable=CONFIG["executable"]))
+@Project.operation(directives=dict(executable=CONFIG["executable"]))
 @Project.pre(lambda *jobs: true_all(*jobs, key='analysis_complete'))
 @Project.post(lambda *jobs: true_all(*jobs, key='compare_modes_complete'))
 def lj_fluid_compare_modes(*jobs):
