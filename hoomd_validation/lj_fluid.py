@@ -43,7 +43,7 @@ def is_lj_fluid(job):
 
 @Project.operation(directives=dict(executable=CONFIG["executable"], nranks=8))
 @Project.pre(is_lj_fluid)
-@Project.post.isfile('initial_state.gsd')
+@Project.post.isfile('lj_fluid_initial_state.gsd')
 def lj_fluid_create_initial_state(job):
     """Create initial system configuration."""
     import hoomd
@@ -87,7 +87,7 @@ def lj_fluid_create_initial_state(job):
     device.notice(f'Done. Move counts: {mc.translate_moves}')
 
     hoomd.write.GSD.write(state=sim.state,
-                          filename=job.fn("initial_state.gsd"),
+                          filename=job.fn("lj_fluid_initial_state.gsd"),
                           mode='wb')
 
 
@@ -213,7 +213,7 @@ def run_langevin_md_sim(job, device):
     import hoomd
     from hoomd import md
 
-    initial_state = job.fn('initial_state.gsd')
+    initial_state = job.fn('lj_fluid_initial_state.gsd')
     langevin = md.methods.Langevin(hoomd.filter.All(), kT=job.sp.kT)
     langevin.gamma.default = 1.0
 
@@ -268,7 +268,7 @@ def run_nvt_md_sim(job, device):
     import hoomd
     from hoomd import md
 
-    initial_state = job.fn('initial_state.gsd')
+    initial_state = job.fn('lj_fluid_initial_state.gsd')
     nvt = md.methods.NVT(hoomd.filter.All(), kT=job.sp.kT, tau=0.25)
     sim_mode = 'nvt_md'
 
@@ -326,7 +326,7 @@ def run_npt_md_sim(job, device):
     from hoomd import md
     from custom_actions import ComputeDensity
 
-    initial_state = job.fn('initial_state.gsd')
+    initial_state = job.fn('lj_fluid_initial_state.gsd')
     p = job.statepoint.pressure
     nvt = md.methods.NVT(hoomd.filter.All(), kT=job.sp.kT, tau=0.25)
     npt = md.methods.NPT(hoomd.filter.All(),
@@ -499,7 +499,7 @@ def make_mc_simulation(job,
 def run_nvt_mc_sim(job, device):
     """Run MC sim in NVT."""
     # simulation
-    initial_state = job.fn('initial_state.gsd')
+    initial_state = job.fn('lj_fluid_initial_state.gsd')
     sim_mode = 'nvt_mc'
     sim = make_mc_simulation(job, device, initial_state, sim_mode)
 
@@ -559,7 +559,7 @@ def run_npt_mc_sim(job, device):
     from custom_actions import ComputeDensity
 
     # device
-    initial_state = job.fn('initial_state.gsd')
+    initial_state = job.fn('lj_fluid_initial_state.gsd')
     sim_mode = 'npt_mc'
 
     # compute the density
