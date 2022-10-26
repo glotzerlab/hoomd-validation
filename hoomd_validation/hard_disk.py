@@ -12,13 +12,13 @@ import os
 RANDOMIZE_STEPS = 5e4
 RUN_STEPS = 2e6
 WRITE_PERIOD = 1000
-LOG_PERIOD = {'trajectory': 50000, 'quantities': 2000}
+LOG_PERIOD = {'trajectory': 50000, 'quantities': 125}
 FRAMES_ANALYZE = int(RUN_STEPS / LOG_PERIOD['quantities'] * 1 / 2)
 
 def job_statepoints():
     """list(dict): A list of statepoints for this subproject."""
     num_particles = 256**2
-    replicate_indices = range(4)
+    replicate_indices = range(8)
     # reference statepoint from: http://dx.doi.org/10.1016/j.jcp.2013.07.023
     params_list = [(0.8887212022251435, 9.17079)]
     for density, pressure in params_list:
@@ -37,54 +37,41 @@ def is_hard_disk(job):
     return job.statepoint['subproject'] == 'hard_disk'
 
 
-@Project.operation(directives=dict(executable=CONFIG["executable"], nranks=16))
+@Project.operation(directives=dict(executable=CONFIG["executable"], nranks=1, walltime=1))
 @Project.pre(is_hard_disk)
 @Project.post.isfile('hard_disk_initial_state.gsd')
 def hard_disk_create_initial_state(job):
     """Create initial system configuration."""
-    import hoomd
+    import gsd.hoomd
     import numpy
     import itertools
 
-    sp = job.sp
-    device = hoomd.device.CPU(msg_file=job.fn('create_initial_state.log'))
+    num_particles = job.statepoint['num_particles']
+    density = job.statepoint['density']
 
-    box_volume = sp["num_particles"] / sp["density"]
+    box_volume = num_particles / density
     L = box_volume**(1 / 2.)
 
-    N = int(numpy.ceil(sp["num_particles"]**(1. / 2.)))
+    N = int(numpy.ceil(num_particles**(1. / 2.)))
     x = numpy.linspace(-L / 2, L / 2, N, endpoint=False)
 
     if x[1] - x[0] < 1.0:
         raise RuntimeError('density too high to initialize on square lattice')
 
-    position_2d = list(itertools.product(x, repeat=2))[:sp["num_particles"]]
+    position_2d = list(itertools.product(x, repeat=2))[:num_particles]
 
     # create snapshot
-    snap = hoomd.Snapshot(device.communicator)
+    snap = gsd.hoomd.Snapshot()
 
-    if device.communicator.rank == 0:
-        snap.particles.N = sp["num_particles"]
-        snap.particles.types = ['A']
-        snap.configuration.box = [L, L, 0, 0, 0, 0]
-        snap.particles.position[:, 0:2] = position_2d
-        snap.particles.typeid[:] = [0] * sp["num_particles"]
+    snap.particles.N = num_particles
+    snap.particles.types = ['A']
+    snap.configuration.box = [L, L, 0, 0, 0, 0]
+    snap.particles.position = numpy.zeros(shape=(num_particles, 3))
+    snap.particles.position[:, 0:2] = position_2d
+    snap.particles.typeid = [0] * num_particles
 
-    # Use hard sphere Monte-Carlo to randomize the initial configuration
-    mc = hoomd.hpmc.integrate.Sphere()
-    mc.shape['A'] = dict(diameter=1.0)
-
-    sim = hoomd.Simulation(device=device, seed=job.statepoint.replicate_idx)
-    sim.create_state_from_snapshot(snap)
-    sim.operations.integrator = mc
-
-    device.notice('Randomizing initial state...')
-    sim.run(RANDOMIZE_STEPS)
-    device.notice(f'Done. Move counts: {mc.translate_moves}')
-
-    hoomd.write.GSD.write(state=sim.state,
-                          filename=job.fn("hard_disk_initial_state.gsd"),
-                          mode='wb')
+    with gsd.hoomd.open(job.fn("hard_disk_initial_state.gsd"), 'wb') as f:
+        f.append(snap)
 
 
 # TODO: Refactor this and lj_fluid's make_simulation into utils.py
@@ -223,7 +210,7 @@ def run_nvt_sim(job, device):
     device.notice('Done.')
 
 
-@Project.operation(directives=dict(walltime=8,
+@Project.operation(directives=dict(walltime=12,
                                    executable=CONFIG["executable"],
                                    nranks=16))
 @Project.pre.after(hard_disk_create_initial_state)
@@ -238,7 +225,7 @@ def hard_disk_nvt_cpu(job):
         job.document['nvt_cpu_complete'] = True
 
 
-@Project.operation(directives=dict(walltime=8,
+@Project.operation(directives=dict(walltime=12,
                                    executable=CONFIG["executable"],
                                    nranks=1,
                                    ngpu=1))
@@ -314,7 +301,7 @@ def run_npt_sim(job, device):
     device.notice('Done.')
 
 
-@Project.operation(directives=dict(walltime=8,
+@Project.operation(directives=dict(walltime=12,
                                    executable=CONFIG["executable"],
                                    nranks=16))
 @Project.pre.after(hard_disk_create_initial_state)
