@@ -16,6 +16,7 @@ WRITE_PERIOD = 1000
 LOG_PERIOD = {'trajectory': 50000, 'quantities': 125}
 FRAMES_ANALYZE = int(RUN_STEPS / LOG_PERIOD['quantities'] * 1 / 2)
 
+
 def job_statepoints():
     """list(dict): A list of statepoints for this subproject."""
     num_particles = 256**2
@@ -38,7 +39,9 @@ def is_hard_disk(job):
     return job.statepoint['subproject'] == 'hard_disk'
 
 
-@Project.operation(directives=dict(executable=CONFIG["executable"], nranks=1, walltime=1))
+@Project.operation(directives=dict(executable=CONFIG["executable"],
+                                   nranks=1,
+                                   walltime=1))
 @Project.pre(is_hard_disk)
 @Project.post.isfile('hard_disk_initial_state.gsd')
 def hard_disk_create_initial_state(job):
@@ -84,11 +87,16 @@ def make_simulation(job, device, initial_state, integrator, sim_mode, logger):
 
     Args:
         job (`signac.Job`): signac job object.
+
         device (`hoomd.device.Device`): hoomd device object.
+
         initial_state (str): Path to the gsd file to be used as an initial
             state.
+
         integrator (`hoomd.md.Integrator`): hoomd integrator object.
+
         sim_mode (str): String defining the simulation mode.
+
         logger (`hoomd.logging.Logger`): Logger object.
     """
     import hoomd
@@ -138,13 +146,17 @@ def make_mc_simulation(job,
 
     Args:
         job (`signac.job.Job`): Signac job object.
+
         device (`hoomd.device.Device`): Device object.
+
         initial_state (str): Path to the gsd file to be used as an initial state
             for the simulation.
-        sim_mode (str): String defining the simulation mode.
-        extra_loggables (list[tuple]): List of extra loggables to log to gsd files.
-            Each tuple is a pair of the instance and the loggable quantity name.
 
+        sim_mode (str): String defining the simulation mode.
+
+        extra_loggables (list[tuple]): List of extra loggables to log to gsd
+            files. Each tuple is a pair of the instance and the loggable
+            quantity name.
     """
     import hoomd
 
@@ -189,7 +201,11 @@ def run_nvt_sim(job, device):
 
     sdf = hoomd.hpmc.compute.SDF(xmax=0.02, dx=1e-4)
 
-    sim = make_mc_simulation(job, device, initial_state, sim_mode, extra_loggables=[(sdf, 'betaP')])
+    sim = make_mc_simulation(job,
+                             device,
+                             initial_state,
+                             sim_mode,
+                             extra_loggables=[(sdf, 'betaP')])
 
     sim.operations.computes.append(sdf)
 
@@ -256,7 +272,7 @@ def run_npt_sim(job, device):
 
     # box updates
     boxmc = hoomd.hpmc.update.BoxMC(betaP=job.statepoint.pressure,
-                              trigger=hoomd.trigger.Periodic(1))
+                                    trigger=hoomd.trigger.Periodic(1))
     boxmc.volume = dict(weight=1.0, mode='ln', delta=0.001)
 
     # simulation
@@ -264,8 +280,10 @@ def run_npt_sim(job, device):
                              device,
                              initial_state,
                              sim_mode,
-                             extra_loggables=[(compute_density, 'density'),
-                                              (boxmc, 'volume_moves'),])
+                             extra_loggables=[
+                                 (compute_density, 'density'),
+                                 (boxmc, 'volume_moves'),
+                             ])
 
     sim.operations.add(boxmc)
 
@@ -326,18 +344,13 @@ def hard_disk_analyze(job):
     """Analyze the output of all simulation modes."""
     import gsd.hoomd
     import numpy
-    import math
     import matplotlib
     import matplotlib.style
     import matplotlib.figure
     matplotlib.style.use('ggplot')
     from util import read_gsd_log_trajectory, get_log_quantity
 
-    constant = dict(
-        nvt_cpu='density',
-        nvt_gpu='density',
-        npt_cpu='pressure'
-        )
+    constant = dict(nvt_cpu='density', nvt_gpu='density', npt_cpu='pressure')
     sim_modes = [
         'nvt_cpu',
         'nvt_gpu',
@@ -355,8 +368,8 @@ def hard_disk_analyze(job):
         n_frames = len(traj)
 
         if constant[sim_mode] == 'density':
-            pressures[sim_mode] = get_log_quantity(
-                traj, 'hpmc/compute/SDF/betaP')
+            pressures[sim_mode] = get_log_quantity(traj,
+                                                   'hpmc/compute/SDF/betaP')
         else:
             pressures[sim_mode] = numpy.ones(n_frames) * job.statepoint.pressure
 
@@ -365,7 +378,6 @@ def hard_disk_analyze(job):
                 traj, 'custom_actions/ComputeDensity/density')
         else:
             densities[sim_mode] = numpy.ones(n_frames) * job.statepoint.density
-
 
     # save averages
     for mode in sim_modes:
@@ -477,8 +489,10 @@ def hard_disk_analyze(job):
                     sort_by='replicate_idx',
                     select=is_hard_disk)
 @Project.operation(directives=dict(executable=CONFIG["executable"]))
-@Project.pre(lambda *jobs: util.true_all(*jobs, key='hard_disk_analysis_complete'))
-@Project.post(lambda *jobs: util.true_all(*jobs, key='hard_disk_compare_modes_complete'))
+@Project.pre(
+    lambda *jobs: util.true_all(*jobs, key='hard_disk_analysis_complete'))
+@Project.post(
+    lambda *jobs: util.true_all(*jobs, key='hard_disk_compare_modes_complete'))
 def hard_disk_compare_modes(*jobs):
     """Compares the tested simulation modes."""
     import numpy
@@ -489,7 +503,9 @@ def hard_disk_compare_modes(*jobs):
     matplotlib.style.use('ggplot')
 
     sim_modes = [
-        'nvt_cpu', 'nvt_gpu', 'npt_cpu',
+        'nvt_cpu',
+        'nvt_gpu',
+        'npt_cpu',
     ]
     quantity_names = ['density', 'pressure']
 
