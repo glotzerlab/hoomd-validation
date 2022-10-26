@@ -6,6 +6,7 @@
 from config import CONFIG
 from project_class import Project
 from flow import aggregator
+import util
 import os
 
 # Run parameters shared between simulations
@@ -214,7 +215,7 @@ def run_nvt_sim(job, device):
                                    executable=CONFIG["executable"],
                                    nranks=16))
 @Project.pre.after(hard_disk_create_initial_state)
-@Project.post.true('nvt_cpu_complete')
+@Project.post.true('hard_disk_nvt_cpu_complete')
 def hard_disk_nvt_cpu(job):
     """Run NVT on the CPU."""
     import hoomd
@@ -222,7 +223,7 @@ def hard_disk_nvt_cpu(job):
     run_nvt_sim(job, device)
 
     if device.communicator.rank == 0:
-        job.document['nvt_cpu_complete'] = True
+        job.document['hard_disk_nvt_cpu_complete'] = True
 
 
 @Project.operation(directives=dict(walltime=12,
@@ -230,7 +231,7 @@ def hard_disk_nvt_cpu(job):
                                    nranks=1,
                                    ngpu=1))
 @Project.pre.after(hard_disk_create_initial_state)
-@Project.post.true('nvt_gpu_complete')
+@Project.post.true('hard_disk_nvt_gpu_complete')
 def hard_disk_nvt_gpu(job):
     """Run NVT on the GPU."""
     import hoomd
@@ -238,7 +239,7 @@ def hard_disk_nvt_gpu(job):
     run_nvt_sim(job, device)
 
     if device.communicator.rank == 0:
-        job.document['nvt_gpu_complete'] = True
+        job.document['hard_disk_nvt_gpu_complete'] = True
 
 
 def run_npt_sim(job, device):
@@ -305,7 +306,7 @@ def run_npt_sim(job, device):
                                    executable=CONFIG["executable"],
                                    nranks=16))
 @Project.pre.after(hard_disk_create_initial_state)
-@Project.post.true('npt_cpu_complete')
+@Project.post.true('hard_disk_npt_cpu_complete')
 def hard_disk_npt_cpu(job):
     """Run NPT MC on the CPU."""
     import hoomd
@@ -313,13 +314,14 @@ def hard_disk_npt_cpu(job):
     run_npt_sim(job, device)
 
     if device.communicator.rank == 0:
-        job.document['npt_cpu_complete'] = True
+        job.document['hard_disk_npt_cpu_complete'] = True
 
 
 @Project.operation(directives=dict(walltime=1, executable=CONFIG["executable"]))
 @Project.pre.after(hard_disk_nvt_cpu)
+@Project.pre.after(hard_disk_nvt_gpu)
 @Project.pre.after(hard_disk_npt_cpu)
-@Project.post.true('analysis_complete')
+@Project.post.true('hard_disk_analysis_complete')
 def hard_disk_analyze(job):
     """Analyze the output of all simulation modes."""
     import gsd.hoomd
@@ -338,6 +340,7 @@ def hard_disk_analyze(job):
         )
     sim_modes = [
         'nvt_cpu',
+        'nvt_gpu',
         'npt_cpu',
     ]
 
@@ -374,27 +377,29 @@ def hard_disk_analyze(job):
     fig = matplotlib.figure.Figure(figsize=(10, 10 / 1.618 * 3), layout='tight')
     ax = fig.add_subplot(3, 1, 1)
 
+    # subsample the values for time series plots
+    sample_rate = 8
     for mode in sim_modes:
-        ax.plot(densities[mode], label=mode)
+        ax.plot(densities[mode][::sample_rate], label=mode)
         ax.set_xlabel('frame')
         ax.set_ylabel(r'$\rho$')
         ax.legend()
 
     ax.hlines(y=job.statepoint.density,
               xmin=0,
-              xmax=len(densities[sim_modes[0]]),
+              xmax=len(densities[sim_modes[0]]) / sample_rate,
               linestyles='dashed',
               colors='k')
 
     ax = fig.add_subplot(3, 1, 2)
     for mode in sim_modes:
-        ax.plot(pressures[mode], label=mode)
+        ax.plot(pressures[mode][::sample_rate], label=mode)
         ax.set_xlabel('frame')
         ax.set_ylabel('$P$')
 
     ax.hlines(y=job.statepoint.pressure,
               xmin=0,
-              xmax=len(densities[sim_modes[0]]),
+              xmax=len(densities[sim_modes[0]]) / sample_rate,
               linestyles='dashed',
               colors='k')
 
@@ -422,7 +427,7 @@ def hard_disk_analyze(job):
     max_density_histogram = 0
     for mode in sim_modes:
         density_histogram, bin_edges = numpy.histogram(
-            densities[mode][-FRAMES_ANALYZE:], bins=100, range=density_range)
+            densities[mode][-FRAMES_ANALYZE:], bins=50, range=density_range)
         if constant[mode] == 'density':
             density_histogram[:] = 0
 
@@ -443,7 +448,7 @@ def hard_disk_analyze(job):
     max_pressure_histogram = 0
     for mode in sim_modes:
         pressure_histogram, bin_edges = numpy.histogram(
-            pressures[mode][-FRAMES_ANALYZE:], bins=100, range=pressure_range)
+            pressures[mode][-FRAMES_ANALYZE:], bins=50, range=pressure_range)
         if constant[mode] == 'pressure':
             pressure_histogram[:] = 0
 
@@ -465,4 +470,97 @@ def hard_disk_analyze(job):
                  f"replicate={job.statepoint.replicate_idx}")
     fig.savefig(job.fn('nvt_npt_plots.svg'), bbox_inches='tight')
 
-    # job.document['analysis_complete'] = True
+    job.document['hard_disk_analysis_complete'] = True
+
+
+@aggregator.groupby(key=['density', 'num_particles'],
+                    sort_by='replicate_idx',
+                    select=is_hard_disk)
+@Project.operation(directives=dict(executable=CONFIG["executable"]))
+@Project.pre(lambda *jobs: util.true_all(*jobs, key='hard_disk_analysis_complete'))
+@Project.post(lambda *jobs: util.true_all(*jobs, key='hard_disk_compare_modes_complete'))
+def hard_disk_compare_modes(*jobs):
+    """Compares the tested simulation modes."""
+    import numpy
+    import matplotlib
+    import matplotlib.style
+    import matplotlib.figure
+    import scipy.stats
+    matplotlib.style.use('ggplot')
+
+    sim_modes = [
+        'nvt_cpu', 'nvt_gpu', 'npt_cpu',
+    ]
+    quantity_names = ['density', 'pressure']
+
+    # grab the common statepoint parameters
+    set_density = jobs[0].sp.density
+    set_pressure = jobs[0].sp.pressure
+    num_particles = jobs[0].sp.num_particles
+
+    quantity_reference = dict(density=set_density,
+                              pressure=set_pressure,
+                              potential_energy=None)
+
+    fig = matplotlib.figure.Figure(figsize=(10, 10 / 1.618 * 2), layout='tight')
+    fig.suptitle(f"$\\rho={set_density}$, $N={num_particles}$")
+
+    for i, quantity_name in enumerate(quantity_names):
+        ax = fig.add_subplot(2, 1, i + 1)
+
+        # organize data from jobs
+        quantities = {mode: [] for mode in sim_modes}
+        for jb in jobs:
+            for mode in sim_modes:
+                quantities[mode].append(
+                    getattr(getattr(jb.doc, mode), quantity_name))
+
+        # compute stats with data
+        avg_quantity = {
+            mode: numpy.mean(quantities[mode]) for mode in sim_modes
+        }
+        stderr_quantity = {
+            mode:
+            2 * numpy.std(quantities[mode]) / numpy.sqrt(len(quantities[mode]))
+            for mode in sim_modes
+        }
+
+        # compute the quantity differences
+        quantity_list = [avg_quantity[mode] for mode in sim_modes]
+        stderr_list = numpy.array([stderr_quantity[mode] for mode in sim_modes])
+
+        if quantity_reference[quantity_name] is not None:
+            reference = quantity_reference[quantity_name]
+        else:
+            reference = numpy.mean(quantity_list)
+
+        quantity_diff_list = numpy.array(quantity_list) - reference
+
+        ax.errorbar(x=range(len(sim_modes)),
+                    y=quantity_diff_list / reference / 1e-3,
+                    yerr=numpy.fabs(stderr_list / reference / 1e-3),
+                    fmt='s')
+        ax.set_xticks(range(len(sim_modes)), sim_modes, rotation=45)
+        ax.set_ylabel(quantity_name + ' relative error / 1e-3')
+        ax.hlines(y=0,
+                  xmin=0,
+                  xmax=len(sim_modes) - 1,
+                  linestyles='dashed',
+                  colors='k')
+
+        unpacked_quantities = list(quantities.values())
+        f, p = scipy.stats.f_oneway(*unpacked_quantities)
+
+        if p > 0.05:
+            result = "$\\checkmark$"
+        else:
+            result = "XX"
+
+        ax.set_title(label=result + f' ANOVA p-value: {p:0.3f}')
+
+    filename = f'hard_disk_compare_density{round(set_density, 2)}.svg'
+    fig.savefig(os.path.join(jobs[0]._project.path, filename),
+                bbox_inches='tight')
+
+    for job in jobs:
+        job.document['hard_disk_compare_modes_complete'] = True
