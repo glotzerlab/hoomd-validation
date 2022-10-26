@@ -11,7 +11,7 @@ import os
 
 # Run parameters shared between simulations
 RANDOMIZE_STEPS = 5e4
-RUN_STEPS = 5e5
+RUN_STEPS = 2e6
 WRITE_PERIOD = 4000
 LOG_PERIOD = {'trajectory': 50000, 'quantities': 2000}
 FRAMES_ANALYZE = int(RUN_STEPS / LOG_PERIOD['quantities'] * 1 / 2)
@@ -21,7 +21,7 @@ LJ_PARAMS = {'epsilon': 1.0, 'sigma': 1.0, 'r_on': 2.0, 'r_cut': 2.5}
 def job_statepoints():
     """list(dict): A list of statepoints for this subproject."""
     num_particles = 12**3
-    replicate_indices = range(4)
+    replicate_indices = range(8)
     params_list = [(1.5, 0.5998286671851658, 1.0270905797770546),
                    (1.0, 0.7999550814681395, 1.4363805638963822),
                    (1.25, 0.049963649769543844, 0.05363574413661169)]
@@ -42,7 +42,7 @@ def is_lj_fluid(job):
     return job.statepoint['subproject'] == 'lj_fluid'
 
 
-@Project.operation(directives=dict(executable=CONFIG["executable"], nranks=8))
+@Project.operation(directives=dict(executable=CONFIG["executable"], nranks=8, walltime=1))
 @Project.pre(is_lj_fluid)
 @Project.post.isfile('initial_state.gsd')
 def lj_fluid_create_initial_state(job):
@@ -179,7 +179,7 @@ def make_md_simulation(job,
     lj.mode = 'xplor'
 
     # integrator
-    integrator = md.Integrator(dt=0.001953125, methods=[method], forces=[lj])
+    integrator = md.Integrator(dt=0.001, methods=[method], forces=[lj])
 
     # compute thermo
     thermo = md.compute.ThermodynamicQuantities(hoomd.filter.All())
@@ -233,7 +233,7 @@ def run_langevin_md_sim(job, device):
     device.notice('Done.')
 
 
-@Project.operation(directives=dict(walltime=2,
+@Project.operation(directives=dict(walltime=12,
                                    executable=CONFIG["executable"],
                                    nranks=8))
 @Project.pre.after(lj_fluid_create_initial_state)
@@ -248,7 +248,7 @@ def lj_fluid_langevin_md_cpu(job):
         job.document['lj_fluid_langevin_md_cpu_complete'] = True
 
 
-@Project.operation(directives=dict(walltime=2,
+@Project.operation(directives=dict(walltime=12,
                                    executable=CONFIG["executable"],
                                    nranks=1,
                                    ngpu=1))
@@ -290,7 +290,7 @@ def run_nvt_md_sim(job, device):
     device.notice('Done.')
 
 
-@Project.operation(directives=dict(walltime=2,
+@Project.operation(directives=dict(walltime=12,
                                    executable=CONFIG["executable"],
                                    nranks=8))
 @Project.pre.after(lj_fluid_create_initial_state)
@@ -305,7 +305,7 @@ def lj_fluid_nvt_md_cpu(job):
         job.document['lj_fluid_nvt_md_cpu_complete'] = True
 
 
-@Project.operation(directives=dict(walltime=2,
+@Project.operation(directives=dict(walltime=12,
                                    executable=CONFIG["executable"],
                                    nranks=1,
                                    ngpu=1))
@@ -365,7 +365,7 @@ def run_npt_md_sim(job, device):
     device.notice('Done.')
 
 
-@Project.operation(directives=dict(walltime=2,
+@Project.operation(directives=dict(walltime=12,
                                    executable=CONFIG["executable"],
                                    nranks=8))
 @Project.pre.after(lj_fluid_create_initial_state)
@@ -380,7 +380,7 @@ def lj_fluid_npt_md_cpu(job):
         job.document['lj_fluid_npt_md_cpu_complete'] = True
 
 
-@Project.operation(directives=dict(walltime=2,
+@Project.operation(directives=dict(walltime=12,
                                    executable=CONFIG["executable"],
                                    nranks=1,
                                    ngpu=1))
@@ -522,7 +522,7 @@ def run_nvt_mc_sim(job, device):
     device.notice('Done.')
 
 
-@Project.operation(directives=dict(walltime=2,
+@Project.operation(directives=dict(walltime=12,
                                    executable=CONFIG["executable"],
                                    nranks=8))
 @Project.pre.after(lj_fluid_create_initial_state)
@@ -537,7 +537,7 @@ def lj_fluid_nvt_mc_cpu(job):
         job.document['lj_fluid_nvt_mc_cpu_complete'] = True
 
 
-@Project.operation(directives=dict(walltime=2,
+@Project.operation(directives=dict(walltime=12,
                                    executable=CONFIG["executable"],
                                    nranks=1,
                                    ngpu=1))
@@ -613,7 +613,7 @@ def run_npt_mc_sim(job, device):
     device.notice('Done.')
 
 
-@Project.operation(directives=dict(walltime=2,
+@Project.operation(directives=dict(walltime=12,
                                    executable=CONFIG["executable"],
                                    nranks=8))
 @Project.pre.after(lj_fluid_create_initial_state)
