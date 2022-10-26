@@ -32,3 +32,8 @@ def get_log_quantity(log_traj, quantity):
         qty_values = [frame[quantity] for frame in log_traj]
 
     return numpy.array(qty_values)
+
+
+def true_all(*jobs, key):
+    """Check that a given key is true in all jobs."""
+    return all(job.document.get(key, False) for job in jobs)
