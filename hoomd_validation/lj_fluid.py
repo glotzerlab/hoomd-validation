@@ -42,7 +42,9 @@ def is_lj_fluid(job):
     return job.statepoint['subproject'] == 'lj_fluid'
 
 
-@Project.operation(directives=dict(executable=CONFIG["executable"], nranks=8, walltime=1))
+@Project.operation(directives=dict(executable=CONFIG["executable"],
+                                   nranks=8,
+                                   walltime=1))
 @Project.pre(is_lj_fluid)
 @Project.post.isfile('lj_fluid_initial_state.gsd')
 def lj_fluid_create_initial_state(job):
@@ -806,7 +808,7 @@ def lj_fluid_analyze(job):
     max_density_histogram = 0
     for mode in sim_modes:
         density_histogram, bin_edges = numpy.histogram(
-            densities[mode][-FRAMES_ANALYZE:], bins=bins, range=density_range)
+            densities[mode][-FRAMES_ANALYZE:], bins=50, range=density_range)
         if constant[mode] == 'density':
             density_histogram[:] = 0
 
@@ -827,7 +829,7 @@ def lj_fluid_analyze(job):
     max_pressure_histogram = 0
     for mode in sim_modes:
         pressure_histogram, bin_edges = numpy.histogram(
-            pressures[mode][-FRAMES_ANALYZE:], bins=bins, range=pressure_range)
+            pressures[mode][-FRAMES_ANALYZE:], bins=50, range=pressure_range)
         if constant[mode] == 'pressure':
             pressure_histogram[:] = 0
 
@@ -856,8 +858,10 @@ def lj_fluid_analyze(job):
                     sort_by='replicate_idx',
                     select=is_lj_fluid)
 @Project.operation(directives=dict(executable=CONFIG["executable"]))
-@Project.pre(lambda *jobs: util.true_all(*jobs, key='lj_fluid_analysis_complete'))
-@Project.post(lambda *jobs: util.true_all(*jobs, key='lj_fluid_compare_modes_complete'))
+@Project.pre(
+    lambda *jobs: util.true_all(*jobs, key='lj_fluid_analysis_complete'))
+@Project.post(
+    lambda *jobs: util.true_all(*jobs, key='lj_fluid_compare_modes_complete'))
 def lj_fluid_compare_modes(*jobs):
     """Compares the tested simulation modes."""
     import numpy
