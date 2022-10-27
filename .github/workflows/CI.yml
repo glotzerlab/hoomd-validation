@@ -26,13 +26,13 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v3.0.2
 
-      - name: Install Python
-        uses: actions/setup-python@v4
+      - name: Set up Python
+        uses: actions/setup-python@v4.3.0
         with:
           python-version: '3.10'
 
       - name: Run pre-commit hooks
-        uses: pre-commit/action@v2.0.3
+        uses: pre-commit/action@v3.0.0
 
   flow-status:
     name flow-status:
@@ -55,4 +55,3 @@ jobs:
         run: python3 hoomd_validation/init.py
       - name: Check flow status
         run: python3 hoomd_validation/project.py status
-        uses: pre-commit/action@v3.0.0
