@@ -35,7 +35,7 @@ jobs:
         uses: pre-commit/action@v3.0.0
 
   flow-status:
-    name flow-status:
+    name: flow-status
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3.1.0
