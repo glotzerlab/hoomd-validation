@@ -6,7 +6,7 @@ validation test workflows in this repository are organized into signac projects.
 ## Requirements
 
 * signac >=1.8.0
-* signac-flow >= 1.22.0
+* signac-flow >= 0.22.0
 * Simulation workflow steps require either the [glotzerlab-software container]
   or the following software:
     * HOOMD-blue >=3.0 *(with MPI, GPU, and LLVM support enabled)*
