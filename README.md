@@ -83,4 +83,13 @@ documents:
 3. Inspect the plots produced in:
     * `workspace/*.svg`
 
+## Dashboard
+
+Run the provided [signac-dashboard] application to explore the results in a web browser:
+
+```bash
+$ python3 dashboard.py run
+```
+
 [glotzerlab-software container]: https://glotzerlab-software.readthedocs.io/
+[signac-dashboard]: https://docs.signac.io/projects/dashboard/
