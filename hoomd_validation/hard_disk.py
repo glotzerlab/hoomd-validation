@@ -396,7 +396,7 @@ def run_nec_sim(job, device):
     device.notice('Done.')
 
 
-@Project.operation(directives=dict(walltime=12,
+@Project.operation(directives=dict(walltime=48,
                                    executable=CONFIG["executable"],
                                    nranks=1))
 @Project.pre.after(hard_disk_create_initial_state)
