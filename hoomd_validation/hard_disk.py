@@ -335,6 +335,82 @@ def hard_disk_npt_cpu(job):
         job.document['hard_disk_npt_cpu_complete'] = True
 
 
+def run_nec_sim(job, device):
+    """Run MC sim in NVT with NEC."""
+    import hoomd
+    initial_state = job.fn('hard_disk_initial_state.gsd')
+    sim_mode = 'nec'
+
+    mc = hoomd.hpmc.nec.integrate.Sphere(default_d=0.05, update_fraction=0.01, nselect=1)
+    mc.shape['A'] = dict(diameter=1)
+    mc.chain_time = 0.05
+
+    sdf = hoomd.hpmc.compute.SDF(xmax=0.02, dx=1e-4)
+
+    # log to gsd
+    logger_gsd = hoomd.logging.Logger(categories=['scalar', 'sequence'])
+    logger_gsd.add(mc, quantities=['translate_moves', 'particles_per_chain', 'virial_pressure'])
+    logger_gsd.add(sdf, quantities=['betaP'])
+
+    # make simulation
+    sim = make_simulation(job, device, initial_state, mc, sim_mode, logger_gsd)
+
+    sim.operations.computes.append(sdf)
+
+    trigger_tune = hoomd.trigger.And([
+            hoomd.trigger.Periodic(5),
+            hoomd.trigger.Before(sim.timestep + int(RANDOMIZE_STEPS))])
+
+    tune_nec_d = hoomd.hpmc.tune.MoveSize.scale_solver(
+        trigger=trigger_tune,
+        moves=['d'],
+        target=0.10,
+        tol=0.001,
+        max_translation_move=0.25)
+    sim.operations.tuners.append(tune_nec_d)
+
+    tune_nec_ct = hoomd.hpmc.nec.tune.ChainTime.scale_solver(trigger_tune,
+                                                             target=20.0,
+                                                             tol=1.0,
+                                                             gamma=20.0)
+    sim.operations.tuners.append(tune_nec_ct)
+
+    # equilibrate
+    sim.state.thermalize_particle_momenta(hoomd.filter.All(), kT=1)
+
+    device.notice('Equilibrating...')
+    sim.run(RANDOMIZE_STEPS)
+    sim.run(RANDOMIZE_STEPS)
+    device.notice('Done.')
+
+    # Print acceptance ratio
+    translate_moves = sim.operations.integrator.translate_moves
+    translate_acceptance = translate_moves[0] / sum(translate_moves)
+    device.notice(f'Collision search acceptance: {translate_acceptance}')
+    device.notice(f'Collision search size: {sim.operations.integrator.d["A"]}')
+    device.notice(f'Particles per chain: {mc.particles_per_chain}')
+
+    # run
+    device.notice('Running...')
+    sim.run(RUN_STEPS)
+    device.notice('Done.')
+
+
+@Project.operation(directives=dict(walltime=12,
+                                   executable=CONFIG["executable"],
+                                   nranks=1))
+@Project.pre.after(hard_disk_create_initial_state)
+@Project.post.true('hard_disk_nec_cpu_complete')
+def hard_disk_nec_cpu(job):
+    """Run NEC on the CPU."""
+    import hoomd
+    device = hoomd.device.CPU(msg_file=job.fn('run_nec_cpu.log'))
+    run_nec_sim(job, device)
+
+    if device.communicator.rank == 0:
+        job.document['hard_disk_nec_cpu_complete'] = True
+
+
 @Project.operation(directives=dict(walltime=1, executable=CONFIG["executable"]))
 @Project.pre.after(hard_disk_nvt_cpu)
 @Project.pre.after(hard_disk_nvt_gpu)
