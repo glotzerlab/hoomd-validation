@@ -341,7 +341,9 @@ def run_nec_sim(job, device):
     initial_state = job.fn('hard_disk_initial_state.gsd')
     sim_mode = 'nec'
 
-    mc = hoomd.hpmc.nec.integrate.Sphere(default_d=0.05, update_fraction=0.01, nselect=1)
+    mc = hoomd.hpmc.nec.integrate.Sphere(default_d=0.05,
+                                         update_fraction=0.01,
+                                         nselect=1)
     mc.shape['A'] = dict(diameter=1)
     mc.chain_time = 0.05
 
@@ -349,7 +351,11 @@ def run_nec_sim(job, device):
 
     # log to gsd
     logger_gsd = hoomd.logging.Logger(categories=['scalar', 'sequence'])
-    logger_gsd.add(mc, quantities=['translate_moves', 'particles_per_chain', 'virial_pressure'])
+    logger_gsd.add(mc,
+                   quantities=[
+                       'translate_moves', 'particles_per_chain',
+                       'virial_pressure'
+                   ])
     logger_gsd.add(sdf, quantities=['betaP'])
 
     # make simulation
@@ -358,8 +364,9 @@ def run_nec_sim(job, device):
     sim.operations.computes.append(sdf)
 
     trigger_tune = hoomd.trigger.And([
-            hoomd.trigger.Periodic(5),
-            hoomd.trigger.Before(sim.timestep + int(RANDOMIZE_STEPS))])
+        hoomd.trigger.Periodic(5),
+        hoomd.trigger.Before(sim.timestep + int(RANDOMIZE_STEPS))
+    ])
 
     tune_nec_d = hoomd.hpmc.tune.MoveSize.scale_solver(
         trigger=trigger_tune,
