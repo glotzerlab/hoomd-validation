@@ -8,6 +8,7 @@ from project_class import Project
 from flow import aggregator
 import util
 import os
+import math
 
 # Run parameters shared between simulations
 RANDOMIZE_STEPS = 5e4
@@ -451,9 +452,13 @@ def hard_disk_analyze(job):
 
         n_frames = len(traj)
 
-        if constant[sim_mode] == 'density':
+        # NEC generates inf virial pressures for 2D simulations in HOOMD-blue v3.6.0, fall back on SDF
+        if constant[sim_mode] == 'density' and ('nvt' in sim_mode or traj[0]['hpmc/nec/integrate/Sphere/virial_pressure'][0] == math.inf):
             pressures[sim_mode] = get_log_quantity(traj,
                                                    'hpmc/compute/SDF/betaP')
+        elif constant[sim_mode] == 'density' and 'nec' in sim_mode:
+            pressures[sim_mode] = get_log_quantity(traj,
+                                                   'hpmc/nec/integrate/Sphere/virial_pressure')
         else:
             pressures[sim_mode] = numpy.ones(n_frames) * job.statepoint.pressure
 
