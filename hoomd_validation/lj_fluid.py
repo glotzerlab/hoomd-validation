@@ -914,7 +914,7 @@ def lj_fluid_compare_modes(*jobs):
         f, p = scipy.stats.f_oneway(*unpacked_quantities)
 
         if p > 0.05:
-            result = "$\\checkmark$"
+            result = r"$\checkmark$"
         else:
             result = "XX"
 
