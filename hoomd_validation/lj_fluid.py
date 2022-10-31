@@ -732,7 +732,7 @@ def lj_fluid_analyze(job):
     # Plot results
     def plot(*, ax, data, quantity_name, base_line=None, legend=False):
         for mode in sim_modes:
-            ax.plot(np.asarray(data[mode]), label=mode)
+            ax.plot(numpy.asarray(data[mode]), label=mode)
         ax.set_xlabel("frame")
         ax.set_ylabel(quantity_name)
         if base_line is not None:
@@ -744,8 +744,11 @@ def lj_fluid_analyze(job):
 
     fig = matplotlib.figure.Figure(figsize=(20, 20 / 3.24 * 2), layout='tight')
     ax = fig.add_subplot(3, 2, 1)
-    plot(ax=ax, data=densities, quantity_name=r"$\rho",
-         base_line=job.sp.density, legend=True)
+    plot(ax=ax,
+         data=densities,
+         quantity_name=r"$\rho",
+         base_line=job.sp.density,
+         legend=True)
 
     ax = fig.add_subplot(3, 2, 2)
     plot(ax=ax, data=pressures, quantity_name=r"$P", base_line=job.sp.pressure)
@@ -754,13 +757,18 @@ def lj_fluid_analyze(job):
     plot(ax=ax, data=energies, quantity_name="$U / N$")
 
     ax = fig.add_subplot(3, 2, 4)
-    plot(ax=ax, data=kinetic_temperature, quantity_name='kinetic temperature',
-         base_line=job.sp.kT, legend=True)
+    plot(ax=ax,
+         data=kinetic_temperature,
+         quantity_name='kinetic temperature',
+         base_line=job.sp.kT,
+         legend=True)
 
     ax = fig.add_subplot(3, 2, 5)
     plot(ax=ax,
-         data={mode: np.asarray(lm) / job.sp.num_particles
-               for mode, lm in linear_momentum.items()},
+         data={
+             mode: numpy.asarray(lm) / job.sp.num_particles
+             for mode, lm in linear_momentum.items()
+         },
          quantity_name=r'$|\vec{p}| / N$')
 
     # determine range for density and pressure histograms
@@ -786,8 +794,9 @@ def lj_fluid_analyze(job):
     def plot_histo(*, ax, data, quantity_name, sp_name, range):
         max_density_histogram = 0
         for mode in sim_modes:
-            histogram, bin_edges = numpy.histogram(
-                data[mode][-FRAMES_ANALYZE:], bins=50, range=range)
+            histogram, bin_edges = numpy.histogram(data[mode][-FRAMES_ANALYZE:],
+                                                   bins=50,
+                                                   range=range)
             if constant[mode] == sp_name:
                 histogram[:] = 0
 
@@ -802,7 +811,6 @@ def lj_fluid_analyze(job):
                   ymax=max_density_histogram,
                   linestyles='dashed',
                   colors='k')
-
 
     ax = fig.add_subplot(3, 4, 11)
     plot_histo(ax=ax,
