@@ -433,10 +433,11 @@ def hard_disk_analyze(job):
     matplotlib.style.use('ggplot')
     from util import read_gsd_log_trajectory, get_log_quantity
 
-    constant = dict(nvt_cpu='density', nvt_gpu='density', npt_cpu='pressure')
+    constant = dict(nvt_cpu='density', nvt_gpu='density', nec_cpu='density', npt_cpu='pressure')
     sim_modes = [
         'nvt_cpu',
         'nvt_gpu',
+        'nec_cpu',
         'npt_cpu',
     ]
 
@@ -588,6 +589,7 @@ def hard_disk_compare_modes(*jobs):
     sim_modes = [
         'nvt_cpu',
         'nvt_gpu',
+        'nec_cpu',
         'npt_cpu',
     ]
     quantity_names = ['density', 'pressure']
