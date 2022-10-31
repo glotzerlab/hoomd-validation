@@ -434,7 +434,10 @@ def hard_disk_analyze(job):
     matplotlib.style.use('ggplot')
     from util import read_gsd_log_trajectory, get_log_quantity
 
-    constant = dict(nvt_cpu='density', nvt_gpu='density', nec_cpu='density', npt_cpu='pressure')
+    constant = dict(nvt_cpu='density',
+                    nvt_gpu='density',
+                    nec_cpu='density',
+                    npt_cpu='pressure')
     sim_modes = [
         'nvt_cpu',
         'nvt_gpu',
@@ -452,13 +455,17 @@ def hard_disk_analyze(job):
 
         n_frames = len(traj)
 
-        # NEC generates inf virial pressures for 2D simulations in HOOMD-blue v3.6.0, fall back on SDF
-        if constant[sim_mode] == 'density' and ('nvt' in sim_mode or traj[0]['hpmc/nec/integrate/Sphere/virial_pressure'][0] == math.inf):
+        # NEC generates inf virial pressures for 2D simulations in HOOMD-blue
+        # v3.6.0, fall back on SDF
+        if constant[sim_mode] == 'density' and (
+                'nvt' in sim_mode
+                or traj[0]['hpmc/nec/integrate/Sphere/virial_pressure'][0]
+                == math.inf):
             pressures[sim_mode] = get_log_quantity(traj,
                                                    'hpmc/compute/SDF/betaP')
         elif constant[sim_mode] == 'density' and 'nec' in sim_mode:
-            pressures[sim_mode] = get_log_quantity(traj,
-                                                   'hpmc/nec/integrate/Sphere/virial_pressure')
+            pressures[sim_mode] = get_log_quantity(
+                traj, 'hpmc/nec/integrate/Sphere/virial_pressure')
         else:
             pressures[sim_mode] = numpy.ones(n_frames) * job.statepoint.pressure
 
