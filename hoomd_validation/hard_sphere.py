@@ -41,13 +41,13 @@ def is_hard_sphere(job):
 
 
 @Project.operation(directives=dict(executable=CONFIG["executable"],
-                                   nranks=1,
+                                   nranks=8,
                                    walltime=1))
 @Project.pre(is_hard_sphere)
 @Project.post.isfile('hard_sphere_initial_state.gsd')
 def hard_sphere_create_initial_state(job):
     """Create initial system configuration."""
-    import gsd.hoomd
+    import hoomd
     import numpy
     import itertools
 
@@ -57,7 +57,7 @@ def hard_sphere_create_initial_state(job):
     box_volume = num_particles / density
     L = box_volume**(1 / 3.)
 
-    N = int(numpy.ceil(job.statepoint["num_particles"]**(1. / 3.)))
+    N = int(numpy.ceil(num_particles**(1. / 3.)))
     x = numpy.linspace(-L / 2, L / 2, N, endpoint=False)
 
     if x[1] - x[0] < 1.0:
@@ -66,16 +66,31 @@ def hard_sphere_create_initial_state(job):
     position = list(itertools.product(x, repeat=3))[:num_particles]
 
     # create snapshot
-    snap = gsd.hoomd.Snapshot()
+    device = hoomd.device.CPU(msg_file=job.fn('create_initial_state.log'))
+    snap = hoomd.Snapshot(device.communicator)
 
-    snap.particles.N = num_particles
-    snap.particles.types = ['A']
-    snap.configuration.box = [L, L, L, 0, 0, 0]
-    snap.particles.position = position
-    snap.particles.typeid = [0] * num_particles
+    if device.communicator.rank == 0:
+        snap.particles.N = num_particles
+        snap.particles.types = ['A']
+        snap.configuration.box = [L, L, L, 0, 0, 0]
+        snap.particles.position[:] = position
+        snap.particles.typeid[:] = [0] * num_particles
 
-    with gsd.hoomd.open(job.fn("hard_sphere_initial_state.gsd"), 'wb') as f:
-        f.append(snap)
+    # Use hard sphere Monte-Carlo to randomize the initial configuration
+    mc = hoomd.hpmc.integrate.Sphere(default_d=0.01)
+    mc.shape['A'] = dict(diameter=1.0)
+
+    sim = hoomd.Simulation(device=device, seed=job.statepoint.replicate_idx)
+    sim.create_state_from_snapshot(snap)
+    sim.operations.integrator = mc
+
+    device.notice('Randomizing initial state...')
+    sim.run(RANDOMIZE_STEPS)
+    device.notice(f'Done. Move counts: {mc.translate_moves}')
+
+    hoomd.write.GSD.write(state=sim.state,
+                          filename=job.fn("hard_sphere_initial_state.gsd"),
+                          mode='wb')
 
 
 def make_mc_simulation(job,
@@ -320,7 +335,7 @@ def run_nec_sim(job, device):
         moves=['d'],
         target=0.10,
         tol=0.001,
-        max_translation_move=0.25)
+        max_translation_move=1.0)
     sim.operations.tuners.append(tune_nec_d)
 
     tune_nec_ct = hoomd.hpmc.nec.tune.ChainTime.scale_solver(trigger_tune,
@@ -339,8 +354,12 @@ def run_nec_sim(job, device):
 
     # Print acceptance ratio
     translate_moves = sim.operations.integrator.translate_moves
-    translate_acceptance = translate_moves[0] / sum(translate_moves)
-    device.notice(f'Collision search acceptance: {translate_acceptance}')
+    if sum(translate_moves) > 0:
+        translate_acceptance = translate_moves[0] / sum(translate_moves)
+        device.notice(f'Collision search acceptance: {translate_acceptance}')
+    else:
+        device.notice(f'No translate moves!: {translate_moves}')
+
     device.notice(f'Collision search size: {sim.operations.integrator.d["A"]}')
     device.notice(f'Particles per chain: {mc.particles_per_chain}')
 
