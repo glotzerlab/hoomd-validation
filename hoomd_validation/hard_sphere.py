@@ -330,12 +330,11 @@ def run_nec_sim(job, device):
         hoomd.trigger.Before(sim.timestep + int(RANDOMIZE_STEPS))
     ])
 
-    tune_nec_d = hoomd.hpmc.tune.MoveSize.scale_solver(
-        trigger=trigger_tune,
-        moves=['d'],
-        target=0.10,
-        tol=0.001,
-        max_translation_move=1.0)
+    tune_nec_d = hoomd.hpmc.tune.MoveSize.scale_solver(trigger=trigger_tune,
+                                                       moves=['d'],
+                                                       target=0.10,
+                                                       tol=0.001,
+                                                       max_translation_move=1.0)
     sim.operations.tuners.append(tune_nec_d)
 
     tune_nec_ct = hoomd.hpmc.nec.tune.ChainTime.scale_solver(trigger_tune,
@@ -553,7 +552,8 @@ def hard_sphere_analyze(job):
 @Project.pre(
     lambda *jobs: util.true_all(*jobs, key='hard_sphere_analysis_complete'))
 @Project.post(
-    lambda *jobs: util.true_all(*jobs, key='hard_sphere_compare_modes_complete'))
+    lambda *jobs: util.true_all(*jobs, key='hard_sphere_compare_modes_complete')
+)
 def hard_sphere_compare_modes(*jobs):
     """Compares the tested simulation modes."""
     import numpy
