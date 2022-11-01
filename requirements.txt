@@ -1,0 +1,6 @@
+signac >= 1.8.0
+signac-flow >= 1.22.0
+matplotlib
+gsd
+numpy
+scipy

@@ -730,59 +730,46 @@ def lj_fluid_analyze(job):
             density=float(numpy.mean(densities[mode][-FRAMES_ANALYZE:])))
 
     # Plot results
+    def plot(*, ax, data, quantity_name, base_line=None, legend=False):
+        for mode in sim_modes:
+            ax.plot(numpy.asarray(data[mode]), label=mode)
+        ax.set_xlabel("frame")
+        ax.set_ylabel(quantity_name)
+        if base_line is not None:
+            ax.hlines(y=base_line,
+                      xmin=0,
+                      xmax=len(data[sim_modes[0]]),
+                      linestyles='dashed',
+                      colors='k')
+
     fig = matplotlib.figure.Figure(figsize=(20, 20 / 3.24 * 2), layout='tight')
     ax = fig.add_subplot(3, 2, 1)
-
-    for mode in sim_modes:
-        ax.plot(densities[mode], label=mode)
-        ax.set_xlabel('frame')
-        ax.set_ylabel(r'$\rho$')
-        ax.legend()
-
-    ax.hlines(y=job.statepoint.density,
-              xmin=0,
-              xmax=len(densities[sim_modes[0]]),
-              linestyles='dashed',
-              colors='k')
+    plot(ax=ax,
+         data=densities,
+         quantity_name=r"$\rho",
+         base_line=job.sp.density,
+         legend=True)
 
     ax = fig.add_subplot(3, 2, 2)
-    for mode in sim_modes:
-        ax.plot(pressures[mode], label=mode)
-        ax.set_xlabel('frame')
-        ax.set_ylabel('$P$')
-
-    ax.hlines(y=job.statepoint.pressure,
-              xmin=0,
-              xmax=len(densities[sim_modes[0]]),
-              linestyles='dashed',
-              colors='k')
+    plot(ax=ax, data=pressures, quantity_name=r"$P", base_line=job.sp.pressure)
 
     ax = fig.add_subplot(3, 2, 3)
-    for mode in sim_modes:
-        ax.plot(numpy.array(energies[mode]) / job.statepoint.num_particles,
-                label=mode)
-        ax.set_xlabel('frame')
-        ax.set_ylabel('$U / N$')
+    plot(ax=ax, data=energies, quantity_name="$U / N$")
 
     ax = fig.add_subplot(3, 2, 4)
-    for mode in sim_modes:
-        ax.plot(kinetic_temperature[mode], label=mode)
-        ax.set_xlabel('frame')
-        ax.set_ylabel('kinetic temperature')
-
-    ax.hlines(y=job.statepoint.kT,
-              xmin=0,
-              xmax=len(densities[sim_modes[0]]),
-              linestyles='dashed',
-              colors='k')
+    plot(ax=ax,
+         data=kinetic_temperature,
+         quantity_name='kinetic temperature',
+         base_line=job.sp.kT,
+         legend=True)
 
     ax = fig.add_subplot(3, 2, 5)
-    for mode in sim_modes:
-        ax.plot(numpy.array(linear_momentum[mode])
-                / job.statepoint.num_particles,
-                label=mode)
-        ax.set_xlabel('frame')
-        ax.set_ylabel(r'$|\vec{p}| / N$')
+    plot(ax=ax,
+         data={
+             mode: numpy.asarray(lm) / job.sp.num_particles
+             for mode, lm in linear_momentum.items()
+         },
+         quantity_name=r'$|\vec{p}| / N$')
 
     # determine range for density and pressure histograms
     density_range = [
@@ -804,47 +791,40 @@ def lj_fluid_analyze(job):
         pressure_range[1] = max(pressure_range[1],
                                 numpy.max(pressures[mode][-FRAMES_ANALYZE:]))
 
-    ax = fig.add_subplot(3, 4, 11)
-    max_density_histogram = 0
-    for mode in sim_modes:
-        density_histogram, bin_edges = numpy.histogram(
-            densities[mode][-FRAMES_ANALYZE:], bins=50, range=density_range)
-        if constant[mode] == 'density':
-            density_histogram[:] = 0
+    def plot_histo(*, ax, data, quantity_name, sp_name, range):
+        max_density_histogram = 0
+        for mode in sim_modes:
+            histogram, bin_edges = numpy.histogram(data[mode][-FRAMES_ANALYZE:],
+                                                   bins=50,
+                                                   range=range)
+            if constant[mode] == sp_name:
+                histogram[:] = 0
 
-        max_density_histogram = max(max_density_histogram,
-                                    numpy.max(density_histogram))
+            max_density_histogram = max(max_density_histogram,
+                                        numpy.max(histogram))
 
-        ax.plot(bin_edges[:-1], density_histogram, label=mode)
-        ax.set_xlabel(r'$\rho$')
+            ax.plot(bin_edges[:-1], histogram, label=mode)
+        ax.set_xlabel(quantity_name)
         ax.set_ylabel('frequency')
+        ax.vlines(x=job.sp[sp_name],
+                  ymin=0,
+                  ymax=max_density_histogram,
+                  linestyles='dashed',
+                  colors='k')
 
-    ax.vlines(x=job.statepoint.density,
-              ymin=0,
-              ymax=max_density_histogram,
-              linestyles='dashed',
-              colors='k')
+    ax = fig.add_subplot(3, 4, 11)
+    plot_histo(ax=ax,
+               data=densities,
+               quantity_name=r"$\rho$",
+               sp_name="density",
+               range=density_range)
 
     ax = fig.add_subplot(3, 4, 12)
-    max_pressure_histogram = 0
-    for mode in sim_modes:
-        pressure_histogram, bin_edges = numpy.histogram(
-            pressures[mode][-FRAMES_ANALYZE:], bins=50, range=pressure_range)
-        if constant[mode] == 'pressure':
-            pressure_histogram[:] = 0
-
-        max_pressure_histogram = max(max_pressure_histogram,
-                                     numpy.max(pressure_histogram))
-
-        ax.plot(bin_edges[:-1], pressure_histogram, label=mode)
-        ax.set_xlabel(r'$P$')
-        ax.set_ylabel('frequency')
-
-    ax.vlines(x=job.statepoint.pressure,
-              ymin=0,
-              ymax=max_pressure_histogram,
-              linestyles='dashed',
-              colors='k')
+    plot_histo(ax=ax,
+               data=pressures,
+               quantity_name="$P$",
+               sp_name="pressure",
+               range=pressure_range)
 
     fig.suptitle(f"$kT={job.statepoint.kT}$, $\\rho={job.statepoint.density}$, "
                  f"$N={job.statepoint.num_particles}$, "
@@ -942,7 +922,7 @@ def lj_fluid_compare_modes(*jobs):
         f, p = scipy.stats.f_oneway(*unpacked_quantities)
 
         if p > 0.05:
-            result = "$\\checkmark$"
+            result = r"$\checkmark$"
         else:
             result = "XX"
 

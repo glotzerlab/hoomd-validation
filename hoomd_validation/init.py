@@ -20,6 +20,4 @@ for subproject in subprojects:
 
     # add all the jobs to the project
     for job_sp in subproject.job_statepoints():
-        job = project.open_job(job_sp)
-        if job not in project:
-            job.init()
+        job = project.open_job(job_sp).init()

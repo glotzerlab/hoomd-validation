@@ -8,6 +8,7 @@ from project_class import Project
 from flow import aggregator
 import util
 import os
+import math
 
 # Run parameters shared between simulations
 RANDOMIZE_STEPS = 5e4
@@ -335,6 +336,89 @@ def hard_disk_npt_cpu(job):
         job.document['hard_disk_npt_cpu_complete'] = True
 
 
+def run_nec_sim(job, device):
+    """Run MC sim in NVT with NEC."""
+    import hoomd
+    initial_state = job.fn('hard_disk_initial_state.gsd')
+    sim_mode = 'nec'
+
+    mc = hoomd.hpmc.nec.integrate.Sphere(default_d=0.05,
+                                         update_fraction=0.01,
+                                         nselect=1)
+    mc.shape['A'] = dict(diameter=1)
+    mc.chain_time = 0.05
+
+    sdf = hoomd.hpmc.compute.SDF(xmax=0.02, dx=1e-4)
+
+    # log to gsd
+    logger_gsd = hoomd.logging.Logger(categories=['scalar', 'sequence'])
+    logger_gsd.add(mc,
+                   quantities=[
+                       'translate_moves', 'particles_per_chain',
+                       'virial_pressure'
+                   ])
+    logger_gsd.add(sdf, quantities=['betaP'])
+
+    # make simulation
+    sim = make_simulation(job, device, initial_state, mc, sim_mode, logger_gsd)
+
+    sim.operations.computes.append(sdf)
+
+    trigger_tune = hoomd.trigger.And([
+        hoomd.trigger.Periodic(5),
+        hoomd.trigger.Before(sim.timestep + int(RANDOMIZE_STEPS))
+    ])
+
+    tune_nec_d = hoomd.hpmc.tune.MoveSize.scale_solver(
+        trigger=trigger_tune,
+        moves=['d'],
+        target=0.10,
+        tol=0.001,
+        max_translation_move=0.25)
+    sim.operations.tuners.append(tune_nec_d)
+
+    tune_nec_ct = hoomd.hpmc.nec.tune.ChainTime.scale_solver(trigger_tune,
+                                                             target=20.0,
+                                                             tol=1.0,
+                                                             gamma=20.0)
+    sim.operations.tuners.append(tune_nec_ct)
+
+    # equilibrate
+    sim.state.thermalize_particle_momenta(hoomd.filter.All(), kT=1)
+
+    device.notice('Equilibrating...')
+    sim.run(RANDOMIZE_STEPS)
+    sim.run(RANDOMIZE_STEPS)
+    device.notice('Done.')
+
+    # Print acceptance ratio
+    translate_moves = sim.operations.integrator.translate_moves
+    translate_acceptance = translate_moves[0] / sum(translate_moves)
+    device.notice(f'Collision search acceptance: {translate_acceptance}')
+    device.notice(f'Collision search size: {sim.operations.integrator.d["A"]}')
+    device.notice(f'Particles per chain: {mc.particles_per_chain}')
+
+    # run
+    device.notice('Running...')
+    sim.run(RUN_STEPS)
+    device.notice('Done.')
+
+
+@Project.operation(directives=dict(walltime=48,
+                                   executable=CONFIG["executable"],
+                                   nranks=1))
+@Project.pre.after(hard_disk_create_initial_state)
+@Project.post.true('hard_disk_nec_cpu_complete')
+def hard_disk_nec_cpu(job):
+    """Run NEC on the CPU."""
+    import hoomd
+    device = hoomd.device.CPU(msg_file=job.fn('run_nec_cpu.log'))
+    run_nec_sim(job, device)
+
+    if device.communicator.rank == 0:
+        job.document['hard_disk_nec_cpu_complete'] = True
+
+
 @Project.operation(directives=dict(walltime=1, executable=CONFIG["executable"]))
 @Project.pre.after(hard_disk_nvt_cpu)
 @Project.pre.after(hard_disk_nvt_gpu)
@@ -350,10 +434,14 @@ def hard_disk_analyze(job):
     matplotlib.style.use('ggplot')
     from util import read_gsd_log_trajectory, get_log_quantity
 
-    constant = dict(nvt_cpu='density', nvt_gpu='density', npt_cpu='pressure')
+    constant = dict(nvt_cpu='density',
+                    nvt_gpu='density',
+                    nec_cpu='density',
+                    npt_cpu='pressure')
     sim_modes = [
         'nvt_cpu',
         'nvt_gpu',
+        'nec_cpu',
         'npt_cpu',
     ]
 
@@ -367,9 +455,17 @@ def hard_disk_analyze(job):
 
         n_frames = len(traj)
 
-        if constant[sim_mode] == 'density':
+        # NEC generates inf virial pressures for 2D simulations in HOOMD-blue
+        # v3.6.0, fall back on SDF
+        if constant[sim_mode] == 'density' and (
+                'nvt' in sim_mode
+                or traj[0]['hpmc/nec/integrate/Sphere/virial_pressure'][0]
+                == math.inf):
             pressures[sim_mode] = get_log_quantity(traj,
                                                    'hpmc/compute/SDF/betaP')
+        elif constant[sim_mode] == 'density' and 'nec' in sim_mode:
+            pressures[sim_mode] = get_log_quantity(
+                traj, 'hpmc/nec/integrate/Sphere/virial_pressure')
         else:
             pressures[sim_mode] = numpy.ones(n_frames) * job.statepoint.pressure
 
@@ -505,6 +601,7 @@ def hard_disk_compare_modes(*jobs):
     sim_modes = [
         'nvt_cpu',
         'nvt_gpu',
+        'nec_cpu',
         'npt_cpu',
     ]
     quantity_names = ['density', 'pressure']

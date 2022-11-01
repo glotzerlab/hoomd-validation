@@ -7,3 +7,11 @@ updates:
       interval: "monthly"
     pull-request-branch-name:
       separator: "-"
+
+  - package-ecosystem: "pip"
+    directory: ".github/workflows"
+    target-branch: main
+    schedule:
+      interval: "monthly"
+    pull-request-branch-name:
+      separator: "-"
