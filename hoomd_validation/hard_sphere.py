@@ -78,65 +78,6 @@ def hard_sphere_create_initial_state(job):
         f.append(snap)
 
 
-# TODO: Refactor this and lj_fluid's make_simulation into utils.py
-def make_simulation(job, device, initial_state, integrator, sim_mode, logger):
-    """Make a simulation.
-
-    Create a simulation, initialize its state, configure the table writer,
-    trajectory writer, and quantity log file writer.
-
-    Args:
-        job (`signac.Job`): signac job object.
-
-        device (`hoomd.device.Device`): hoomd device object.
-
-        initial_state (str): Path to the gsd file to be used as an initial
-            state.
-
-        integrator (`hoomd.md.Integrator`): hoomd integrator object.
-
-        sim_mode (str): String defining the simulation mode.
-
-        logger (`hoomd.logging.Logger`): Logger object.
-    """
-    import hoomd
-
-    suffix = 'cpu'
-    if isinstance(device, hoomd.device.GPU):
-        suffix = 'gpu'
-
-    sim = hoomd.Simulation(device)
-    sim.seed = job.statepoint.replicate_idx
-    sim.create_state_from_gsd(initial_state)
-
-    sim.operations.integrator = integrator
-
-    # write to terminal
-    logger_table = hoomd.logging.Logger(categories=['scalar'])
-    logger_table.add(sim, quantities=['timestep', 'final_timestep', 'tps'])
-    table_writer = hoomd.write.Table(hoomd.trigger.Periodic(WRITE_PERIOD),
-                                     logger_table)
-    sim.operations.add(table_writer)
-
-    # write particle trajectory to gsd file
-    trajectory_writer = hoomd.write.GSD(
-        filename=job.fn(f"{sim_mode}_{suffix}_trajectory.gsd"),
-        trigger=hoomd.trigger.Periodic(LOG_PERIOD['trajectory']),
-        mode='wb')
-    sim.operations.add(trajectory_writer)
-
-    # write logged quantities to gsd file
-    quantity_writer = hoomd.write.GSD(
-        filter=hoomd.filter.Null(),
-        filename=job.fn(f"{sim_mode}_{suffix}_quantities.gsd"),
-        trigger=hoomd.trigger.Periodic(LOG_PERIOD['quantities']),
-        mode='wb',
-        log=logger)
-    sim.operations.add(quantity_writer)
-
-    return sim
-
-
 def make_mc_simulation(job,
                        device,
                        initial_state,
@@ -171,7 +112,10 @@ def make_mc_simulation(job,
         logger_gsd.add(loggable, quantities=[quantity])
 
     # make simulation
-    sim = make_simulation(job, device, initial_state, mc, sim_mode, logger_gsd)
+    sim = util.make_simulation(job, device, initial_state, mc, sim_mode,
+                               logger_gsd, WRITE_PERIOD,
+                               LOG_PERIOD['trajectory'],
+                               LOG_PERIOD['quantities'])
 
     for loggable, _ in extra_loggables:
         # call attach method explicitly so we can access simulation state when
@@ -359,7 +303,10 @@ def run_nec_sim(job, device):
     logger_gsd.add(sdf, quantities=['betaP'])
 
     # make simulation
-    sim = make_simulation(job, device, initial_state, mc, sim_mode, logger_gsd)
+    sim = util.make_simulation(job, device, initial_state, mc, sim_mode,
+                               logger_gsd, WRITE_PERIOD,
+                               LOG_PERIOD['trajectory'],
+                               LOG_PERIOD['quantities'])
 
     sim.operations.computes.append(sdf)
 
