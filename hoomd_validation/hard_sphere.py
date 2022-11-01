@@ -358,7 +358,7 @@ def run_nec_sim(job, device):
         translate_acceptance = translate_moves[0] / sum(translate_moves)
         device.notice(f'Collision search acceptance: {translate_acceptance}')
     else:
-        device.notice(f'No translate moves!: {translate_moves}')
+        raise RuntimeError('No translate moves!')
 
     device.notice(f'Collision search size: {sim.operations.integrator.d["A"]}')
     device.notice(f'Particles per chain: {mc.particles_per_chain}')
