@@ -1,29 +1,22 @@
 # Copyright (c) 2022 The Regents of the University of Michigan.
 # Part of HOOMD-blue, released under the BSD 3-Clause License.
 
-"""Populate signac projects with jobs and job document parameters."""
+"""Populate the signac project with jobs and job document parameters."""
 
-from config import all_validation_tests, test_project_dict
+import signac
 
-# initialize jobs for the manager project
-for project_name_str, project_class in test_project_dict.items():
-    manager_project_job = all_validation_tests.open_job(
-        dict(project_name=project_name_str,
-             path=project_class.root_directory()))
-    if manager_project_job not in all_validation_tests:
-        manager_project_job.init()
+import config
+
+# import subprojects
+import lj_fluid
+
+subprojects = [lj_fluid]
+
+project = signac.init_project(name="hoomd-validation", root=config.project_root)
 
 # initialize jobs for validation test projects
-for _, project_class in test_project_dict.items():
+for subproject in subprojects:
 
     # add all the jobs to the project
-    job_sps = project_class.job_statepoints
-    for job_sp in job_sps:
-        job = project_class.open_job(job_sp)
-        if job not in project_class:
-            job.init()
-
-        # initialize job document parameters for this job
-        for param, default in project_class.job_document_params:
-            if param not in job.doc:
-                setattr(job.doc, param, default)
+    for job_sp in subproject.job_statepoints():
+        job = project.open_job(job_sp).init()

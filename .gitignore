@@ -1,2 +1,8 @@
-AllValidationTests
-LJFluid
+workspace
+templates
+*.out
+*.svg
+hoomd_validation/__pycache__
+hoomd_validation/config.json
+signac.rc
+signac_project_document.json
