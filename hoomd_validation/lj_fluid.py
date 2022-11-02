@@ -1036,7 +1036,7 @@ def lj_fluid_conservation_analyze(*jobs):
                  f"$kT={job.statepoint.kT}$, $\\rho={job.statepoint.density}$, "
                  f"$N={job.statepoint.num_particles}$")
     filename = f'lj_fluid_conservation_kT{job.statepoint.kT}_' \
-               f'density{round(job.statepoint.density, 2)_' \
+               f'density{round(job.statepoint.density, 2)}_' \
                f'N{job.statepoint.num_particles}.svg'
 
     fig.savefig(os.path.join(jobs[0]._project.path, filename),
