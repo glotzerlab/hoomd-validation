@@ -11,8 +11,8 @@ import os
 import math
 
 # Run parameters shared between simulations
-RANDOMIZE_STEPS = 5e4
-RUN_STEPS = 2e6
+RANDOMIZE_STEPS = 50_000
+RUN_STEPS = 2_000_000
 WRITE_PERIOD = 1000
 LOG_PERIOD = {'trajectory': 50000, 'quantities': 125}
 FRAMES_ANALYZE = int(RUN_STEPS / LOG_PERIOD['quantities'] * 1 / 2)
@@ -436,9 +436,9 @@ def hard_disk_analyze(job):
     sample_rate = 8
     for mode in sim_modes:
         ax.plot(densities[mode][::sample_rate], label=mode)
-        ax.set_xlabel('frame')
-        ax.set_ylabel(r'$\rho$')
-        ax.legend()
+    ax.set_xlabel('frame')
+    ax.set_ylabel(r'$\rho$')
+    ax.legend()
 
     ax.hlines(y=job.statepoint.density,
               xmin=0,
@@ -449,8 +449,8 @@ def hard_disk_analyze(job):
     ax = fig.add_subplot(3, 1, 2)
     for mode in sim_modes:
         ax.plot(pressures[mode][::sample_rate], label=mode)
-        ax.set_xlabel('frame')
-        ax.set_ylabel('$P$')
+    ax.set_xlabel('frame')
+    ax.set_ylabel('$P$')
 
     ax.hlines(y=job.statepoint.pressure,
               xmin=0,
@@ -490,8 +490,8 @@ def hard_disk_analyze(job):
                                     numpy.max(density_histogram))
 
         ax.plot(bin_edges[:-1], density_histogram, label=mode)
-        ax.set_xlabel(r'$\rho$')
-        ax.set_ylabel('frequency')
+    ax.set_xlabel(r'$\rho$')
+    ax.set_ylabel('frequency')
 
     ax.vlines(x=job.statepoint.density,
               ymin=0,
