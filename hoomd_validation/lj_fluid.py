@@ -99,19 +99,28 @@ def make_md_simulation(job,
                        initial_state,
                        method,
                        sim_mode,
-                       extra_loggables=[]):
+                       extra_loggables=[],
+                       period_multiplier=1):
     """Make an MD simulation.
 
     Args:
         job (`signac.job.Job`): Signac job object.
+
         device (`hoomd.device.Device`): hoomd device object.
+
         initial_state (str): Path to the gsd file to be used as an initial state
-        for the simulation.
+            for the simulation.
+
         method (`hoomd.md.methods.Method`): hoomd integration method.
+
         sim_mode (str): String identifying the simulation mode.
+
         extra_loggables (list): List of quantities to add to the gsd logger.
+
         ThermodynamicQuantities is added by default, any more quantities should
-        be in this list.
+            be in this list.
+
+        period_multiplier (int): Factor to multiply the GSD file periods by.
     """
     import hoomd
     from hoomd import md
@@ -146,8 +155,9 @@ def make_md_simulation(job,
 
     # simulation
     sim = util.make_simulation(job, device, initial_state, integrator, sim_mode,
-                               logger, WRITE_PERIOD, LOG_PERIOD['trajectory'],
-                               LOG_PERIOD['quantities'])
+                               logger, WRITE_PERIOD,
+                               LOG_PERIOD['trajectory'] * period_multiplier,
+                               LOG_PERIOD['quantities'] * period_multiplier)
     sim.operations.add(thermo)
     for loggable in extra_loggables:
         # call attach explicitly so we can access sim state when computing the
@@ -900,11 +910,16 @@ def run_nve_md_sim(job, device):
     nvt = hoomd.md.methods.NVE(hoomd.filter.All())
     sim_mode = 'nve_md'
 
-    sim = make_md_simulation(job, device, initial_state, nvt, sim_mode)
+    sim = make_md_simulation(job,
+                             device,
+                             initial_state,
+                             nvt,
+                             sim_mode,
+                             period_multiplier=400)
 
     # Run for a long time to look for energy and momentum drift
     device.notice('Running...')
-    sim.run(RUN_STEPS * 20)
+    sim.run(RUN_STEPS * 400)
     device.notice('Done.')
 
 
