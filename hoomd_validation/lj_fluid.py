@@ -17,6 +17,8 @@ LOG_PERIOD = {'trajectory': 50000, 'quantities': 2000}
 FRAMES_ANALYZE = int(RUN_STEPS / LOG_PERIOD['quantities'] * 1 / 2)
 LJ_PARAMS = {'epsilon': 1.0, 'sigma': 1.0, 'r_on': 2.0, 'r_cut': 2.5}
 
+# Limit the number of long NVE runs to reduce the number of CPU hours needed.
+NUM_NVE_RUNS = 2
 
 def job_statepoints():
     """list(dict): A list of statepoints for this subproject."""
@@ -902,7 +904,7 @@ def lj_fluid_compare_modes(*jobs):
         job.document['lj_fluid_compare_modes_complete'] = True
 
 
-def run_nve_md_sim(job, device):
+def run_nve_md_sim(job, device, run_length):
     """Run the MD simulation in NVE."""
     import hoomd
 
@@ -919,20 +921,21 @@ def run_nve_md_sim(job, device):
 
     # Run for a long time to look for energy and momentum drift
     device.notice('Running...')
-    sim.run(RUN_STEPS * 400)
+    sim.run(run_length)
     device.notice('Done.')
 
 
 @Project.operation(directives=dict(walltime=48,
                                    executable=CONFIG["executable"],
                                    nranks=8))
+@Project.pre(lambda job: job.statepoint.replicate_idx < NUM_NVE_RUNS)
 @Project.pre.after(lj_fluid_create_initial_state)
 @Project.post.true('lj_fluid_nve_md_cpu_complete')
 def lj_fluid_nve_md_cpu(job):
     """Run NVE MD on the CPU."""
     import hoomd
     device = hoomd.device.CPU(msg_file=job.fn('run_nve_md_cpu.log'))
-    run_nve_md_sim(job, device)
+    run_nve_md_sim(job, device, run_length=200e6)
 
     if device.communicator.rank == 0:
         job.document['lj_fluid_nve_md_cpu_complete'] = True
@@ -942,13 +945,14 @@ def lj_fluid_nve_md_cpu(job):
                                    executable=CONFIG["executable"],
                                    nranks=1,
                                    ngpu=1))
+@Project.pre(lambda job: job.statepoint.replicate_idx < NUM_NVE_RUNS)
 @Project.pre.after(lj_fluid_create_initial_state)
 @Project.post.true('lj_fluid_nve_md_gpu_complete')
 def lj_fluid_nve_md_gpu(job):
     """Run NVE MD on the GPU."""
     import hoomd
     device = hoomd.device.GPU(msg_file=job.fn('run_nve_md_gpu.log'))
-    run_nve_md_sim(job, device)
+    run_nve_md_sim(job, device, run_length=800e6)
 
     if device.communicator.rank == 0:
         job.document['lj_fluid_nve_md_gpu_complete'] = True
@@ -957,9 +961,9 @@ def lj_fluid_nve_md_gpu(job):
 @agg
 @Project.operation(directives=dict(walltime=1, executable=CONFIG["executable"]))
 @Project.pre(
-    lambda *jobs: util.true_all(*jobs, key='lj_fluid_nve_md_cpu_complete'))
+    lambda *jobs: util.true_all(jobs[0:NUM_NVE_RUNS], key='lj_fluid_nve_md_cpu_complete'))
 @Project.pre(
-    lambda *jobs: util.true_all(*jobs, key='lj_fluid_nve_md_gpu_complete'))
+    lambda *jobs: util.true_all(jobs[0:NUM_NVE_RUNS], key='lj_fluid_nve_md_gpu_complete'))
 @Project.post(lambda *jobs: util.true_all(
     *jobs, key='lj_fluid_conservation_analysis_complete'))
 def lj_fluid_conservation_analyze(*jobs):
@@ -974,6 +978,7 @@ def lj_fluid_conservation_analyze(*jobs):
     from util import read_gsd_log_trajectory, get_log_quantity
 
     sim_modes = ['nve_md_cpu', 'nve_md_gpu']
+    jobs = jobs[0:NUM_NVE_RUNS]
 
     energies = []
     linear_momenta = []
@@ -1031,7 +1036,7 @@ def lj_fluid_conservation_analyze(*jobs):
                  f"$kT={job.statepoint.kT}$, $\\rho={job.statepoint.density}$, "
                  f"$N={job.statepoint.num_particles}$")
     filename = f'lj_fluid_conservation_kT{job.statepoint.kT}_' \
-               f'density{job.statepoint.density}_' \
+               f'density{round(job.statepoint.density, 2)_' \
                f'N{job.statepoint.num_particles}.svg'
 
     fig.savefig(os.path.join(jobs[0]._project.path, filename),
