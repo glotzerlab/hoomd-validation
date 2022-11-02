@@ -3,7 +3,6 @@
 
 """Helper functions for grabbing data and plotting."""
 
-import copy
 import numpy
 
 
@@ -16,7 +15,7 @@ def read_gsd_log_trajectory(traj):
     Reading GSD file is expensive, call `read_gsd_log_trajectory` once, then
     call `get_log_quantity` multiple times to extract individual log quantities.
     """
-    return [copy.copy(frame.log) for frame in traj]
+    return [frame.log for frame in traj]
 
 
 def get_log_quantity(log_traj, quantity):
