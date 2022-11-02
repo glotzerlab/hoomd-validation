@@ -961,9 +961,9 @@ def lj_fluid_nve_md_gpu(job):
 @agg
 @Project.operation(directives=dict(walltime=1, executable=CONFIG["executable"]))
 @Project.pre(
-    lambda *jobs: util.true_all(jobs[0:NUM_NVE_RUNS], key='lj_fluid_nve_md_cpu_complete'))
+    lambda *jobs: util.true_all(*jobs[0:NUM_NVE_RUNS], key='lj_fluid_nve_md_cpu_complete'))
 @Project.pre(
-    lambda *jobs: util.true_all(jobs[0:NUM_NVE_RUNS], key='lj_fluid_nve_md_gpu_complete'))
+    lambda *jobs: util.true_all(*jobs[0:NUM_NVE_RUNS], key='lj_fluid_nve_md_gpu_complete'))
 @Project.post(lambda *jobs: util.true_all(
     *jobs, key='lj_fluid_conservation_analysis_complete'))
 def lj_fluid_conservation_analyze(*jobs):
