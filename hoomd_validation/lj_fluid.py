@@ -707,6 +707,9 @@ def lj_fluid_analyze(job):
                       linestyles='dashed',
                       colors='k')
 
+        if legend:
+            ax.legend()
+
     fig = matplotlib.figure.Figure(figsize=(20, 20 / 3.24 * 2), layout='tight')
     ax = fig.add_subplot(3, 2, 1)
     plot(ax=ax,
