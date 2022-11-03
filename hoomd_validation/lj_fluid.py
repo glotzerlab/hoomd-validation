@@ -967,8 +967,8 @@ def lj_fluid_nve_md_gpu(job):
     lambda *jobs: util.true_all(*jobs[0:NUM_NVE_RUNS], key='lj_fluid_nve_md_cpu_complete'))
 @Project.pre(
     lambda *jobs: util.true_all(*jobs[0:NUM_NVE_RUNS], key='lj_fluid_nve_md_gpu_complete'))
-@Project.post(lambda *jobs: util.true_all(
-    *jobs, key='lj_fluid_conservation_analysis_complete'))
+@Project.post(lambda *jobs: util.true_all(*jobs[0:NUM_NVE_RUNS],
+    key='lj_fluid_conservation_analysis_complete'))
 def lj_fluid_conservation_analyze(*jobs):
     """Analyze the output of NVE simulations and inspect conservation."""
     import gsd.hoomd
@@ -1005,14 +1005,13 @@ def lj_fluid_conservation_analyze(*jobs):
                 job_energies[sim_mode]
                 - job_energies[sim_mode][0]) / job.statepoint["num_particles"]
 
-        energies.append(job_energies)
-
-        for sim_mode in sim_modes:
             momentum_vector = get_log_quantity(traj,
                                                'md/Integrator/linear_momentum')
             job_linear_momentum[sim_mode] = [
                 math.sqrt(v[0]**2 + v[1]**2 + v[2]**2) for v in momentum_vector
             ]
+
+        energies.append(job_energies)
 
         linear_momenta.append(job_linear_momentum)
 
