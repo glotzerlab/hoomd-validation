@@ -20,6 +20,7 @@ LJ_PARAMS = {'epsilon': 1.0, 'sigma': 1.0, 'r_on': 2.0, 'r_cut': 2.5}
 # Limit the number of long NVE runs to reduce the number of CPU hours needed.
 NUM_NVE_RUNS = 2
 
+
 def job_statepoints():
     """list(dict): A list of statepoints for this subproject."""
     num_particles = 12**3
@@ -963,12 +964,12 @@ def lj_fluid_nve_md_gpu(job):
 
 @agg
 @Project.operation(directives=dict(walltime=1, executable=CONFIG["executable"]))
-@Project.pre(
-    lambda *jobs: util.true_all(*jobs[0:NUM_NVE_RUNS], key='lj_fluid_nve_md_cpu_complete'))
-@Project.pre(
-    lambda *jobs: util.true_all(*jobs[0:NUM_NVE_RUNS], key='lj_fluid_nve_md_gpu_complete'))
-@Project.post(lambda *jobs: util.true_all(*jobs[0:NUM_NVE_RUNS],
-    key='lj_fluid_conservation_analysis_complete'))
+@Project.pre(lambda *jobs: util.true_all(*jobs[0:NUM_NVE_RUNS],
+                                         key='lj_fluid_nve_md_cpu_complete'))
+@Project.pre(lambda *jobs: util.true_all(*jobs[0:NUM_NVE_RUNS],
+                                         key='lj_fluid_nve_md_gpu_complete'))
+@Project.post(lambda *jobs: util.true_all(
+    *jobs[0:NUM_NVE_RUNS], key='lj_fluid_conservation_analysis_complete'))
 def lj_fluid_conservation_analyze(*jobs):
     """Analyze the output of NVE simulations and inspect conservation."""
     import gsd.hoomd
