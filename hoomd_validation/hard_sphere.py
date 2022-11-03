@@ -387,7 +387,7 @@ def hard_sphere_nec_cpu(job):
 @Project.pre.after(hard_sphere_nvt_cpu)
 @Project.pre.after(hard_sphere_nvt_gpu)
 @Project.pre.after(hard_sphere_npt_cpu)
-#@Project.post.true('hard_sphere_analysis_complete')
+@Project.post.true('hard_sphere_analysis_complete')
 def hard_sphere_analyze(job):
     """Analyze the output of all simulation modes."""
     import gsd.hoomd
