@@ -437,10 +437,10 @@ def hard_disk_analyze(job):
 
         if base_line is not None:
             ax.hlines(y=base_line,
-                    xmin=0,
-                    xmax=len(data[sim_modes[0]]) / sample_rate,
-                    linestyles='dashed',
-                    colors='k')
+                      xmin=0,
+                      xmax=len(data[sim_modes[0]]) / sample_rate,
+                      linestyles='dashed',
+                      colors='k')
 
     fig = matplotlib.figure.Figure(figsize=(10, 10 / 1.618 * 3), layout='tight')
     ax = fig.add_subplot(3, 1, 1)
@@ -482,8 +482,7 @@ def hard_disk_analyze(job):
             if constant[mode] == sp_name:
                 histogram[:] = 0
 
-            max_histogram = max(max_histogram,
-                                        numpy.max(histogram))
+            max_histogram = max(max_histogram, numpy.max(histogram))
 
             ax.plot(bin_edges[:-1], histogram, label=mode)
         ax.set_xlabel(quantity_name)
@@ -496,17 +495,17 @@ def hard_disk_analyze(job):
 
     ax = fig.add_subplot(3, 2, 5)
     plot_histogram(ax=ax,
-               data=densities,
-               quantity_name=r"$\rho$",
-               sp_name="density",
-               range=density_range)
+                   data=densities,
+                   quantity_name=r"$\rho$",
+                   sp_name="density",
+                   range=density_range)
 
     ax = fig.add_subplot(3, 2, 6)
     plot_histogram(ax=ax,
-               data=pressures,
-               quantity_name="$P$",
-               sp_name="pressure",
-               range=pressure_range)
+                   data=pressures,
+                   quantity_name="$P$",
+                   sp_name="pressure",
+                   range=pressure_range)
 
     fig.suptitle(f"$\\rho={job.statepoint.density}$, "
                  f"$N={job.statepoint.num_particles}$, "
