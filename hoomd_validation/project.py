@@ -9,10 +9,12 @@ from project_class import Project
 # Define subproject flow operations
 import lj_fluid
 import hard_disk
+import hard_sphere
 
 __all__ = [
     "lj_fluid",
     "hard_disk",
+    "hard_sphere",
 ]
 
 if __name__ == "__main__":

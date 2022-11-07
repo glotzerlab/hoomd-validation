@@ -10,8 +10,9 @@ import config
 # import subprojects
 import lj_fluid
 import hard_disk
+import hard_sphere
 
-subprojects = [lj_fluid, hard_disk]
+subprojects = [lj_fluid, hard_disk, hard_sphere]
 
 project = signac.init_project(name="hoomd-validation", root=config.project_root)
 

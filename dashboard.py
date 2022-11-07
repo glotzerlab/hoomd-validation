@@ -23,7 +23,8 @@ class ValidationDashboard(Dashboard):
         if job.statepoint.subproject == 'lj_fluid':
             return f"lj_fluid: kT={job.statepoint.kT}, " \
                    f"rho={job.statepoint.density}"
-        elif job.statepoint.subproject == 'hard_disk':
+        elif (job.statepoint.subproject == 'hard_disk'
+              or job.statepoint.subproject == 'hard_sphere'):
             return f"{job.statepoint.subproject}: rho={job.statepoint.density}"
         else:
             raise RuntimeError("Unexpected job")
