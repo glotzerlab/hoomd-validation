@@ -8,8 +8,12 @@ from project_class import Project
 
 # Define subproject flow operations
 import lj_fluid
+import hard_disk
 
-__all__ = ["lj_fluid"]
+__all__ = [
+    "lj_fluid",
+    "hard_disk",
+]
 
 if __name__ == "__main__":
     Project.get_project(config.project_root).main()
