@@ -5,9 +5,10 @@ validation test workflows in this repository are organized into signac projects.
 
 ## Requirements
 
+* numpy
 * signac >=1.8.0
 * signac-flow >= 0.22.0
-* numpy
+* signac-dashboard [optional]
 * Simulation workflow steps require either the [glotzerlab-software container]
   or the following software:
     * HOOMD-blue >=3.0 *(with MPI, GPU, and LLVM support enabled)*
@@ -84,4 +85,13 @@ documents:
 3. Inspect the plots produced in:
     * `workspace/*.svg`
 
+## Dashboard
+
+Run the provided [signac-dashboard] application to explore the results in a web browser:
+
+```bash
+$ python3 dashboard.py run
+```
+
 [glotzerlab-software container]: https://glotzerlab-software.readthedocs.io/
+[signac-dashboard]: https://docs.signac.io/projects/dashboard/
