@@ -17,6 +17,9 @@ LOG_PERIOD = {'trajectory': 50000, 'quantities': 2000}
 FRAMES_ANALYZE = int(RUN_STEPS / LOG_PERIOD['quantities'] * 1 / 2)
 LJ_PARAMS = {'epsilon': 1.0, 'sigma': 1.0, 'r_on': 2.0, 'r_cut': 2.5}
 
+# Limit the number of long NVE runs to reduce the number of CPU hours needed.
+NUM_NVE_RUNS = 2
+
 
 def job_statepoints():
     """list(dict): A list of statepoints for this subproject."""
@@ -99,19 +102,28 @@ def make_md_simulation(job,
                        initial_state,
                        method,
                        sim_mode,
-                       extra_loggables=[]):
+                       extra_loggables=[],
+                       period_multiplier=1):
     """Make an MD simulation.
 
     Args:
         job (`signac.job.Job`): Signac job object.
+
         device (`hoomd.device.Device`): hoomd device object.
+
         initial_state (str): Path to the gsd file to be used as an initial state
-        for the simulation.
+            for the simulation.
+
         method (`hoomd.md.methods.Method`): hoomd integration method.
+
         sim_mode (str): String identifying the simulation mode.
+
         extra_loggables (list): List of quantities to add to the gsd logger.
+
         ThermodynamicQuantities is added by default, any more quantities should
-        be in this list.
+            be in this list.
+
+        period_multiplier (int): Factor to multiply the GSD file periods by.
     """
     import hoomd
     from hoomd import md
@@ -133,17 +145,22 @@ def make_md_simulation(job,
 
     # add gsd log quantities
     logger = hoomd.logging.Logger(categories=['scalar', 'sequence'])
-    logger.add(
-        thermo,
-        quantities=['pressure', 'potential_energy', 'kinetic_temperature'])
+    logger.add(thermo,
+               quantities=[
+                   'pressure',
+                   'potential_energy',
+                   'kinetic_temperature',
+                   'kinetic_energy',
+               ])
     logger.add(integrator, quantities=['linear_momentum'])
     for loggable in extra_loggables:
         logger.add(loggable)
 
     # simulation
     sim = util.make_simulation(job, device, initial_state, integrator, sim_mode,
-                               logger, WRITE_PERIOD, LOG_PERIOD['trajectory'],
-                               LOG_PERIOD['quantities'])
+                               logger, WRITE_PERIOD,
+                               LOG_PERIOD['trajectory'] * period_multiplier,
+                               LOG_PERIOD['quantities'] * period_multiplier)
     sim.operations.add(thermo)
     for loggable in extra_loggables:
         # call attach explicitly so we can access sim state when computing the
@@ -786,9 +803,12 @@ def lj_fluid_analyze(job):
     job.document['lj_fluid_analysis_complete'] = True
 
 
-@aggregator.groupby(key=['kT', 'density', 'num_particles'],
-                    sort_by='replicate_idx',
-                    select=is_lj_fluid)
+agg = aggregator.groupby(key=['kT', 'density', 'num_particles'],
+                         sort_by='replicate_idx',
+                         select=is_lj_fluid)
+
+
+@agg
 @Project.operation(directives=dict(executable=CONFIG["executable"]))
 @Project.pre(
     lambda *jobs: util.true_all(*jobs, key='lj_fluid_analysis_complete'))
@@ -886,3 +906,144 @@ def lj_fluid_compare_modes(*jobs):
 
     for job in jobs:
         job.document['lj_fluid_compare_modes_complete'] = True
+
+
+def run_nve_md_sim(job, device, run_length):
+    """Run the MD simulation in NVE."""
+    import hoomd
+
+    initial_state = job.fn('lj_fluid_initial_state.gsd')
+    nvt = hoomd.md.methods.NVE(hoomd.filter.All())
+    sim_mode = 'nve_md'
+
+    sim = make_md_simulation(job,
+                             device,
+                             initial_state,
+                             nvt,
+                             sim_mode,
+                             period_multiplier=400)
+
+    # Run for a long time to look for energy and momentum drift
+    device.notice('Running...')
+    sim.run(run_length)
+    device.notice('Done.')
+
+
+@Project.operation(directives=dict(walltime=48,
+                                   executable=CONFIG["executable"],
+                                   nranks=8))
+@Project.pre(lambda job: job.statepoint.replicate_idx < NUM_NVE_RUNS)
+@Project.pre.after(lj_fluid_create_initial_state)
+@Project.post.true('lj_fluid_nve_md_cpu_complete')
+def lj_fluid_nve_md_cpu(job):
+    """Run NVE MD on the CPU."""
+    import hoomd
+    device = hoomd.device.CPU(msg_file=job.fn('run_nve_md_cpu.log'))
+    run_nve_md_sim(job, device, run_length=200e6)
+
+    if device.communicator.rank == 0:
+        job.document['lj_fluid_nve_md_cpu_complete'] = True
+
+
+@Project.operation(directives=dict(walltime=48,
+                                   executable=CONFIG["executable"],
+                                   nranks=1,
+                                   ngpu=1))
+@Project.pre(lambda job: job.statepoint.replicate_idx < NUM_NVE_RUNS)
+@Project.pre.after(lj_fluid_create_initial_state)
+@Project.post.true('lj_fluid_nve_md_gpu_complete')
+def lj_fluid_nve_md_gpu(job):
+    """Run NVE MD on the GPU."""
+    import hoomd
+    device = hoomd.device.GPU(msg_file=job.fn('run_nve_md_gpu.log'))
+    run_nve_md_sim(job, device, run_length=800e6)
+
+    if device.communicator.rank == 0:
+        job.document['lj_fluid_nve_md_gpu_complete'] = True
+
+
+@agg
+@Project.operation(directives=dict(walltime=1, executable=CONFIG["executable"]))
+@Project.pre(lambda *jobs: util.true_all(*jobs[0:NUM_NVE_RUNS],
+                                         key='lj_fluid_nve_md_cpu_complete'))
+@Project.pre(lambda *jobs: util.true_all(*jobs[0:NUM_NVE_RUNS],
+                                         key='lj_fluid_nve_md_gpu_complete'))
+@Project.post(lambda *jobs: util.true_all(
+    *jobs[0:NUM_NVE_RUNS], key='lj_fluid_conservation_analysis_complete'))
+def lj_fluid_conservation_analyze(*jobs):
+    """Analyze the output of NVE simulations and inspect conservation."""
+    import gsd.hoomd
+    import numpy
+    import math
+    import matplotlib
+    import matplotlib.style
+    import matplotlib.figure
+    matplotlib.style.use('ggplot')
+    from util import read_gsd_log_trajectory, get_log_quantity
+
+    sim_modes = ['nve_md_cpu', 'nve_md_gpu']
+    jobs = jobs[0:NUM_NVE_RUNS]
+
+    energies = []
+    linear_momenta = []
+
+    for job in jobs:
+        job_energies = {}
+        job_linear_momentum = {}
+
+        for sim_mode in sim_modes:
+            with gsd.hoomd.open(job.fn(sim_mode
+                                       + '_quantities.gsd')) as gsd_traj:
+                # read GSD file once
+                traj = read_gsd_log_trajectory(gsd_traj)
+
+            job_energies[sim_mode] = (
+                get_log_quantity(
+                    traj, 'md/compute/ThermodynamicQuantities/potential_energy')
+                + get_log_quantity(
+                    traj, 'md/compute/ThermodynamicQuantities/kinetic_energy'))
+            job_energies[sim_mode] = (
+                job_energies[sim_mode]
+                - job_energies[sim_mode][0]) / job.statepoint["num_particles"]
+
+            momentum_vector = get_log_quantity(traj,
+                                               'md/Integrator/linear_momentum')
+            job_linear_momentum[sim_mode] = [
+                math.sqrt(v[0]**2 + v[1]**2 + v[2]**2) for v in momentum_vector
+            ]
+
+        energies.append(job_energies)
+
+        linear_momenta.append(job_linear_momentum)
+
+    # Plot results
+    def plot(*, ax, data, quantity_name, legend=False):
+        for i, job in enumerate(jobs):
+            for mode in sim_modes:
+                ax.plot(numpy.asarray(data[i][mode]),
+                        label=f'{mode}_{job.statepoint.replicate_idx}')
+        ax.set_xlabel("frame")
+        ax.set_ylabel(quantity_name)
+
+        if legend:
+            ax.legend()
+
+    fig = matplotlib.figure.Figure(figsize=(10, 10 / 1.68 * 2), layout='tight')
+    ax = fig.add_subplot(2, 1, 1)
+    plot(ax=ax, data=energies, quantity_name=r"$E / N$", legend=True)
+
+    ax = fig.add_subplot(2, 1, 2)
+    plot(ax=ax, data=linear_momenta, quantity_name=r"$p$")
+
+    fig.suptitle("LJ conservation tests: "
+                 f"$kT={job.statepoint.kT}$, $\\rho={job.statepoint.density}$, "
+                 f"$N={job.statepoint.num_particles}$")
+    filename = f'lj_fluid_conservation_kT{job.statepoint.kT}_' \
+               f'density{round(job.statepoint.density, 2)}_' \
+               f'N{job.statepoint.num_particles}.svg'
+
+    fig.savefig(os.path.join(jobs[0]._project.path, filename),
+                bbox_inches='tight')
+
+    for job in jobs:
+        job.document['lj_fluid_conservation_analysis_complete'] = True
