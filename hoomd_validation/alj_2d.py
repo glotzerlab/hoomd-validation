@@ -323,7 +323,7 @@ def alj_2d_conservation_analyze(*jobs):
     ax = fig.add_subplot(2, 1, 2)
     plot(ax=ax, data=linear_momenta, quantity_name=r"$p$")
 
-    fig.suptitle("LJ conservation tests: "
+    fig.suptitle("ALJ 2D conservation tests: "
                  f"$kT={job.statepoint.kT}$, $\\rho={job.statepoint.density}$, "
                  f"$N={job.statepoint.num_particles}$")
     filename = f'alj_2d_conservation_kT{job.statepoint.kT}_' \
