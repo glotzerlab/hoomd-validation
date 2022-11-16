@@ -7,11 +7,13 @@ import config
 from project_class import Project
 
 # Define subproject flow operations
+import alj_2d
 import lj_fluid
 import hard_disk
 import hard_sphere
 
 __all__ = [
+    "alj_2d",
     "lj_fluid",
     "hard_disk",
     "hard_sphere",
