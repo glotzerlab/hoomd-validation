@@ -18,7 +18,7 @@ validation test workflows in this repository are organized into signac projects.
     * gsd
     * numpy
     * scipy
-* Workstation or HPC system with at least 8 CPU cores and 1 GPU supported by
+* Workstation or HPC system with at least 16 CPU cores and 1 GPU supported by
   HOOMD-blue.
 
 ## Preparation
