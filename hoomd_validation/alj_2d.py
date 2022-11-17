@@ -18,11 +18,11 @@ ALJ_PARAMS = {'epsilon': 1.0}
 
 # Unit area hexagon
 PARTICLE_VERTICES = [[6.20403239e-01, 0.00000000e+00, 0],
-                                [3.10201620e-01, 5.37284966e-01, 0],
-                                [-3.10201620e-01, 5.37284966e-01, 0],
-                                [-6.20403239e-01, 7.59774841e-17, 0],
-                                [-3.10201620e-01, -5.37284966e-01, 0],
-                                [3.10201620e-01, -5.37284966e-01, 0]]
+                     [3.10201620e-01, 5.37284966e-01, 0],
+                     [-3.10201620e-01, 5.37284966e-01, 0],
+                     [-6.20403239e-01, 7.59774841e-17, 0],
+                     [-3.10201620e-01, -5.37284966e-01, 0],
+                     [3.10201620e-01, -5.37284966e-01, 0]]
 CIRCUMCIRCLE_RADIUS = 0.6204032392788702
 INCIRCLE_RADIUS = 0.5372849659264116
 
@@ -59,7 +59,7 @@ def alj_2d_create_initial_state(job):
     import numpy
     import itertools
 
-    init_diameter = CIRCUMCIRCLE_RADIUS*2 * 1.15
+    init_diameter = CIRCUMCIRCLE_RADIUS * 2 * 1.15
 
     device = hoomd.device.CPU(msg_file=job.fn('create_initial_state.log'))
 
@@ -138,12 +138,12 @@ def make_md_simulation(job,
 
     incircle_d = INCIRCLE_RADIUS * 2
     circumcircle_d = CIRCUMCIRCLE_RADIUS * 2
-    r_cut = max(2**(1/6) * incircle_d, circumcircle_d + 2**(1/6) * 0.15 * incircle_d)
+    r_cut = max(2**(1 / 6) * incircle_d,
+                circumcircle_d + 2**(1 / 6) * 0.15 * incircle_d)
 
     # pair force
     nlist = md.nlist.Cell(buffer=0.4)
-    alj = md.pair.aniso.ALJ(default_r_cut=r_cut,
-                    nlist=nlist)
+    alj = md.pair.aniso.ALJ(default_r_cut=r_cut, nlist=nlist)
     alj.shape['A'] = {
         "vertices": PARTICLE_VERTICES,
         "faces": [],
@@ -157,7 +157,10 @@ def make_md_simulation(job,
     }
 
     # integrator
-    integrator = md.Integrator(dt=0.0001, methods=[method], forces=[alj], integrate_rotational_dof=True)
+    integrator = md.Integrator(dt=0.0001,
+                               methods=[method],
+                               forces=[alj],
+                               integrate_rotational_dof=True)
 
     # compute thermo
     thermo = md.compute.ThermodynamicQuantities(hoomd.filter.All())
@@ -246,16 +249,18 @@ def alj_2d_nve_md_gpu(job):
     if device.communicator.rank == 0:
         job.document['alj_2d_nve_md_gpu_complete'] = True
 
+
 agg = aggregator.groupby(key=['kT', 'density', 'num_particles'],
                          sort_by='replicate_idx',
                          select=is_alj_2d)
 
+
 @agg
 @Project.operation(directives=dict(walltime=1, executable=CONFIG["executable"]))
-@Project.pre(lambda *jobs: util.true_all(*jobs,
-                                         key='alj_2d_nve_md_cpu_complete'))
-@Project.pre(lambda *jobs: util.true_all(*jobs,
-                                         key='alj_2d_nve_md_gpu_complete'))
+@Project.pre(
+    lambda *jobs: util.true_all(*jobs, key='alj_2d_nve_md_cpu_complete'))
+@Project.pre(
+    lambda *jobs: util.true_all(*jobs, key='alj_2d_nve_md_gpu_complete'))
 @Project.post(lambda *jobs: util.true_all(
     *jobs, key='alj_2d_conservation_analysis_complete'))
 def alj_2d_conservation_analyze(*jobs):
