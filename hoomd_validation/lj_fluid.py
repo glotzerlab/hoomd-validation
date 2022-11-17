@@ -914,18 +914,18 @@ def lj_fluid_compare_modes(*jobs):
 @Project.operation(directives=dict(executable=CONFIG["executable"]))
 @Project.pre(
     lambda *jobs: util.true_all(*jobs, key='lj_fluid_langevin_md_cpu_complete'))
-# @Project.pre(
-#     lambda *jobs: util.true_all(*jobs, key='lj_fluid_langevin_md_gpu_complete'))
+@Project.pre(
+    lambda *jobs: util.true_all(*jobs, key='lj_fluid_langevin_md_gpu_complete'))
 @Project.pre(
     lambda *jobs: util.true_all(*jobs, key='lj_fluid_nvt_md_cpu_complete'))
-# @Project.pre(
-#     lambda *jobs: util.true_all(*jobs, key='lj_fluid_nvt_md_gpu_complete'))
+@Project.pre(
+    lambda *jobs: util.true_all(*jobs, key='lj_fluid_nvt_md_gpu_complete'))
 @Project.pre(
     lambda *jobs: util.true_all(*jobs, key='lj_fluid_npt_md_cpu_complete'))
-# @Project.pre(
-#     lambda *jobs: util.true_all(*jobs, key='lj_fluid_npt_md_gpu_complete'))
-# @Project.post(
-#     lambda *jobs: util.true_all(*jobs, key='lj_fluid_ke_validate_complete'))
+@Project.pre(
+    lambda *jobs: util.true_all(*jobs, key='lj_fluid_npt_md_gpu_complete'))
+@Project.post(
+    lambda *jobs: util.true_all(*jobs, key='lj_fluid_ke_validate_complete'))
 def lj_fluid_ke_validate(*jobs):
     """Checks that MD follows the correct KE distribution."""
     import gsd.hoomd
@@ -936,13 +936,9 @@ def lj_fluid_ke_validate(*jobs):
     import util
     matplotlib.style.use('ggplot')
 
-    # sim_modes = [
-    #     'langevin_md_cpu', 'langevin_md_gpu', 'nvt_md_cpu', 'nvt_md_gpu',
-    #     'npt_md_cpu', 'npt_md_gpu'
-    # ]
     sim_modes = [
-        'langevin_md_cpu', 'nvt_md_cpu',
-        'npt_md_cpu',
+        'langevin_md_cpu', 'langevin_md_gpu', 'nvt_md_cpu', 'nvt_md_gpu',
+        'npt_md_cpu', 'npt_md_gpu'
     ]
 
     # grab the common statepoint parameters
