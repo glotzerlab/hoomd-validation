@@ -959,18 +959,16 @@ def lj_fluid_ke_validate(*jobs):
                                        + '_quantities.gsd')) as gsd_traj:
                 traj = util.read_gsd_log_trajectory(gsd_traj)
 
-                ke = util.get_log_quantity(traj, 'md/compute/ThermodynamicQuantities/kinetic_energy')
+                ke = util.get_log_quantity(
+                    traj, 'md/compute/ThermodynamicQuantities/kinetic_energy')
                 ke_means[sim_mode].append(numpy.mean(ke[-FRAMES_ANALYZE:]))
                 ke_sigmas[sim_mode].append(numpy.std(ke[-FRAMES_ANALYZE:]))
 
     def plot_vs_expected(ax, values, expected, name):
         # compute stats with data
-        avg_value = {
-            mode: numpy.mean(values[mode]) for mode in sim_modes
-        }
+        avg_value = {mode: numpy.mean(values[mode]) for mode in sim_modes}
         stderr_value = {
-            mode:
-            2 * numpy.std(values[mode]) / numpy.sqrt(len(values[mode]))
+            mode: 2 * numpy.std(values[mode]) / numpy.sqrt(len(values[mode]))
             for mode in sim_modes
         }
 
@@ -993,11 +991,13 @@ def lj_fluid_ke_validate(*jobs):
                   colors='k')
 
     ax = fig.add_subplot(2, 1, 1)
-    plot_vs_expected(ax, ke_means, 1/2 * n_dof * kT, '$<KE> - 1/2 N_{dof} k T$')
+    plot_vs_expected(ax, ke_means, 1 / 2 * n_dof * kT,
+                     '$<KE> - 1/2 N_{dof} k T$')
 
     ax = fig.add_subplot(2, 1, 2)
     # https://doi.org/10.1371/journal.pone.0202764
-    plot_vs_expected(ax, ke_sigmas, 1/math.sqrt(2) * math.sqrt(n_dof) * kT, r'$\Delta KE - 1/\sqrt{2} \sqrt{N_{dof}} k T$')
+    plot_vs_expected(ax, ke_sigmas, 1 / math.sqrt(2) * math.sqrt(n_dof) * kT,
+                     r'$\Delta KE - 1/\sqrt{2} \sqrt{N_{dof}} k T$')
 
     filename = f'lj_fluid_ke_validate_kT{kT}_density{round(set_density, 2)}.svg'
     fig.savefig(os.path.join(jobs[0]._project.path, filename),
