@@ -30,9 +30,8 @@ INCIRCLE_RADIUS = 0.5372849659264116
 def job_statepoints():
     """list(dict): A list of statepoints for this subproject."""
     num_particles = 42**2
-    replicate_indices = range(2)
-    params_list = [(1.5, 0.4),
-                   (0.8, 0.6),]
+    replicate_indices = range(4)
+    params_list = [(1.0, 0.4)]
     for kT, density in params_list:
         for idx in replicate_indices:
             yield ({
