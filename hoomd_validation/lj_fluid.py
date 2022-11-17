@@ -8,6 +8,8 @@ from project_class import Project
 from flow import aggregator
 import util
 import os
+import math
+import collections
 
 # Run parameters shared between simulations
 RANDOMIZE_STEPS = 5e4
@@ -906,6 +908,107 @@ def lj_fluid_compare_modes(*jobs):
 
     for job in jobs:
         job.document['lj_fluid_compare_modes_complete'] = True
+
+
+@agg
+@Project.operation(directives=dict(executable=CONFIG["executable"]))
+@Project.pre(
+    lambda *jobs: util.true_all(*jobs, key='lj_fluid_langevin_md_cpu_complete'))
+# @Project.pre(
+#     lambda *jobs: util.true_all(*jobs, key='lj_fluid_langevin_md_gpu_complete'))
+@Project.pre(
+    lambda *jobs: util.true_all(*jobs, key='lj_fluid_nvt_md_cpu_complete'))
+# @Project.pre(
+#     lambda *jobs: util.true_all(*jobs, key='lj_fluid_nvt_md_gpu_complete'))
+@Project.pre(
+    lambda *jobs: util.true_all(*jobs, key='lj_fluid_npt_md_cpu_complete'))
+# @Project.pre(
+#     lambda *jobs: util.true_all(*jobs, key='lj_fluid_npt_md_gpu_complete'))
+# @Project.post(
+#     lambda *jobs: util.true_all(*jobs, key='lj_fluid_ke_validate_complete'))
+def lj_fluid_ke_validate(*jobs):
+    """Checks that MD follows the correct KE distribution."""
+    import gsd.hoomd
+    import numpy
+    import matplotlib
+    import matplotlib.style
+    import matplotlib.figure
+    import util
+    matplotlib.style.use('ggplot')
+
+    # sim_modes = [
+    #     'langevin_md_cpu', 'langevin_md_gpu', 'nvt_md_cpu', 'nvt_md_gpu',
+    #     'npt_md_cpu', 'npt_md_gpu'
+    # ]
+    sim_modes = [
+        'langevin_md_cpu', 'nvt_md_cpu',
+        'npt_md_cpu',
+    ]
+
+    # grab the common statepoint parameters
+    kT = jobs[0].sp.kT
+    set_density = jobs[0].sp.density
+    num_particles = jobs[0].sp.num_particles
+
+    fig = matplotlib.figure.Figure(figsize=(10, 10 / 1.618 * 2), layout='tight')
+    fig.suptitle(f"$kT={kT}$, $\\rho={set_density}$, $N={num_particles}$")
+
+    n_dof = num_particles * 3 - 3
+    ke_means = collections.defaultdict(list)
+    ke_sigmas = collections.defaultdict(list)
+
+    for job in jobs:
+        for sim_mode in sim_modes:
+            with gsd.hoomd.open(job.fn(sim_mode
+                                       + '_quantities.gsd')) as gsd_traj:
+                traj = util.read_gsd_log_trajectory(gsd_traj)
+
+                ke = util.get_log_quantity(traj, 'md/compute/ThermodynamicQuantities/kinetic_energy')
+                ke_means[sim_mode].append(numpy.mean(ke[-FRAMES_ANALYZE:]))
+                ke_sigmas[sim_mode].append(numpy.std(ke[-FRAMES_ANALYZE:]))
+
+    def plot_vs_expected(ax, values, expected, name):
+        # compute stats with data
+        avg_value = {
+            mode: numpy.mean(values[mode]) for mode in sim_modes
+        }
+        stderr_value = {
+            mode:
+            2 * numpy.std(values[mode]) / numpy.sqrt(len(values[mode]))
+            for mode in sim_modes
+        }
+
+        # compute the energy differences
+        value_list = [avg_value[mode] for mode in sim_modes]
+        stderr_list = numpy.array([stderr_value[mode] for mode in sim_modes])
+
+        value_diff_list = numpy.array(value_list) - expected
+
+        ax.errorbar(x=range(len(sim_modes)),
+                    y=value_diff_list,
+                    yerr=numpy.fabs(stderr_list),
+                    fmt='s')
+        ax.set_xticks(range(len(sim_modes)), sim_modes, rotation=45)
+        ax.set_ylabel(name)
+        ax.hlines(y=0,
+                  xmin=0,
+                  xmax=len(sim_modes) - 1,
+                  linestyles='dashed',
+                  colors='k')
+
+    ax = fig.add_subplot(2, 1, 1)
+    plot_vs_expected(ax, ke_means, 1/2 * n_dof * kT, '$<KE> - 1/2 N_{dof} k T$')
+
+    ax = fig.add_subplot(2, 1, 2)
+    # https://doi.org/10.26434/chemrxiv.6005279.v2
+    plot_vs_expected(ax, ke_sigmas, 1/math.sqrt(2) * math.sqrt(n_dof) * kT, r'$\Delta KE - 1/\sqrt{2} \sqrt{N_{dof}} k T$')
+
+    filename = f'lj_fluid_ke_validate_kT{kT}_density{round(set_density, 2)}.svg'
+    fig.savefig(os.path.join(jobs[0]._project.path, filename),
+                bbox_inches='tight')
+
+    for job in jobs:
+        job.document['lj_fluid_ke_validate_complete'] = True
 
 
 def run_nve_md_sim(job, device, run_length):
