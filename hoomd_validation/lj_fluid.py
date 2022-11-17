@@ -1000,7 +1000,7 @@ def lj_fluid_ke_validate(*jobs):
     plot_vs_expected(ax, ke_means, 1/2 * n_dof * kT, '$<KE> - 1/2 N_{dof} k T$')
 
     ax = fig.add_subplot(2, 1, 2)
-    # https://doi.org/10.26434/chemrxiv.6005279.v2
+    # https://doi.org/10.1371/journal.pone.0202764
     plot_vs_expected(ax, ke_sigmas, 1/math.sqrt(2) * math.sqrt(n_dof) * kT, r'$\Delta KE - 1/\sqrt{2} \sqrt{N_{dof}} k T$')
 
     filename = f'lj_fluid_ke_validate_kT{kT}_density{round(set_density, 2)}.svg'
