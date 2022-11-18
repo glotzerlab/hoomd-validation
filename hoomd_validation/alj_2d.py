@@ -110,7 +110,6 @@ def make_md_simulation(job,
                        initial_state,
                        method,
                        sim_mode,
-                       extra_loggables=[],
                        period_multiplier=1):
     """Make an MD simulation.
 
@@ -125,8 +124,6 @@ def make_md_simulation(job,
         method (`hoomd.md.methods.Method`): hoomd integration method.
 
         sim_mode (str): String identifying the simulation mode.
-
-        extra_loggables (list): List of quantities to add to the gsd logger.
 
         ThermodynamicQuantities is added by default, any more quantities should
             be in this list.
@@ -177,8 +174,6 @@ def make_md_simulation(job,
                    'rotational_kinetic_energy',
                ])
     logger.add(integrator, quantities=['linear_momentum'])
-    for loggable in extra_loggables:
-        logger.add(loggable)
 
     # simulation
     sim = util.make_simulation(job, device, initial_state, integrator, sim_mode,
@@ -186,11 +181,6 @@ def make_md_simulation(job,
                                LOG_PERIOD['trajectory'] * period_multiplier,
                                LOG_PERIOD['quantities'] * period_multiplier)
     sim.operations.add(thermo)
-    for loggable in extra_loggables:
-        # call attach explicitly so we can access sim state when computing the
-        # loggable quantity
-        if hasattr(loggable, 'attach'):
-            loggable.attach(sim)
 
     # thermalize momenta
     sim.state.thermalize_particle_momenta(hoomd.filter.All(), job.sp.kT)
