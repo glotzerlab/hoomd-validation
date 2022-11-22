@@ -18,22 +18,6 @@ on:
   workflow_dispatch:
 
 jobs:
-  # for now the repo is private, so pre-commit won't run automatically
-  pre-commit:
-    name: pre-commit
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v3.1.0
-
-      - name: Set up Python
-        uses: actions/setup-python@v4.3.0
-        with:
-          python-version: '3.10'
-
-      - name: Run pre-commit hooks
-        uses: pre-commit/action@v3.0.0
-
   flow-status:
     name: flow-status
     runs-on: ubuntu-latest
