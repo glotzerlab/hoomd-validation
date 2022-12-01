@@ -469,6 +469,12 @@ def make_mc_simulation(job,
 
 def run_nvt_mc_sim(job, device):
     """Run MC sim in NVT."""
+    import hoomd
+
+    if not hoomd.version.llvm_enabled:
+        device.notice("LLVM disabled, skipping MC simulations.")
+        return
+
     # simulation
     initial_state = job.fn('lj_fluid_initial_state.gsd')
     sim_mode = 'nvt_mc'
@@ -528,6 +534,10 @@ def run_npt_mc_sim(job, device):
     import hoomd
     from hoomd import hpmc
     from custom_actions import ComputeDensity
+
+    if not hoomd.version.llvm_enabled:
+        device.notice("LLVM disabled, skipping MC simulations.")
+        return
 
     # device
     initial_state = job.fn('lj_fluid_initial_state.gsd')
@@ -634,8 +644,11 @@ def lj_fluid_analyze(job):
     )
     sim_modes = [
         'langevin_md_cpu', 'langevin_md_gpu', 'nvt_md_cpu', 'nvt_md_gpu',
-        'npt_md_cpu', 'npt_md_gpu', 'nvt_mc_cpu', 'nvt_mc_gpu', 'npt_mc_cpu'
+        'npt_md_cpu', 'npt_md_gpu',
     ]
+
+    if os.path.exists(job.fn('nvt_mc_cpu_quantities.gsd')):
+        sim_modes.extend(['nvt_mc_cpu', 'nvt_mc_gpu', 'npt_mc_cpu'])
 
     energies = {}
     pressures = {}
@@ -827,8 +840,12 @@ def lj_fluid_compare_modes(*jobs):
 
     sim_modes = [
         'langevin_md_cpu', 'langevin_md_gpu', 'nvt_md_cpu', 'nvt_md_gpu',
-        'npt_md_cpu', 'npt_md_gpu', 'nvt_mc_cpu', 'nvt_mc_gpu', 'npt_mc_cpu'
+        'npt_md_cpu', 'npt_md_gpu',
     ]
+
+    if os.path.exists(jobs[0].fn('nvt_mc_cpu_quantities.gsd')):
+        sim_modes.extend(['nvt_mc_cpu', 'nvt_mc_gpu', 'npt_mc_cpu'])
+
     quantity_names = ['density', 'pressure', 'potential_energy']
 
     # grab the common statepoint parameters
