@@ -942,8 +942,8 @@ def lj_fluid_compare_modes(*jobs):
 @Project.pre(
     lambda *jobs: util.true_all(*jobs, key='lj_fluid_npt_md_gpu_complete'))
 @Project.post(
-    lambda *jobs: util.true_all(*jobs, key='lj_fluid_ke_validate_complete'))
-def lj_fluid_ke_validate(*jobs):
+    lambda *jobs: util.true_all(*jobs, key='lj_fluid_ke_analyze_complete'))
+def lj_fluid_ke_analyze(*jobs):
     """Checks that MD follows the correct KE distribution."""
     import gsd.hoomd
     import numpy
@@ -1016,12 +1016,12 @@ def lj_fluid_ke_validate(*jobs):
     plot_vs_expected(ax, ke_sigmas, 1 / math.sqrt(2) * math.sqrt(n_dof) * kT,
                      r'$\Delta KE - 1/\sqrt{2} \sqrt{N_{dof}} k T$')
 
-    filename = f'lj_fluid_ke_validate_kT{kT}_density{round(set_density, 2)}.svg'
+    filename = f'lj_fluid_ke_analyze_kT{kT}_density{round(set_density, 2)}.svg'
     fig.savefig(os.path.join(jobs[0]._project.path, filename),
                 bbox_inches='tight')
 
     for job in jobs:
-        job.document['lj_fluid_ke_validate_complete'] = True
+        job.document['lj_fluid_ke_analyze_complete'] = True
 
 
 def run_nve_md_sim(job, device, run_length):
