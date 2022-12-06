@@ -643,8 +643,12 @@ def lj_fluid_analyze(job):
         npt_mc_gpu='pressure',
     )
     sim_modes = [
-        'langevin_md_cpu', 'langevin_md_gpu', 'nvt_md_cpu', 'nvt_md_gpu',
-        'npt_md_cpu', 'npt_md_gpu',
+        'langevin_md_cpu',
+        'langevin_md_gpu',
+        'nvt_md_cpu',
+        'nvt_md_gpu',
+        'npt_md_cpu',
+        'npt_md_gpu',
     ]
 
     if os.path.exists(job.fn('nvt_mc_cpu_quantities.gsd')):
@@ -839,8 +843,12 @@ def lj_fluid_compare_modes(*jobs):
     matplotlib.style.use('ggplot')
 
     sim_modes = [
-        'langevin_md_cpu', 'langevin_md_gpu', 'nvt_md_cpu', 'nvt_md_gpu',
-        'npt_md_cpu', 'npt_md_gpu',
+        'langevin_md_cpu',
+        'langevin_md_gpu',
+        'nvt_md_cpu',
+        'nvt_md_gpu',
+        'npt_md_cpu',
+        'npt_md_gpu',
     ]
 
     if os.path.exists(jobs[0].fn('nvt_mc_cpu_quantities.gsd')):
