@@ -11,7 +11,7 @@ validation test workflows in this repository are organized into signac projects.
 * signac-dashboard [optional]
 * Simulation workflow steps require either the [glotzerlab-software container]
   or the following software:
-    * HOOMD-blue >=3.0 *(with MPI, GPU, and LLVM support enabled)*
+    * HOOMD-blue >=3.0 *(with MPI and GPU support enabled, LLVM support is optional)*,
 * Analysis workflow steps require either the [glotzerlab-software container] or
   the following software:
     * matplotlib

@@ -469,6 +469,12 @@ def make_mc_simulation(job,
 
 def run_nvt_mc_sim(job, device):
     """Run MC sim in NVT."""
+    import hoomd
+
+    if not hoomd.version.llvm_enabled:
+        device.notice("LLVM disabled, skipping MC simulations.")
+        return
+
     # simulation
     initial_state = job.fn('lj_fluid_initial_state.gsd')
     sim_mode = 'nvt_mc'
@@ -528,6 +534,10 @@ def run_npt_mc_sim(job, device):
     import hoomd
     from hoomd import hpmc
     from custom_actions import ComputeDensity
+
+    if not hoomd.version.llvm_enabled:
+        device.notice("LLVM disabled, skipping MC simulations.")
+        return
 
     # device
     initial_state = job.fn('lj_fluid_initial_state.gsd')
@@ -633,9 +643,16 @@ def lj_fluid_analyze(job):
         npt_mc_gpu='pressure',
     )
     sim_modes = [
-        'langevin_md_cpu', 'langevin_md_gpu', 'nvt_md_cpu', 'nvt_md_gpu',
-        'npt_md_cpu', 'npt_md_gpu', 'nvt_mc_cpu', 'nvt_mc_gpu', 'npt_mc_cpu'
+        'langevin_md_cpu',
+        'langevin_md_gpu',
+        'nvt_md_cpu',
+        'nvt_md_gpu',
+        'npt_md_cpu',
+        'npt_md_gpu',
     ]
+
+    if os.path.exists(job.fn('nvt_mc_cpu_quantities.gsd')):
+        sim_modes.extend(['nvt_mc_cpu', 'nvt_mc_gpu', 'npt_mc_cpu'])
 
     energies = {}
     pressures = {}
@@ -826,9 +843,17 @@ def lj_fluid_compare_modes(*jobs):
     matplotlib.style.use('ggplot')
 
     sim_modes = [
-        'langevin_md_cpu', 'langevin_md_gpu', 'nvt_md_cpu', 'nvt_md_gpu',
-        'npt_md_cpu', 'npt_md_gpu', 'nvt_mc_cpu', 'nvt_mc_gpu', 'npt_mc_cpu'
+        'langevin_md_cpu',
+        'langevin_md_gpu',
+        'nvt_md_cpu',
+        'nvt_md_gpu',
+        'npt_md_cpu',
+        'npt_md_gpu',
     ]
+
+    if os.path.exists(jobs[0].fn('nvt_mc_cpu_quantities.gsd')):
+        sim_modes.extend(['nvt_mc_cpu', 'nvt_mc_gpu', 'npt_mc_cpu'])
+
     quantity_names = ['density', 'pressure', 'potential_energy']
 
     # grab the common statepoint parameters
@@ -925,8 +950,8 @@ def lj_fluid_compare_modes(*jobs):
 @Project.pre(
     lambda *jobs: util.true_all(*jobs, key='lj_fluid_npt_md_gpu_complete'))
 @Project.post(
-    lambda *jobs: util.true_all(*jobs, key='lj_fluid_ke_validate_complete'))
-def lj_fluid_ke_validate(*jobs):
+    lambda *jobs: util.true_all(*jobs, key='lj_fluid_ke_analyze_complete'))
+def lj_fluid_ke_analyze(*jobs):
     """Checks that MD follows the correct KE distribution."""
     import gsd.hoomd
     import numpy
@@ -999,12 +1024,12 @@ def lj_fluid_ke_validate(*jobs):
     plot_vs_expected(ax, ke_sigmas, 1 / math.sqrt(2) * math.sqrt(n_dof) * kT,
                      r'$\Delta KE - 1/\sqrt{2} \sqrt{N_{dof}} k T$')
 
-    filename = f'lj_fluid_ke_validate_kT{kT}_density{round(set_density, 2)}.svg'
+    filename = f'lj_fluid_ke_analyze_kT{kT}_density{round(set_density, 2)}.svg'
     fig.savefig(os.path.join(jobs[0]._project.path, filename),
                 bbox_inches='tight')
 
     for job in jobs:
-        job.document['lj_fluid_ke_validate_complete'] = True
+        job.document['lj_fluid_ke_analyze_complete'] = True
 
 
 def run_nve_md_sim(job, device, run_length):
