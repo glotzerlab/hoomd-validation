@@ -11,8 +11,9 @@ import os
 import math
 
 # Run parameters shared between simulations
-RANDOMIZE_STEPS = 50_000
-RUN_STEPS = 2_000_000
+RANDOMIZE_STEPS = 10_000
+RUN_STEPS = 1_000_000
+NEC_STEP_FRACTION = 10
 WRITE_PERIOD = 1000
 LOG_PERIOD = {'trajectory': 50000, 'quantities': 125}
 FRAMES_ANALYZE = int(RUN_STEPS / LOG_PERIOD['quantities'] * 1 / 2)
@@ -21,7 +22,7 @@ FRAMES_ANALYZE = int(RUN_STEPS / LOG_PERIOD['quantities'] * 1 / 2)
 def job_statepoints():
     """list(dict): A list of statepoints for this subproject."""
     num_particles = 256**2
-    replicate_indices = range(8)
+    replicate_indices = range(16)
     # reference statepoint from: http://dx.doi.org/10.1016/j.jcp.2013.07.023
     params_list = [(0.8887212022251435, 9.17079)]
     for density, pressure in params_list:
@@ -347,7 +348,7 @@ def run_nec_sim(job, device):
 
     # run
     device.notice('Running...')
-    sim.run(RUN_STEPS)
+    sim.run(RUN_STEPS // NEC_STEP_FRACTION)
     device.notice('Done.')
 
 
@@ -391,6 +392,10 @@ def hard_disk_analyze(job):
     densities = {}
 
     for sim_mode in sim_modes:
+        frames_analyze = FRAMES_ANALYZE
+        if 'nec' in sim_mode:
+            frames_analyze = frames_analyze // NEC_STEP_FRACTION
+
         with gsd.hoomd.open(job.fn(sim_mode + '_quantities.gsd')) as gsd_traj:
             # read GSD file once
             traj = read_gsd_log_trajectory(gsd_traj)
@@ -420,8 +425,8 @@ def hard_disk_analyze(job):
     # save averages
     for mode in sim_modes:
         job.document[mode] = dict(
-            pressure=float(numpy.mean(pressures[mode][-FRAMES_ANALYZE:])),
-            density=float(numpy.mean(densities[mode][-FRAMES_ANALYZE:])))
+            pressure=float(numpy.mean(pressures[mode][-frames_analyze:])),
+            density=float(numpy.mean(densities[mode][-frames_analyze:])))
 
     # Plot results
     def plot(*, ax, data, quantity_name, base_line=None, legend=False):
@@ -455,28 +460,28 @@ def hard_disk_analyze(job):
 
     # determine range for density and pressure histograms
     density_range = [
-        numpy.min(densities[sim_modes[0]][-FRAMES_ANALYZE:]),
-        numpy.max(densities[sim_modes[0]][-FRAMES_ANALYZE:])
+        numpy.min(densities[sim_modes[0]][-frames_analyze:]),
+        numpy.max(densities[sim_modes[0]][-frames_analyze:])
     ]
     pressure_range = [
-        numpy.min(pressures[sim_modes[0]][-FRAMES_ANALYZE:]),
-        numpy.max(pressures[sim_modes[0]][-FRAMES_ANALYZE:])
+        numpy.min(pressures[sim_modes[0]][-frames_analyze:]),
+        numpy.max(pressures[sim_modes[0]][-frames_analyze:])
     ]
 
     for mode in sim_modes[1:]:
         density_range[0] = min(density_range[0],
-                               numpy.min(densities[mode][-FRAMES_ANALYZE:]))
+                               numpy.min(densities[mode][-frames_analyze:]))
         density_range[1] = max(density_range[1],
-                               numpy.max(densities[mode][-FRAMES_ANALYZE:]))
+                               numpy.max(densities[mode][-frames_analyze:]))
         pressure_range[0] = min(pressure_range[0],
-                                numpy.min(pressures[mode][-FRAMES_ANALYZE:]))
+                                numpy.min(pressures[mode][-frames_analyze:]))
         pressure_range[1] = max(pressure_range[1],
-                                numpy.max(pressures[mode][-FRAMES_ANALYZE:]))
+                                numpy.max(pressures[mode][-frames_analyze:]))
 
     def plot_histogram(*, ax, data, quantity_name, sp_name, range):
         max_histogram = 0
         for mode in sim_modes:
-            histogram, bin_edges = numpy.histogram(data[mode][-FRAMES_ANALYZE:],
+            histogram, bin_edges = numpy.histogram(data[mode][-frames_analyze:],
                                                    bins=50,
                                                    range=range)
             if constant[mode] == sp_name:
