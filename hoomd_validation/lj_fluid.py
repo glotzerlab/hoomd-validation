@@ -48,7 +48,7 @@ def is_lj_fluid(job):
 
 
 @Project.operation(directives=dict(executable=CONFIG["executable"],
-                                   nranks=8,
+                                   nranks=min(8, CONFIG["max_cores_sim"]),
                                    walltime=1))
 @Project.pre(is_lj_fluid)
 @Project.post.isfile('lj_fluid_initial_state.gsd')
@@ -200,9 +200,9 @@ def run_langevin_md_sim(job, device):
     device.notice('Done.')
 
 
-@Project.operation(directives=dict(walltime=12,
+@Project.operation(directives=dict(walltime=CONFIG["max_walltime"],
                                    executable=CONFIG["executable"],
-                                   nranks=8))
+                                   nranks=min(8, CONFIG["max_cores_sim"])))
 @Project.pre.after(lj_fluid_create_initial_state)
 @Project.post.true('lj_fluid_langevin_md_cpu_complete')
 def lj_fluid_langevin_md_cpu(job):
@@ -215,7 +215,7 @@ def lj_fluid_langevin_md_cpu(job):
         job.document['lj_fluid_langevin_md_cpu_complete'] = True
 
 
-@Project.operation(directives=dict(walltime=12,
+@Project.operation(directives=dict(walltime=CONFIG["max_walltime"],
                                    executable=CONFIG["executable"],
                                    nranks=1,
                                    ngpu=1))
@@ -257,9 +257,9 @@ def run_nvt_md_sim(job, device):
     device.notice('Done.')
 
 
-@Project.operation(directives=dict(walltime=12,
+@Project.operation(directives=dict(walltime=CONFIG["max_walltime"],
                                    executable=CONFIG["executable"],
-                                   nranks=8))
+                                   nranks=min(8, CONFIG["max_cores_sim"])))
 @Project.pre.after(lj_fluid_create_initial_state)
 @Project.post.true('lj_fluid_nvt_md_cpu_complete')
 def lj_fluid_nvt_md_cpu(job):
@@ -272,7 +272,7 @@ def lj_fluid_nvt_md_cpu(job):
         job.document['lj_fluid_nvt_md_cpu_complete'] = True
 
 
-@Project.operation(directives=dict(walltime=12,
+@Project.operation(directives=dict(walltime=CONFIG["max_walltime"],
                                    executable=CONFIG["executable"],
                                    nranks=1,
                                    ngpu=1))
@@ -332,9 +332,9 @@ def run_npt_md_sim(job, device):
     device.notice('Done.')
 
 
-@Project.operation(directives=dict(walltime=12,
+@Project.operation(directives=dict(walltime=CONFIG["max_walltime"],
                                    executable=CONFIG["executable"],
-                                   nranks=8))
+                                   nranks=min(8, CONFIG["max_cores_sim"])))
 @Project.pre.after(lj_fluid_create_initial_state)
 @Project.post.true('lj_fluid_npt_md_cpu_complete')
 def lj_fluid_npt_md_cpu(job):
@@ -347,7 +347,7 @@ def lj_fluid_npt_md_cpu(job):
         job.document['lj_fluid_npt_md_cpu_complete'] = True
 
 
-@Project.operation(directives=dict(walltime=12,
+@Project.operation(directives=dict(walltime=CONFIG["max_walltime"],
                                    executable=CONFIG["executable"],
                                    nranks=1,
                                    ngpu=1))
@@ -498,9 +498,9 @@ def run_nvt_mc_sim(job, device):
     device.notice('Done.')
 
 
-@Project.operation(directives=dict(walltime=12,
+@Project.operation(directives=dict(walltime=CONFIG["max_walltime"],
                                    executable=CONFIG["executable"],
-                                   nranks=8))
+                                   nranks=min(8, CONFIG["max_cores_sim"])))
 @Project.pre.after(lj_fluid_create_initial_state)
 @Project.post.true('lj_fluid_nvt_mc_cpu_complete')
 def lj_fluid_nvt_mc_cpu(job):
@@ -513,7 +513,7 @@ def lj_fluid_nvt_mc_cpu(job):
         job.document['lj_fluid_nvt_mc_cpu_complete'] = True
 
 
-@Project.operation(directives=dict(walltime=12,
+@Project.operation(directives=dict(walltime=CONFIG["max_walltime"],
                                    executable=CONFIG["executable"],
                                    nranks=1,
                                    ngpu=1))
@@ -593,9 +593,9 @@ def run_npt_mc_sim(job, device):
     device.notice('Done.')
 
 
-@Project.operation(directives=dict(walltime=12,
+@Project.operation(directives=dict(walltime=CONFIG["max_walltime"],
                                    executable=CONFIG["executable"],
-                                   nranks=8))
+                                   nranks=min(8, CONFIG["max_cores_sim"])))
 @Project.pre.after(lj_fluid_create_initial_state)
 @Project.post.true('lj_fluid_npt_mc_cpu_complete')
 def lj_fluid_npt_mc_cpu(job):
@@ -828,7 +828,7 @@ agg = aggregator.groupby(key=['kT', 'density', 'num_particles'],
 
 
 @agg
-@Project.operation(directives=dict(executable=CONFIG["executable"]))
+@Project.operation(directives=dict(walltime=1, executable=CONFIG["executable"]))
 @Project.pre(
     lambda *jobs: util.true_all(*jobs, key='lj_fluid_analysis_complete'))
 @Project.post(
@@ -936,7 +936,7 @@ def lj_fluid_compare_modes(*jobs):
 
 
 @agg
-@Project.operation(directives=dict(executable=CONFIG["executable"]))
+@Project.operation(directives=dict(walltime=1, executable=CONFIG["executable"]))
 @Project.pre(
     lambda *jobs: util.true_all(*jobs, key='lj_fluid_langevin_md_cpu_complete'))
 @Project.pre(
@@ -1053,9 +1053,9 @@ def run_nve_md_sim(job, device, run_length):
     device.notice('Done.')
 
 
-@Project.operation(directives=dict(walltime=48,
+@Project.operation(directives=dict(walltime=CONFIG["max_walltime"],
                                    executable=CONFIG["executable"],
-                                   nranks=8))
+                                   nranks=min(8, CONFIG["max_cores_sim"])))
 @Project.pre(lambda job: job.statepoint.replicate_idx < NUM_NVE_RUNS)
 @Project.pre.after(lj_fluid_create_initial_state)
 @Project.post.true('lj_fluid_nve_md_cpu_complete')
@@ -1069,7 +1069,7 @@ def lj_fluid_nve_md_cpu(job):
         job.document['lj_fluid_nve_md_cpu_complete'] = True
 
 
-@Project.operation(directives=dict(walltime=48,
+@Project.operation(directives=dict(walltime=CONFIG["max_walltime"],
                                    executable=CONFIG["executable"],
                                    nranks=1,
                                    ngpu=1))

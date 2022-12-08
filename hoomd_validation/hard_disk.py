@@ -173,9 +173,9 @@ def run_nvt_sim(job, device):
     device.notice('Done.')
 
 
-@Project.operation(directives=dict(walltime=12,
+@Project.operation(directives=dict(walltime=CONFIG["max_walltime"],
                                    executable=CONFIG["executable"],
-                                   nranks=16))
+                                   nranks=min(256, CONFIG["max_cores_sim"])))
 @Project.pre.after(hard_disk_create_initial_state)
 @Project.post.true('hard_disk_nvt_cpu_complete')
 def hard_disk_nvt_cpu(job):
@@ -188,7 +188,7 @@ def hard_disk_nvt_cpu(job):
         job.document['hard_disk_nvt_cpu_complete'] = True
 
 
-@Project.operation(directives=dict(walltime=12,
+@Project.operation(directives=dict(walltime=CONFIG["max_walltime"],
                                    executable=CONFIG["executable"],
                                    nranks=1,
                                    ngpu=1))
@@ -266,9 +266,9 @@ def run_npt_sim(job, device):
     device.notice('Done.')
 
 
-@Project.operation(directives=dict(walltime=12,
+@Project.operation(directives=dict(walltime=CONFIG["max_walltime"],
                                    executable=CONFIG["executable"],
-                                   nranks=16))
+                                   nranks=min(256, CONFIG["max_cores_sim"])))
 @Project.pre.after(hard_disk_create_initial_state)
 @Project.post.true('hard_disk_npt_cpu_complete')
 def hard_disk_npt_cpu(job):
@@ -352,7 +352,7 @@ def run_nec_sim(job, device):
     device.notice('Done.')
 
 
-@Project.operation(directives=dict(walltime=48,
+@Project.operation(directives=dict(walltime=CONFIG["max_walltime"],
                                    executable=CONFIG["executable"],
                                    nranks=1))
 @Project.pre.after(hard_disk_create_initial_state)

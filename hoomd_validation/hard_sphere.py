@@ -41,7 +41,7 @@ def is_hard_sphere(job):
 
 
 @Project.operation(directives=dict(executable=CONFIG["executable"],
-                                   nranks=8,
+                                   nranks=min(8, CONFIG["max_cores_sim"]),
                                    walltime=1))
 @Project.pre(is_hard_sphere)
 @Project.post.isfile('hard_sphere_initial_state.gsd')
@@ -186,9 +186,9 @@ def run_nvt_sim(job, device):
     device.notice('Done.')
 
 
-@Project.operation(directives=dict(walltime=12,
+@Project.operation(directives=dict(walltime=CONFIG["max_walltime"],
                                    executable=CONFIG["executable"],
-                                   nranks=8))
+                                   nranks=min(8, CONFIG["max_cores_sim"])))
 @Project.pre.after(hard_sphere_create_initial_state)
 @Project.post.true('hard_sphere_nvt_cpu_complete')
 def hard_sphere_nvt_cpu(job):
@@ -201,7 +201,7 @@ def hard_sphere_nvt_cpu(job):
         job.document['hard_sphere_nvt_cpu_complete'] = True
 
 
-@Project.operation(directives=dict(walltime=12,
+@Project.operation(directives=dict(walltime=CONFIG["max_walltime"],
                                    executable=CONFIG["executable"],
                                    nranks=1,
                                    ngpu=1))
@@ -279,9 +279,9 @@ def run_npt_sim(job, device):
     device.notice('Done.')
 
 
-@Project.operation(directives=dict(walltime=12,
+@Project.operation(directives=dict(walltime=CONFIG["max_walltime"],
                                    executable=CONFIG["executable"],
-                                   nranks=8))
+                                   nranks=min(8, CONFIG["max_cores_sim"])))
 @Project.pre.after(hard_sphere_create_initial_state)
 @Project.post.true('hard_sphere_npt_cpu_complete')
 def hard_sphere_npt_cpu(job):
@@ -368,7 +368,7 @@ def run_nec_sim(job, device):
     device.notice('Done.')
 
 
-@Project.operation(directives=dict(walltime=48,
+@Project.operation(directives=dict(walltime=CONFIG["max_walltime"],
                                    executable=CONFIG["executable"],
                                    nranks=1))
 @Project.pre.after(hard_sphere_create_initial_state)

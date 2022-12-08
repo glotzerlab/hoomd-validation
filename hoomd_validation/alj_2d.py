@@ -49,7 +49,7 @@ def is_alj_2d(job):
 
 
 @Project.operation(directives=dict(executable=CONFIG["executable"],
-                                   nranks=8,
+                                   nranks=min(8, CONFIG["max_cores_sim"]),
                                    walltime=1))
 @Project.pre(is_alj_2d)
 @Project.post.isfile('alj_2d_initial_state.gsd')
@@ -209,9 +209,9 @@ def run_nve_md_sim(job, device, run_length):
     device.notice('Done.')
 
 
-@Project.operation(directives=dict(walltime=48,
+@Project.operation(directives=dict(walltime=CONFIG["max_walltime"],
                                    executable=CONFIG["executable"],
-                                   nranks=8))
+                                   nranks=min(8, CONFIG["max_cores_sim"])))
 @Project.pre.after(alj_2d_create_initial_state)
 @Project.post.true('alj_2d_nve_md_cpu_complete')
 def alj_2d_nve_md_cpu(job):
@@ -224,7 +224,7 @@ def alj_2d_nve_md_cpu(job):
         job.document['alj_2d_nve_md_cpu_complete'] = True
 
 
-@Project.operation(directives=dict(walltime=48,
+@Project.operation(directives=dict(walltime=CONFIG["max_walltime"],
                                    executable=CONFIG["executable"],
                                    nranks=1,
                                    ngpu=1))
