@@ -33,20 +33,13 @@ $ cd hoomd-validation
 ## Configuration
 
 Install the prerequisites into a Python environment of your choice. To use the
-[glotzerlab-software container], create the file `hoomd_validation/config.json`
-with the following contents:
-```
-{
-    "executable": {
-        "container_path": "<path-to>/software.sif"
-    }
-}
-```
-and replace `<path-to>` with the absolute path to the directory containing
-`software.sif`. Add any options before the path, such as
-`--bind /scratch,/gpfs <path-to>/software.sif`.
+[glotzerlab-software container], copy `hoomd_validation/config-sample.yaml` to
+`hoomd_validation/config.yaml`, uncomment the executable mapping, and set
+`singularity_container` to your container image's path.
 
-See `config_parser.py` for full documentation on all options in the config file.
+`hoomd_validation/config.yaml` also controls a number of job submission
+parameters. See the commented options in `hoomd_validation/config-sample.yaml`
+for a list and their default values.
 
 ## Usage
 

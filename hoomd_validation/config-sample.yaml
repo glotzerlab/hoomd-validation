@@ -1,0 +1,23 @@
+## Define the executable to use.
+##   * Use `sys.executable` by default.
+##   * Use `python_exec` when set.
+##   * When `singularity_container` is set, use:
+##     `singularity exec --nv {singularity_options} {singularity_container} python`
+##   * When `singularity_container` and `python_exec` are set, use:
+##     `singularity exec --nv {singularity_options} {singularity_container} {python_exec}`
+# executable:
+  # python_exec: "python"
+  # singularity_container: "container.sif"
+  # singularity_options: ""
+
+## Maximum CPU cores to use in a single simulation
+# max_cores_sim: 16
+
+## Maximum CPU cores to use in a single aggregate job submission.
+# max_cores_submission: 16
+
+## Maximum GPUs to use in a single aggregate job submission.
+# max_gpus_submission: 1
+
+## Maximum wall time (in hours) that a submitted cluster job is allowed to run.
+# max_walltime: 24
