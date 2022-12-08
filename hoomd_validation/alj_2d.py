@@ -204,8 +204,17 @@ def run_nve_md_sim(job, device, run_length):
                              period_multiplier=300)
 
     # Run for a long time to look for energy and momentum drift
+    end_step = sim.timestep + run_length
+    walltime_stop_seconds = CONFIG["max_walltime"] * 3600 - 10 * 60
+
     device.notice('Running...')
-    sim.run(run_length)
+    while sim.timestep < end_step:
+        sim.run(min(500_000, end_step - sim.timestep))
+
+        if (sim.device.communicator.walltime + sim.walltime
+                >= walltime_stop_seconds):
+            break
+
     device.notice('Done.')
 
 
