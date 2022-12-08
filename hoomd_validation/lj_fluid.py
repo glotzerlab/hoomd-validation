@@ -12,8 +12,8 @@ import math
 import collections
 
 # Run parameters shared between simulations
-RANDOMIZE_STEPS = 5e4
-RUN_STEPS = 2e6
+RANDOMIZE_STEPS = 10_000
+RUN_STEPS = 1_000_000
 WRITE_PERIOD = 4000
 LOG_PERIOD = {'trajectory': 50000, 'quantities': 2000}
 FRAMES_ANALYZE = int(RUN_STEPS / LOG_PERIOD['quantities'] * 1 / 2)
@@ -26,7 +26,7 @@ NUM_NVE_RUNS = 2
 def job_statepoints():
     """list(dict): A list of statepoints for this subproject."""
     num_particles = 12**3
-    replicate_indices = range(8)
+    replicate_indices = range(16)
     params_list = [(1.5, 0.5998286671851658, 1.0270905797770546),
                    (1.0, 0.7999550814681395, 1.4363805638963822),
                    (1.25, 0.049963649769543844, 0.05363574413661169)]
