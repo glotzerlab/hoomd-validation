@@ -55,7 +55,7 @@ partition_jobs_cpu = aggregator.groupsof(num=min(
                                          sort_by='density',
                                          select=is_alj_2d)
 
-partition_jobs_gpu = aggregator.groupsof(num=CONFIG["max_gpus_submission"],
+partition_jobs_gpu = aggregator.groupsof(num=min(NUM_REPLICATES, CONFIG["max_gpus_submission"]),
                                          sort_by='density',
                                          select=is_alj_2d)
 
@@ -237,8 +237,8 @@ def run_nve_md_sim(job, device, run_length):
 @Project.operation(directives=dict(walltime=CONFIG["max_walltime"],
                                    executable=CONFIG["executable"],
                                    nranks=lambda *jobs: NUM_CPU_RANKS * len(jobs)))
-@Project.pre.after(alj_2d_create_initial_state)
 @partition_jobs_cpu
+@Project.pre.after(alj_2d_create_initial_state)
 @Project.post.true('alj_2d_nve_md_cpu_complete')
 def alj_2d_nve_md_cpu(*jobs):
     """Run NVE MD on the CPU."""
@@ -258,9 +258,9 @@ def alj_2d_nve_md_cpu(*jobs):
 @Project.operation(directives=dict(walltime=CONFIG["max_walltime"],
                                    executable=CONFIG["executable"],
                                    nranks=lambda *jobs: len(jobs),
-                                   ngpu=1))
-@Project.pre.after(alj_2d_create_initial_state)
+                                   ngpu=lambda *jobs: len(jobs)))
 @partition_jobs_gpu
+@Project.pre.after(alj_2d_create_initial_state)
 @Project.post.true('alj_2d_nve_md_gpu_complete')
 def alj_2d_nve_md_gpu(*jobs):
     """Run NVE MD on the GPU."""
