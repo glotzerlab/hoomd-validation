@@ -95,6 +95,7 @@ def make_simulation(
         file = io.StringIO("")
     logger_table = hoomd.logging.Logger(categories=['scalar'])
     logger_table.add(sim, quantities=['timestep', 'final_timestep', 'tps'])
+    logger_table[('walltime')] = (sim.device.communicator, 'walltime', 'scalar')
     table_writer = hoomd.write.Table(hoomd.trigger.Periodic(table_write_period),
                                      logger_table,
                                      output=file)
