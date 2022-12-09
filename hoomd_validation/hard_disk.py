@@ -13,7 +13,7 @@ import math
 # Run parameters shared between simulations
 RANDOMIZE_STEPS = 10_000
 RUN_STEPS = 1_000_000
-NEC_STEP_FRACTION = 10
+NEC_STEP_FRACTION = 5
 WRITE_PERIOD = 1000
 LOG_PERIOD = {'trajectory': 50000, 'quantities': 125}
 FRAMES_ANALYZE = int(RUN_STEPS / LOG_PERIOD['quantities'] * 1 / 2)
@@ -22,7 +22,7 @@ FRAMES_ANALYZE = int(RUN_STEPS / LOG_PERIOD['quantities'] * 1 / 2)
 def job_statepoints():
     """list(dict): A list of statepoints for this subproject."""
     num_particles = 256**2
-    replicate_indices = range(16)
+    replicate_indices = range(CONFIG["replicates"])
     # reference statepoint from: http://dx.doi.org/10.1016/j.jcp.2013.07.023
     params_list = [(0.8887212022251435, 9.17079)]
     for density, pressure in params_list:

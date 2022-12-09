@@ -5,7 +5,6 @@
 
 import os
 import sys
-import json
 import yaml
 from pathlib import Path
 
@@ -34,6 +33,7 @@ class ConfigFile(dict):
         self["max_cores_submission"] = config.get("max_cores_submission", 16)
         self["max_gpus_submission"] = config.get("max_gpus_submission", 1)
         self["max_walltime"] = config.get("max_walltime", 24)
+        self["replicates"] = config.get("replicates", 16)
 
     @staticmethod
     def _parse_executable_string(config_file):

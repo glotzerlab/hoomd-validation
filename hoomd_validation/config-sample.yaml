@@ -10,7 +10,10 @@
   # singularity_container: "container.sif"
   # singularity_options: ""
 
-## Maximum CPU cores to use in a single simulation
+## Number of replicate simulations to average over for ensemble comparisons.
+# replicates: 16
+
+## Maximum CPU cores to use in a single simulation.
 # max_cores_sim: 16
 
 ## Maximum CPU cores to use in a single aggregate job submission.

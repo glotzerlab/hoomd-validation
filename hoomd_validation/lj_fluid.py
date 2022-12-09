@@ -26,7 +26,7 @@ NUM_NVE_RUNS = 2
 def job_statepoints():
     """list(dict): A list of statepoints for this subproject."""
     num_particles = 12**3
-    replicate_indices = range(16)
+    replicate_indices = range(CONFIG["replicates"])
     params_list = [(1.5, 0.5998286671851658, 1.0270905797770546),
                    (1.0, 0.7999550814681395, 1.4363805638963822),
                    (1.25, 0.049963649769543844, 0.05363574413661169)]
