@@ -10,10 +10,10 @@ import util
 import os
 
 # Run parameters shared between simulations
-RANDOMIZE_STEPS = 5e4
-RUN_STEPS = 2e6
-WRITE_PERIOD = 4000
-LOG_PERIOD = {'trajectory': 50000, 'quantities': 2000}
+RANDOMIZE_STEPS = 10_000
+RUN_STEPS = 2_000_000
+WRITE_PERIOD = 4_000
+LOG_PERIOD = {'trajectory': 50_000, 'quantities': 2_000}
 ALJ_PARAMS = {'epsilon': 1.0}
 
 # Unit area hexagon
