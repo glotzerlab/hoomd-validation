@@ -4,6 +4,7 @@
 """Helper functions for grabbing data and plotting."""
 
 import numpy
+import io
 
 
 def read_gsd_log_trajectory(traj):
@@ -88,10 +89,15 @@ def make_simulation(
     sim.operations.integrator = integrator
 
     # write to terminal
+    if sim.device.communicator.rank == 0:
+        file = open(job.fn(f'{sim_mode}_{suffix}_tps.log'), mode='w', newline='\n')
+    else:
+        file = io.StringIO("")
     logger_table = hoomd.logging.Logger(categories=['scalar'])
     logger_table.add(sim, quantities=['timestep', 'final_timestep', 'tps'])
     table_writer = hoomd.write.Table(hoomd.trigger.Periodic(table_write_period),
-                                     logger_table)
+                                     logger_table,
+                                     output=file)
     sim.operations.add(table_writer)
 
     # write particle trajectory to gsd file
