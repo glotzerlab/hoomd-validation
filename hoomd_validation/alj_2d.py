@@ -25,12 +25,14 @@ PARTICLE_VERTICES = [[6.20403239e-01, 0.00000000e+00, 0],
                      [3.10201620e-01, -5.37284966e-01, 0]]
 CIRCUMCIRCLE_RADIUS = 0.6204032392788702
 INCIRCLE_RADIUS = 0.5372849659264116
+NUM_REPLICATES = 4
+NUM_CPU_RANKS = min(8, CONFIG["max_cores_sim"])
 
 
 def job_statepoints():
     """list(dict): A list of statepoints for this subproject."""
     num_particles = 42**2
-    replicate_indices = range(4)
+    replicate_indices = range(NUM_REPLICATES)
     params_list = [(1.0, 0.4)]
     for kT, density in params_list:
         for idx in replicate_indices:
@@ -48,20 +50,34 @@ def is_alj_2d(job):
     return job.statepoint['subproject'] == 'alj_2d'
 
 
+partition_jobs_cpu = aggregator.groupsof(num=max(
+    NUM_REPLICATES, CONFIG["max_cores_submission"] // NUM_CPU_RANKS),
+                                         sort_by='density',
+                                         select=is_alj_2d)
+
+partition_jobs_gpu = aggregator.groupsof(num=CONFIG["max_gpus_submission"],
+                                         sort_by='density',
+                                         select=is_alj_2d)
+
+
 @Project.operation(directives=dict(executable=CONFIG["executable"],
-                                   nranks=min(8, CONFIG["max_cores_sim"]),
+                                   nranks=NUM_CPU_RANKS,
                                    walltime=1))
-@Project.pre(is_alj_2d)
+@partition_jobs_cpu
 @Project.post.isfile('alj_2d_initial_state.gsd')
-def alj_2d_create_initial_state(job):
+def alj_2d_create_initial_state(*jobs):
     """Create initial system configuration."""
     import hoomd
     import numpy
     import itertools
 
+    communicator = hoomd.communicator.Communicator(
+        ranks_per_partition=NUM_CPU_RANKS)
+    job = jobs[communicator.partition]
+
     init_diameter = CIRCUMCIRCLE_RADIUS * 2 * 1.15
 
-    device = hoomd.device.CPU(msg_file=job.fn('create_initial_state.log'))
+    device = hoomd.device.CPU(communicator=communicator, msg_file=job.fn('create_initial_state.log'))
 
     num_particles = job.statepoint['num_particles']
     density = job.statepoint['density']
@@ -211,8 +227,8 @@ def run_nve_md_sim(job, device, run_length):
     while sim.timestep < end_step:
         sim.run(min(500_000, end_step - sim.timestep))
 
-        if (sim.device.communicator.walltime + sim.walltime
-                >= walltime_stop_seconds):
+        if (sim.device.communicator.walltime + sim.walltime >=
+                walltime_stop_seconds):
             break
 
     device.notice('Done.')
@@ -220,13 +236,19 @@ def run_nve_md_sim(job, device, run_length):
 
 @Project.operation(directives=dict(walltime=CONFIG["max_walltime"],
                                    executable=CONFIG["executable"],
-                                   nranks=min(8, CONFIG["max_cores_sim"])))
+                                   nranks=NUM_CPU_RANKS))
 @Project.pre.after(alj_2d_create_initial_state)
+@partition_jobs_cpu
 @Project.post.true('alj_2d_nve_md_cpu_complete')
-def alj_2d_nve_md_cpu(job):
+def alj_2d_nve_md_cpu(*jobs):
     """Run NVE MD on the CPU."""
     import hoomd
-    device = hoomd.device.CPU(msg_file=job.fn('run_nve_md_cpu.log'))
+
+    communicator = hoomd.communicator.Communicator(
+        ranks_per_partition=NUM_CPU_RANKS)
+    job = jobs[communicator.partition]
+
+    device = hoomd.device.CPU(communicator=communicator, msg_file=job.fn('run_nve_md_cpu.log'))
     run_nve_md_sim(job, device, run_length=600e6)
 
     if device.communicator.rank == 0:
@@ -238,11 +260,17 @@ def alj_2d_nve_md_cpu(job):
                                    nranks=1,
                                    ngpu=1))
 @Project.pre.after(alj_2d_create_initial_state)
+@partition_jobs_gpu
 @Project.post.true('alj_2d_nve_md_gpu_complete')
-def alj_2d_nve_md_gpu(job):
+def alj_2d_nve_md_gpu(*jobs):
     """Run NVE MD on the GPU."""
     import hoomd
-    device = hoomd.device.GPU(msg_file=job.fn('run_nve_md_gpu.log'))
+
+    communicator = hoomd.communicator.Communicator(
+        ranks_per_partition=1)
+    job = jobs[communicator.partition]
+
+    device = hoomd.device.GPU(communicator=communicator, msg_file=job.fn('run_nve_md_gpu.log'))
     run_nve_md_sim(job, device, run_length=600e6)
 
     if device.communicator.rank == 0:
