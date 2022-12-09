@@ -199,7 +199,7 @@ def run_nvt_sim(job, device):
 @Project.pre.after(hard_disk_create_initial_state)
 @partition_jobs_cpu_mpi
 @Project.post.true('hard_disk_nvt_cpu_complete')
-def hard_disk_nvt_cpu(job):
+def hard_disk_nvt_cpu(*jobs):
     """Run NVT on the CPU."""
     import hoomd
 
@@ -221,7 +221,7 @@ def hard_disk_nvt_cpu(job):
 @Project.pre.after(hard_disk_create_initial_state)
 @partition_jobs_gpu
 @Project.post.true('hard_disk_nvt_gpu_complete')
-def hard_disk_nvt_gpu(job):
+def hard_disk_nvt_gpu(*jobs):
     """Run NVT on the GPU."""
     import hoomd
 
@@ -304,7 +304,7 @@ def run_npt_sim(job, device):
 @partition_jobs_cpu_mpi
 @Project.pre.after(hard_disk_create_initial_state)
 @Project.post.true('hard_disk_npt_cpu_complete')
-def hard_disk_npt_cpu(job):
+def hard_disk_npt_cpu(*jobs):
     """Run NPT MC on the CPU."""
     import hoomd
 
@@ -396,7 +396,7 @@ def run_nec_sim(job, device):
 @partition_jobs_cpu_serial
 @Project.pre.after(hard_disk_create_initial_state)
 @Project.post.true('hard_disk_nec_cpu_complete')
-def hard_disk_nec_cpu(job):
+def hard_disk_nec_cpu(*jobs):
     """Run NEC on the CPU."""
     import hoomd
 
