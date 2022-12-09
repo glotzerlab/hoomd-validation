@@ -50,7 +50,7 @@ def is_alj_2d(job):
     return job.statepoint['subproject'] == 'alj_2d'
 
 
-partition_jobs_cpu = aggregator.groupsof(num=max(
+partition_jobs_cpu = aggregator.groupsof(num=min(
     NUM_REPLICATES, CONFIG["max_cores_submission"] // NUM_CPU_RANKS),
                                          sort_by='density',
                                          select=is_alj_2d)
@@ -61,7 +61,7 @@ partition_jobs_gpu = aggregator.groupsof(num=CONFIG["max_gpus_submission"],
 
 
 @Project.operation(directives=dict(executable=CONFIG["executable"],
-                                   nranks=NUM_CPU_RANKS,
+                                   nranks=lambda *jobs: NUM_CPU_RANKS * len(jobs),
                                    walltime=1))
 @partition_jobs_cpu
 @Project.post.isfile('alj_2d_initial_state.gsd')
@@ -236,7 +236,7 @@ def run_nve_md_sim(job, device, run_length):
 
 @Project.operation(directives=dict(walltime=CONFIG["max_walltime"],
                                    executable=CONFIG["executable"],
-                                   nranks=NUM_CPU_RANKS))
+                                   nranks=lambda *jobs: NUM_CPU_RANKS * len(jobs)))
 @Project.pre.after(alj_2d_create_initial_state)
 @partition_jobs_cpu
 @Project.post.true('alj_2d_nve_md_cpu_complete')
@@ -257,7 +257,7 @@ def alj_2d_nve_md_cpu(*jobs):
 
 @Project.operation(directives=dict(walltime=CONFIG["max_walltime"],
                                    executable=CONFIG["executable"],
-                                   nranks=1,
+                                   nranks=lambda *jobs: len(jobs),
                                    ngpu=1))
 @Project.pre.after(alj_2d_create_initial_state)
 @partition_jobs_gpu

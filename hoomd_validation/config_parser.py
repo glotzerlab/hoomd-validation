@@ -29,11 +29,11 @@ class ConfigFile(dict):
                 config = yaml.safe_load(file)
 
         self["executable"] = self._parse_executable_string(config)
-        self["max_cores_sim"] = config.get("max_cores_sim", 16)
-        self["max_cores_submission"] = config.get("max_cores_submission", 16)
-        self["max_gpus_submission"] = config.get("max_gpus_submission", 1)
-        self["max_walltime"] = config.get("max_walltime", 24)
-        self["replicates"] = config.get("replicates", 16)
+        self["max_cores_sim"] = int(config.get("max_cores_sim", 16))
+        self["max_cores_submission"] = int(config.get("max_cores_submission", 16))
+        self["max_gpus_submission"] = int(config.get("max_gpus_submission", 1))
+        self["max_walltime"] = int(config.get("max_walltime", 24))
+        self["replicates"] = int(config.get("replicates", 16))
 
     @staticmethod
     def _parse_executable_string(config_file):
