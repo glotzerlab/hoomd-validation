@@ -62,7 +62,7 @@ partition_jobs_gpu = aggregator.groupsof(num=min(CONFIG["replicates"],
 @Project.post.isfile('lj_fluid_initial_state.gsd')
 @Project.operation(directives=dict(
     executable=CONFIG["executable"],
-    nranks=lambda *jobs: NUM_CPU_RANKS * len(jobs),
+    nranks=util.total_ranks_function(NUM_CPU_RANKS),
     walltime=1),
                    aggregator=partition_jobs_cpu_mpi)
 def lj_fluid_create_initial_state(*jobs):
@@ -223,7 +223,7 @@ def run_langevin_md_sim(job, device):
 @Project.operation(directives=dict(
     walltime=CONFIG["max_walltime"],
     executable=CONFIG["executable"],
-    nranks=lambda *jobs: NUM_CPU_RANKS * len(jobs)),
+    nranks=util.total_ranks_function(NUM_CPU_RANKS)),
                    aggregator=partition_jobs_cpu_mpi)
 def lj_fluid_langevin_md_cpu(*jobs):
     """Run Langevin MD on the CPU."""
@@ -245,8 +245,8 @@ def lj_fluid_langevin_md_cpu(*jobs):
 @Project.post.true('lj_fluid_langevin_md_gpu_complete')
 @Project.operation(directives=dict(walltime=CONFIG["max_walltime"],
                                    executable=CONFIG["executable"],
-                                   nranks=lambda *jobs: len(jobs),
-                                   ngpu=lambda *jobs: len(jobs)),
+                                   nranks=util.total_ranks_function(1),
+                                   ngpu=util.total_ranks_function(1)),
                    aggregator=partition_jobs_gpu)
 def lj_fluid_langevin_md_gpu(*jobs):
     """Run Langevin MD on the GPU."""
@@ -294,7 +294,7 @@ def run_nvt_md_sim(job, device):
 @Project.operation(directives=dict(
     walltime=CONFIG["max_walltime"],
     executable=CONFIG["executable"],
-    nranks=lambda *jobs: NUM_CPU_RANKS * len(jobs)),
+    nranks=util.total_ranks_function(NUM_CPU_RANKS)),
                    aggregator=partition_jobs_cpu_mpi)
 def lj_fluid_nvt_md_cpu(*jobs):
     """Run NVT MD on the CPU."""
@@ -316,8 +316,8 @@ def lj_fluid_nvt_md_cpu(*jobs):
 @Project.post.true('lj_fluid_nvt_md_gpu_complete')
 @Project.operation(directives=dict(walltime=CONFIG["max_walltime"],
                                    executable=CONFIG["executable"],
-                                   nranks=lambda *jobs: len(jobs),
-                                   ngpu=lambda *jobs: len(jobs)),
+                                   nranks=util.total_ranks_function(1),
+                                   ngpu=util.total_ranks_function(1)),
                    aggregator=partition_jobs_gpu)
 def lj_fluid_nvt_md_gpu(*jobs):
     """Run NVT MD on the GPU."""
@@ -383,7 +383,7 @@ def run_npt_md_sim(job, device):
 @Project.operation(directives=dict(
     walltime=CONFIG["max_walltime"],
     executable=CONFIG["executable"],
-    nranks=lambda *jobs: NUM_CPU_RANKS * len(jobs)),
+    nranks=util.total_ranks_function(NUM_CPU_RANKS)),
                    aggregator=partition_jobs_cpu_mpi)
 def lj_fluid_npt_md_cpu(*jobs):
     """Run NPT MD on the CPU."""
@@ -405,8 +405,8 @@ def lj_fluid_npt_md_cpu(*jobs):
 @Project.post.true('lj_fluid_npt_md_gpu_complete')
 @Project.operation(directives=dict(walltime=CONFIG["max_walltime"],
                                    executable=CONFIG["executable"],
-                                   nranks=lambda *jobs: len(jobs),
-                                   ngpu=lambda *jobs: len(jobs)),
+                                   nranks=util.total_ranks_function(1),
+                                   ngpu=util.total_ranks_function(1)),
                    aggregator=partition_jobs_gpu)
 def lj_fluid_npt_md_gpu(*jobs):
     """Run NPT MD on the GPU."""
@@ -563,7 +563,7 @@ def run_nvt_mc_sim(job, device):
 @Project.operation(directives=dict(
     walltime=CONFIG["max_walltime"],
     executable=CONFIG["executable"],
-    nranks=lambda *jobs: NUM_CPU_RANKS * len(jobs)),
+    nranks=util.total_ranks_function(NUM_CPU_RANKS)),
                    aggregator=partition_jobs_cpu_mpi)
 def lj_fluid_nvt_mc_cpu(*jobs):
     """Run NVT MC on the CPU."""
@@ -585,8 +585,8 @@ def lj_fluid_nvt_mc_cpu(*jobs):
 @Project.post.true('lj_fluid_nvt_mc_gpu_complete')
 @Project.operation(directives=dict(walltime=CONFIG["max_walltime"],
                                    executable=CONFIG["executable"],
-                                   nranks=lambda *jobs: len(jobs),
-                                   ngpu=lambda *jobs: len(jobs)),
+                                   nranks=util.total_ranks_function(1),
+                                   ngpu=util.total_ranks_function(1)),
                    aggregator=partition_jobs_gpu)
 def lj_fluid_nvt_mc_gpu(*jobs):
     """Run NVT MC on the GPU."""
@@ -672,7 +672,7 @@ def run_npt_mc_sim(job, device):
 @Project.operation(directives=dict(
     walltime=CONFIG["max_walltime"],
     executable=CONFIG["executable"],
-    nranks=lambda *jobs: NUM_CPU_RANKS * len(jobs)),
+    nranks=util.total_ranks_function(NUM_CPU_RANKS)),
                    aggregator=partition_jobs_cpu_mpi)
 def lj_fluid_npt_mc_cpu(*jobs):
     """Run NPT MC on the CPU."""
@@ -1166,7 +1166,7 @@ partition_jobs_gpu_nve = aggregator.groupsof(num=min(
 @Project.operation(directives=dict(
     walltime=CONFIG["max_walltime"],
     executable=CONFIG["executable"],
-    nranks=lambda *jobs: NUM_CPU_RANKS * len(jobs)),
+    nranks=util.total_ranks_function(NUM_CPU_RANKS)),
                    aggregator=partition_jobs_cpu_mpi_nve)
 def lj_fluid_nve_md_cpu(*jobs):
     """Run NVE MD on the CPU."""
@@ -1188,8 +1188,8 @@ def lj_fluid_nve_md_cpu(*jobs):
 @Project.post.true('lj_fluid_nve_md_gpu_complete')
 @Project.operation(directives=dict(walltime=CONFIG["max_walltime"],
                                    executable=CONFIG["executable"],
-                                   nranks=lambda *jobs: len(jobs),
-                                   ngpu=lambda *jobs: len(jobs)),
+                                   nranks=util.total_ranks_function(1),
+                                   ngpu=util.total_ranks_function(1)),
                    aggregator=partition_jobs_gpu_nve)
 def lj_fluid_nve_md_gpu(*jobs):
     """Run NVE MD on the GPU."""

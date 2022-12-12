@@ -60,7 +60,7 @@ partition_jobs_gpu = aggregator.groupsof(num=min(CONFIG["replicates"],
 @Project.post.isfile('hard_sphere_initial_state.gsd')
 @Project.operation(directives=dict(
     executable=CONFIG["executable"],
-    nranks=lambda *jobs: NUM_CPU_RANKS * len(jobs),
+    nranks=util.total_ranks_function(NUM_CPU_RANKS),
     walltime=1),
                    aggregator=partition_jobs_cpu_mpi)
 def hard_sphere_create_initial_state(*jobs):
@@ -214,7 +214,7 @@ def run_nvt_sim(job, device):
 @Project.operation(directives=dict(
     walltime=CONFIG["max_walltime"],
     executable=CONFIG["executable"],
-    nranks=lambda *jobs: NUM_CPU_RANKS * len(jobs)),
+    nranks=util.total_ranks_function(NUM_CPU_RANKS)),
                    aggregator=partition_jobs_cpu_mpi)
 def hard_sphere_nvt_cpu(*jobs):
     """Run NVT on the CPU."""
@@ -236,8 +236,8 @@ def hard_sphere_nvt_cpu(*jobs):
 @Project.post.true('hard_sphere_nvt_gpu_complete')
 @Project.operation(directives=dict(walltime=CONFIG["max_walltime"],
                                    executable=CONFIG["executable"],
-                                   nranks=lambda *jobs: len(jobs),
-                                   ngpu=lambda *jobs: len(jobs)),
+                                   nranks=util.total_ranks_function(1),
+                                   ngpu=util.total_ranks_function(1)),
                    aggregator=partition_jobs_gpu)
 def hard_sphere_nvt_gpu(*jobs):
     """Run NVT on the GPU."""
@@ -321,7 +321,7 @@ def run_npt_sim(job, device):
 @Project.operation(directives=dict(
     walltime=CONFIG["max_walltime"],
     executable=CONFIG["executable"],
-    nranks=lambda *jobs: NUM_CPU_RANKS * len(jobs)),
+    nranks=util.total_ranks_function(NUM_CPU_RANKS)),
                    aggregator=partition_jobs_cpu_mpi)
 def hard_sphere_npt_cpu(*jobs):
     """Run NPT MC on the CPU."""
@@ -417,7 +417,7 @@ def run_nec_sim(job, device):
 @Project.post.true('hard_sphere_nec_cpu_complete')
 @Project.operation(directives=dict(walltime=CONFIG["max_walltime"],
                                    executable=CONFIG["executable"],
-                                   nranks=lambda *jobs: len(jobs)),
+                                   nranks=util.total_ranks_function(1)),
                    aggregator=partition_jobs_cpu_serial)
 def hard_sphere_nec_cpu(*jobs):
     """Run NEC on the CPU."""

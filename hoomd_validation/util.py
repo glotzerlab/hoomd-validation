@@ -39,6 +39,10 @@ def true_all(*jobs, key):
     return all(job.document.get(key, False) for job in jobs)
 
 
+def total_ranks_function(ranks_per_job):
+    """Make a function that computes the number of ranks for an aggregate job."""
+    return lambda *jobs: ranks_per_job * len(jobs)
+
 def make_simulation(
     job,
     device,
