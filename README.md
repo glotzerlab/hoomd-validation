@@ -7,7 +7,7 @@ validation test workflows in this repository are organized into signac projects.
 
 * numpy
 * signac >=1.8.0
-* signac-flow >= 0.22.0
+* signac-flow >= 0.23.0
 * signac-dashboard [optional]
 * Simulation workflow steps require either the [glotzerlab-software container]
   or the following software:

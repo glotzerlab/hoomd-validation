@@ -40,11 +40,11 @@ def is_hard_sphere(job):
     return job.statepoint['subproject'] == 'hard_sphere'
 
 
+@Project.pre(is_hard_sphere)
+@Project.post.isfile('hard_sphere_initial_state.gsd')
 @Project.operation(directives=dict(executable=CONFIG["executable"],
                                    nranks=min(8, CONFIG["max_cores_sim"]),
                                    walltime=1))
-@Project.pre(is_hard_sphere)
-@Project.post.isfile('hard_sphere_initial_state.gsd')
 def hard_sphere_create_initial_state(job):
     """Create initial system configuration."""
     import hoomd
@@ -186,11 +186,11 @@ def run_nvt_sim(job, device):
     device.notice('Done.')
 
 
+@Project.pre.after(hard_sphere_create_initial_state)
+@Project.post.true('hard_sphere_nvt_cpu_complete')
 @Project.operation(directives=dict(walltime=CONFIG["max_walltime"],
                                    executable=CONFIG["executable"],
                                    nranks=min(8, CONFIG["max_cores_sim"])))
-@Project.pre.after(hard_sphere_create_initial_state)
-@Project.post.true('hard_sphere_nvt_cpu_complete')
 def hard_sphere_nvt_cpu(job):
     """Run NVT on the CPU."""
     import hoomd
@@ -201,12 +201,12 @@ def hard_sphere_nvt_cpu(job):
         job.document['hard_sphere_nvt_cpu_complete'] = True
 
 
+@Project.pre.after(hard_sphere_create_initial_state)
+@Project.post.true('hard_sphere_nvt_gpu_complete')
 @Project.operation(directives=dict(walltime=CONFIG["max_walltime"],
                                    executable=CONFIG["executable"],
                                    nranks=1,
                                    ngpu=1))
-@Project.pre.after(hard_sphere_create_initial_state)
-@Project.post.true('hard_sphere_nvt_gpu_complete')
 def hard_sphere_nvt_gpu(job):
     """Run NVT on the GPU."""
     import hoomd
@@ -279,11 +279,11 @@ def run_npt_sim(job, device):
     device.notice('Done.')
 
 
+@Project.pre.after(hard_sphere_create_initial_state)
+@Project.post.true('hard_sphere_npt_cpu_complete')
 @Project.operation(directives=dict(walltime=CONFIG["max_walltime"],
                                    executable=CONFIG["executable"],
                                    nranks=min(8, CONFIG["max_cores_sim"])))
-@Project.pre.after(hard_sphere_create_initial_state)
-@Project.post.true('hard_sphere_npt_cpu_complete')
 def hard_sphere_npt_cpu(job):
     """Run NPT MC on the CPU."""
     import hoomd
@@ -368,11 +368,11 @@ def run_nec_sim(job, device):
     device.notice('Done.')
 
 
+@Project.pre.after(hard_sphere_create_initial_state)
+@Project.post.true('hard_sphere_nec_cpu_complete')
 @Project.operation(directives=dict(walltime=CONFIG["max_walltime"],
                                    executable=CONFIG["executable"],
                                    nranks=1))
-@Project.pre.after(hard_sphere_create_initial_state)
-@Project.post.true('hard_sphere_nec_cpu_complete')
 def hard_sphere_nec_cpu(job):
     """Run NEC on the CPU."""
     import hoomd
@@ -383,11 +383,11 @@ def hard_sphere_nec_cpu(job):
         job.document['hard_sphere_nec_cpu_complete'] = True
 
 
-@Project.operation(directives=dict(walltime=1, executable=CONFIG["executable"]))
 @Project.pre.after(hard_sphere_nvt_cpu)
 @Project.pre.after(hard_sphere_nvt_gpu)
 @Project.pre.after(hard_sphere_npt_cpu)
 @Project.post.true('hard_sphere_analysis_complete')
+@Project.operation(directives=dict(walltime=1, executable=CONFIG["executable"]))
 def hard_sphere_analyze(job):
     """Analyze the output of all simulation modes."""
     import gsd.hoomd
@@ -533,15 +533,16 @@ def hard_sphere_analyze(job):
     job.document['hard_sphere_analysis_complete'] = True
 
 
-@aggregator.groupby(key=['density', 'num_particles'],
-                    sort_by='replicate_idx',
-                    select=is_hard_sphere)
-@Project.operation(directives=dict(executable=CONFIG["executable"]))
 @Project.pre(
     lambda *jobs: util.true_all(*jobs, key='hard_sphere_analysis_complete'))
 @Project.post(
     lambda *jobs: util.true_all(*jobs, key='hard_sphere_compare_modes_complete')
 )
+@Project.operation(directives=dict(executable=CONFIG["executable"]),
+                   aggregator=aggregator.groupby(
+                       key=['density', 'num_particles'],
+                       sort_by='replicate_idx',
+                       select=is_hard_sphere))
 def hard_sphere_compare_modes(*jobs):
     """Compares the tested simulation modes."""
     import numpy

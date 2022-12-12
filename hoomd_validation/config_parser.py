@@ -30,7 +30,8 @@ class ConfigFile(dict):
 
         self["executable"] = self._parse_executable_string(config)
         self["max_cores_sim"] = int(config.get("max_cores_sim", 16))
-        self["max_cores_submission"] = int(config.get("max_cores_submission", 16))
+        self["max_cores_submission"] = int(
+            config.get("max_cores_submission", 16))
         self["max_gpus_submission"] = int(config.get("max_gpus_submission", 1))
         self["max_walltime"] = int(config.get("max_walltime", 24))
         self["replicates"] = int(config.get("replicates", 16))

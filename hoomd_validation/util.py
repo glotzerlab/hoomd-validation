@@ -90,7 +90,9 @@ def make_simulation(
 
     # write to terminal
     if sim.device.communicator.rank == 0:
-        file = open(job.fn(f'{sim_mode}_{suffix}_tps.log'), mode='w', newline='\n')
+        file = open(job.fn(f'{sim_mode}_{suffix}_tps.log'),
+                    mode='w',
+                    newline='\n')
     else:
         file = io.StringIO("")
     logger_table = hoomd.logging.Logger(categories=['scalar'])
