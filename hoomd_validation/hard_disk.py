@@ -401,7 +401,7 @@ def hard_disk_nec_cpu(*jobs):
     import hoomd
 
     communicator = hoomd.communicator.Communicator(
-        ranks_per_partition=NUM_CPU_RANKS)
+        ranks_per_partition=1)
     job = jobs[communicator.partition]
 
     device = hoomd.device.CPU(communicator = communicator, msg_file=job.fn('run_nec_cpu.log'))
