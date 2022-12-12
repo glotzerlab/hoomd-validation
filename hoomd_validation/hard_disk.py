@@ -331,7 +331,7 @@ def run_nec_sim(job, device):
     sim_mode = 'nec'
 
     mc = hoomd.hpmc.nec.integrate.Sphere(default_d=0.05,
-                                         update_fraction=0.01,
+                                         update_fraction=0.005,
                                          nselect=1)
     mc.shape['A'] = dict(diameter=1)
     mc.chain_time = 0.05
