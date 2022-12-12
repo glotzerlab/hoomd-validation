@@ -18,6 +18,7 @@ WRITE_PERIOD = 4000
 LOG_PERIOD = {'trajectory': 50000, 'quantities': 2000}
 FRAMES_ANALYZE = int(RUN_STEPS / LOG_PERIOD['quantities'] * 1 / 2)
 LJ_PARAMS = {'epsilon': 1.0, 'sigma': 1.0, 'r_on': 2.0, 'r_cut': 2.5}
+NUM_CPU_RANKS = min(8, CONFIG["max_cores_sim"])
 
 # Limit the number of long NVE runs to reduce the number of CPU hours needed.
 NUM_NVE_RUNS = 2
@@ -47,19 +48,36 @@ def is_lj_fluid(job):
     return job.statepoint['subproject'] == 'lj_fluid'
 
 
-@Project.pre(is_lj_fluid)
+partition_jobs_cpu_mpi = aggregator.groupsof(num=min(
+    CONFIG["replicates"], CONFIG["max_cores_submission"] // NUM_CPU_RANKS),
+                                             sort_by='density',
+                                             select=is_lj_fluid)
+
+partition_jobs_gpu = aggregator.groupsof(num=min(CONFIG["replicates"],
+                                                 CONFIG["max_gpus_submission"]),
+                                         sort_by='density',
+                                         select=is_lj_fluid)
+
+
 @Project.post.isfile('lj_fluid_initial_state.gsd')
-@Project.operation(directives=dict(executable=CONFIG["executable"],
-                                   nranks=min(8, CONFIG["max_cores_sim"]),
-                                   walltime=1))
-def lj_fluid_create_initial_state(job):
+@Project.operation(directives=dict(
+    executable=CONFIG["executable"],
+    nranks=lambda *jobs: NUM_CPU_RANKS * len(jobs),
+    walltime=1),
+                   aggregator=partition_jobs_cpu_mpi)
+def lj_fluid_create_initial_state(*jobs):
     """Create initial system configuration."""
     import hoomd
     import numpy
     import itertools
 
+    communicator = hoomd.communicator.Communicator(
+        ranks_per_partition=NUM_CPU_RANKS)
+    job = jobs[communicator.partition]
+
     sp = job.sp
-    device = hoomd.device.CPU(msg_file=job.fn('create_initial_state.log'))
+    device = hoomd.device.CPU(communicator=communicator,
+                              msg_file=job.fn('create_initial_state.log'))
 
     box_volume = sp["num_particles"] / sp["density"]
     L = box_volume**(1 / 3.)
@@ -202,13 +220,21 @@ def run_langevin_md_sim(job, device):
 
 @Project.pre.after(lj_fluid_create_initial_state)
 @Project.post.true('lj_fluid_langevin_md_cpu_complete')
-@Project.operation(directives=dict(walltime=CONFIG["max_walltime"],
-                                   executable=CONFIG["executable"],
-                                   nranks=min(8, CONFIG["max_cores_sim"])))
-def lj_fluid_langevin_md_cpu(job):
+@Project.operation(directives=dict(
+    walltime=CONFIG["max_walltime"],
+    executable=CONFIG["executable"],
+    nranks=lambda *jobs: NUM_CPU_RANKS * len(jobs)),
+                   aggregator=partition_jobs_cpu_mpi)
+def lj_fluid_langevin_md_cpu(*jobs):
     """Run Langevin MD on the CPU."""
     import hoomd
-    device = hoomd.device.CPU(msg_file=job.fn('run_langevin_md_cpu.log'))
+
+    communicator = hoomd.communicator.Communicator(
+        ranks_per_partition=NUM_CPU_RANKS)
+    job = jobs[communicator.partition]
+
+    device = hoomd.device.CPU(communicator=communicator,
+                              msg_file=job.fn('run_langevin_md_cpu.log'))
     run_langevin_md_sim(job, device)
 
     if device.communicator.rank == 0:
@@ -219,12 +245,18 @@ def lj_fluid_langevin_md_cpu(job):
 @Project.post.true('lj_fluid_langevin_md_gpu_complete')
 @Project.operation(directives=dict(walltime=CONFIG["max_walltime"],
                                    executable=CONFIG["executable"],
-                                   nranks=1,
-                                   ngpu=1))
-def lj_fluid_langevin_md_gpu(job):
+                                   nranks=lambda *jobs: len(jobs),
+                                   ngpu=lambda *jobs: len(jobs)),
+                   aggregator=partition_jobs_gpu)
+def lj_fluid_langevin_md_gpu(*jobs):
     """Run Langevin MD on the GPU."""
     import hoomd
-    device = hoomd.device.GPU(msg_file=job.fn('run_langevin_md_gpu.log'))
+
+    communicator = hoomd.communicator.Communicator(ranks_per_partition=1)
+    job = jobs[communicator.partition]
+
+    device = hoomd.device.GPU(communicator=communicator,
+                              msg_file=job.fn('run_langevin_md_gpu.log'))
     run_langevin_md_sim(job, device)
 
     if device.communicator.rank == 0:
@@ -259,13 +291,21 @@ def run_nvt_md_sim(job, device):
 
 @Project.pre.after(lj_fluid_create_initial_state)
 @Project.post.true('lj_fluid_nvt_md_cpu_complete')
-@Project.operation(directives=dict(walltime=CONFIG["max_walltime"],
-                                   executable=CONFIG["executable"],
-                                   nranks=min(8, CONFIG["max_cores_sim"])))
-def lj_fluid_nvt_md_cpu(job):
+@Project.operation(directives=dict(
+    walltime=CONFIG["max_walltime"],
+    executable=CONFIG["executable"],
+    nranks=lambda *jobs: NUM_CPU_RANKS * len(jobs)),
+                   aggregator=partition_jobs_cpu_mpi)
+def lj_fluid_nvt_md_cpu(*jobs):
     """Run NVT MD on the CPU."""
     import hoomd
-    device = hoomd.device.CPU(msg_file=job.fn('run_nvt_md_cpu.log'))
+
+    communicator = hoomd.communicator.Communicator(
+        ranks_per_partition=NUM_CPU_RANKS)
+    job = jobs[communicator.partition]
+
+    device = hoomd.device.CPU(communicator=communicator,
+                              msg_file=job.fn('run_nvt_md_cpu.log'))
     run_nvt_md_sim(job, device)
 
     if device.communicator.rank == 0:
@@ -276,12 +316,18 @@ def lj_fluid_nvt_md_cpu(job):
 @Project.post.true('lj_fluid_nvt_md_gpu_complete')
 @Project.operation(directives=dict(walltime=CONFIG["max_walltime"],
                                    executable=CONFIG["executable"],
-                                   nranks=1,
-                                   ngpu=1))
-def lj_fluid_nvt_md_gpu(job):
+                                   nranks=lambda *jobs: len(jobs),
+                                   ngpu=lambda *jobs: len(jobs)),
+                   aggregator=partition_jobs_gpu)
+def lj_fluid_nvt_md_gpu(*jobs):
     """Run NVT MD on the GPU."""
     import hoomd
-    device = hoomd.device.GPU(msg_file=job.fn('run_nvt_md_gpu.log'))
+
+    communicator = hoomd.communicator.Communicator(ranks_per_partition=1)
+    job = jobs[communicator.partition]
+
+    device = hoomd.device.GPU(communicator=communicator,
+                              msg_file=job.fn('run_nvt_md_gpu.log'))
     run_nvt_md_sim(job, device)
 
     if device.communicator.rank == 0:
@@ -334,13 +380,21 @@ def run_npt_md_sim(job, device):
 
 @Project.pre.after(lj_fluid_create_initial_state)
 @Project.post.true('lj_fluid_npt_md_cpu_complete')
-@Project.operation(directives=dict(walltime=CONFIG["max_walltime"],
-                                   executable=CONFIG["executable"],
-                                   nranks=min(8, CONFIG["max_cores_sim"])))
-def lj_fluid_npt_md_cpu(job):
+@Project.operation(directives=dict(
+    walltime=CONFIG["max_walltime"],
+    executable=CONFIG["executable"],
+    nranks=lambda *jobs: NUM_CPU_RANKS * len(jobs)),
+                   aggregator=partition_jobs_cpu_mpi)
+def lj_fluid_npt_md_cpu(*jobs):
     """Run NPT MD on the CPU."""
     import hoomd
-    device = hoomd.device.CPU(msg_file=job.fn('run_npt_md_cpu.log'))
+
+    communicator = hoomd.communicator.Communicator(
+        ranks_per_partition=NUM_CPU_RANKS)
+    job = jobs[communicator.partition]
+
+    device = hoomd.device.CPU(communicator=communicator,
+                              msg_file=job.fn('run_npt_md_cpu.log'))
     run_npt_md_sim(job, device)
 
     if device.communicator.rank == 0:
@@ -351,12 +405,18 @@ def lj_fluid_npt_md_cpu(job):
 @Project.post.true('lj_fluid_npt_md_gpu_complete')
 @Project.operation(directives=dict(walltime=CONFIG["max_walltime"],
                                    executable=CONFIG["executable"],
-                                   nranks=1,
-                                   ngpu=1))
-def lj_fluid_npt_md_gpu(job):
+                                   nranks=lambda *jobs: len(jobs),
+                                   ngpu=lambda *jobs: len(jobs)),
+                   aggregator=partition_jobs_gpu)
+def lj_fluid_npt_md_gpu(*jobs):
     """Run NPT MD on the GPU."""
     import hoomd
-    device = hoomd.device.GPU(msg_file=job.fn('run_npt_md_gpu.log'))
+
+    communicator = hoomd.communicator.Communicator(ranks_per_partition=1)
+    job = jobs[communicator.partition]
+
+    device = hoomd.device.GPU(communicator=communicator,
+                              msg_file=job.fn('run_npt_md_gpu.log'))
     run_npt_md_sim(job, device)
 
     if device.communicator.rank == 0:
@@ -500,13 +560,21 @@ def run_nvt_mc_sim(job, device):
 
 @Project.pre.after(lj_fluid_create_initial_state)
 @Project.post.true('lj_fluid_nvt_mc_cpu_complete')
-@Project.operation(directives=dict(walltime=CONFIG["max_walltime"],
-                                   executable=CONFIG["executable"],
-                                   nranks=min(8, CONFIG["max_cores_sim"])))
-def lj_fluid_nvt_mc_cpu(job):
+@Project.operation(directives=dict(
+    walltime=CONFIG["max_walltime"],
+    executable=CONFIG["executable"],
+    nranks=lambda *jobs: NUM_CPU_RANKS * len(jobs)),
+                   aggregator=partition_jobs_cpu_mpi)
+def lj_fluid_nvt_mc_cpu(*jobs):
     """Run NVT MC on the CPU."""
     import hoomd
-    device = hoomd.device.CPU(msg_file=job.fn('run_nvt_mc_cpu.log'))
+
+    communicator = hoomd.communicator.Communicator(
+        ranks_per_partition=NUM_CPU_RANKS)
+    job = jobs[communicator.partition]
+
+    device = hoomd.device.CPU(communicator=communicator,
+                              msg_file=job.fn('run_nvt_mc_cpu.log'))
     run_nvt_mc_sim(job, device)
 
     if device.communicator.rank == 0:
@@ -517,12 +585,18 @@ def lj_fluid_nvt_mc_cpu(job):
 @Project.post.true('lj_fluid_nvt_mc_gpu_complete')
 @Project.operation(directives=dict(walltime=CONFIG["max_walltime"],
                                    executable=CONFIG["executable"],
-                                   nranks=1,
-                                   ngpu=1))
-def lj_fluid_nvt_mc_gpu(job):
+                                   nranks=lambda *jobs: len(jobs),
+                                   ngpu=lambda *jobs: len(jobs)),
+                   aggregator=partition_jobs_gpu)
+def lj_fluid_nvt_mc_gpu(*jobs):
     """Run NVT MC on the GPU."""
     import hoomd
-    device = hoomd.device.GPU(msg_file=job.fn('run_nvt_mc_gpu.log'))
+
+    communicator = hoomd.communicator.Communicator(ranks_per_partition=1)
+    job = jobs[communicator.partition]
+
+    device = hoomd.device.GPU(communicator=communicator,
+                              msg_file=job.fn('run_nvt_mc_gpu.log'))
     run_nvt_mc_sim(job, device)
 
     if device.communicator.rank == 0:
@@ -595,13 +669,21 @@ def run_npt_mc_sim(job, device):
 
 @Project.pre.after(lj_fluid_create_initial_state)
 @Project.post.true('lj_fluid_npt_mc_cpu_complete')
-@Project.operation(directives=dict(walltime=CONFIG["max_walltime"],
-                                   executable=CONFIG["executable"],
-                                   nranks=min(8, CONFIG["max_cores_sim"])))
-def lj_fluid_npt_mc_cpu(job):
+@Project.operation(directives=dict(
+    walltime=CONFIG["max_walltime"],
+    executable=CONFIG["executable"],
+    nranks=lambda *jobs: NUM_CPU_RANKS * len(jobs)),
+                   aggregator=partition_jobs_cpu_mpi)
+def lj_fluid_npt_mc_cpu(*jobs):
     """Run NPT MC on the CPU."""
     import hoomd
-    device = hoomd.device.CPU(msg_file=job.fn('run_npt_mc_cpu.log'))
+
+    communicator = hoomd.communicator.Communicator(
+        ranks_per_partition=NUM_CPU_RANKS)
+    job = jobs[communicator.partition]
+
+    device = hoomd.device.CPU(communicator=communicator,
+                              msg_file=job.fn('run_npt_mc_cpu.log'))
     run_npt_mc_sim(job, device)
 
     if device.communicator.rank == 0:
@@ -1062,33 +1144,62 @@ def run_nve_md_sim(job, device, run_length):
     device.notice('Done.')
 
 
-@Project.pre(lambda job: job.statepoint.replicate_idx < NUM_NVE_RUNS)
+def is_lj_fluid_nve(job):
+    """Test if a given job should be run for NVE conservation."""
+    return job.statepoint['subproject'] == 'lj_fluid' and \
+        job.statepoint['replicate_idx'] < NUM_NVE_RUNS
+
+
+partition_jobs_cpu_mpi_nve = aggregator.groupsof(num=min(
+    CONFIG["replicates"], CONFIG["max_cores_submission"] // NUM_CPU_RANKS),
+                                                 sort_by='density',
+                                                 select=is_lj_fluid_nve)
+
+partition_jobs_gpu_nve = aggregator.groupsof(num=min(
+    CONFIG["replicates"], CONFIG["max_gpus_submission"]),
+                                             sort_by='density',
+                                             select=is_lj_fluid_nve)
+
+
 @Project.pre.after(lj_fluid_create_initial_state)
 @Project.post.true('lj_fluid_nve_md_cpu_complete')
-@Project.operation(directives=dict(walltime=CONFIG["max_walltime"],
-                                   executable=CONFIG["executable"],
-                                   nranks=min(8, CONFIG["max_cores_sim"])))
-def lj_fluid_nve_md_cpu(job):
+@Project.operation(directives=dict(
+    walltime=CONFIG["max_walltime"],
+    executable=CONFIG["executable"],
+    nranks=lambda *jobs: NUM_CPU_RANKS * len(jobs)),
+                   aggregator=partition_jobs_cpu_mpi_nve)
+def lj_fluid_nve_md_cpu(*jobs):
     """Run NVE MD on the CPU."""
     import hoomd
-    device = hoomd.device.CPU(msg_file=job.fn('run_nve_md_cpu.log'))
+
+    communicator = hoomd.communicator.Communicator(
+        ranks_per_partition=NUM_CPU_RANKS)
+    job = jobs[communicator.partition]
+
+    device = hoomd.device.CPU(communicator=communicator,
+                              msg_file=job.fn('run_nve_md_cpu.log'))
     run_nve_md_sim(job, device, run_length=200e6)
 
     if device.communicator.rank == 0:
         job.document['lj_fluid_nve_md_cpu_complete'] = True
 
 
-@Project.pre(lambda job: job.statepoint.replicate_idx < NUM_NVE_RUNS)
 @Project.pre.after(lj_fluid_create_initial_state)
 @Project.post.true('lj_fluid_nve_md_gpu_complete')
 @Project.operation(directives=dict(walltime=CONFIG["max_walltime"],
                                    executable=CONFIG["executable"],
-                                   nranks=1,
-                                   ngpu=1))
-def lj_fluid_nve_md_gpu(job):
+                                   nranks=lambda *jobs: len(jobs),
+                                   ngpu=lambda *jobs: len(jobs)),
+                   aggregator=partition_jobs_gpu_nve)
+def lj_fluid_nve_md_gpu(*jobs):
     """Run NVE MD on the GPU."""
     import hoomd
-    device = hoomd.device.GPU(msg_file=job.fn('run_nve_md_gpu.log'))
+
+    communicator = hoomd.communicator.Communicator(ranks_per_partition=1)
+    job = jobs[communicator.partition]
+
+    device = hoomd.device.GPU(communicator=communicator,
+                              msg_file=job.fn('run_nve_md_gpu.log'))
     run_nve_md_sim(job, device, run_length=800e6)
 
     if device.communicator.rank == 0:
