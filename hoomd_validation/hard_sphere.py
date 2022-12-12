@@ -16,6 +16,7 @@ RUN_STEPS = 1_000_000
 WRITE_PERIOD = 1000
 LOG_PERIOD = {'trajectory': 50000, 'quantities': 125}
 FRAMES_ANALYZE = int(RUN_STEPS / LOG_PERIOD['quantities'] * 1 / 2)
+NUM_CPU_RANKS = min(8, CONFIG["max_cores_sim"])
 
 
 def job_statepoints():
@@ -40,16 +41,37 @@ def is_hard_sphere(job):
     return job.statepoint['subproject'] == 'hard_sphere'
 
 
-@Project.pre(is_hard_sphere)
+partition_jobs_cpu_serial = aggregator.groupsof(num=min(
+    CONFIG["replicates"], CONFIG["max_cores_submission"]),
+                                                sort_by='density',
+                                                select=is_hard_sphere)
+
+partition_jobs_cpu_mpi = aggregator.groupsof(num=min(
+    CONFIG["replicates"], CONFIG["max_cores_submission"] // NUM_CPU_RANKS),
+                                             sort_by='density',
+                                             select=is_hard_sphere)
+
+partition_jobs_gpu = aggregator.groupsof(num=min(CONFIG["replicates"],
+                                                 CONFIG["max_gpus_submission"]),
+                                         sort_by='density',
+                                         select=is_hard_sphere)
+
+
 @Project.post.isfile('hard_sphere_initial_state.gsd')
-@Project.operation(directives=dict(executable=CONFIG["executable"],
-                                   nranks=min(8, CONFIG["max_cores_sim"]),
-                                   walltime=1))
-def hard_sphere_create_initial_state(job):
+@Project.operation(directives=dict(
+    executable=CONFIG["executable"],
+    nranks=lambda *jobs: NUM_CPU_RANKS * len(jobs),
+    walltime=1),
+                   aggregator=partition_jobs_cpu_mpi)
+def hard_sphere_create_initial_state(*jobs):
     """Create initial system configuration."""
     import hoomd
     import numpy
     import itertools
+
+    communicator = hoomd.communicator.Communicator(
+        ranks_per_partition=NUM_CPU_RANKS)
+    job = jobs[communicator.partition]
 
     num_particles = job.statepoint['num_particles']
     density = job.statepoint['density']
@@ -66,7 +88,8 @@ def hard_sphere_create_initial_state(job):
     position = list(itertools.product(x, repeat=3))[:num_particles]
 
     # create snapshot
-    device = hoomd.device.CPU(msg_file=job.fn('create_initial_state.log'))
+    device = hoomd.device.CPU(communicator=communicator,
+                              msg_file=job.fn('create_initial_state.log'))
     snap = hoomd.Snapshot(device.communicator)
 
     if device.communicator.rank == 0:
@@ -188,13 +211,21 @@ def run_nvt_sim(job, device):
 
 @Project.pre.after(hard_sphere_create_initial_state)
 @Project.post.true('hard_sphere_nvt_cpu_complete')
-@Project.operation(directives=dict(walltime=CONFIG["max_walltime"],
-                                   executable=CONFIG["executable"],
-                                   nranks=min(8, CONFIG["max_cores_sim"])))
-def hard_sphere_nvt_cpu(job):
+@Project.operation(directives=dict(
+    walltime=CONFIG["max_walltime"],
+    executable=CONFIG["executable"],
+    nranks=lambda *jobs: NUM_CPU_RANKS * len(jobs)),
+                   aggregator=partition_jobs_cpu_mpi)
+def hard_sphere_nvt_cpu(*jobs):
     """Run NVT on the CPU."""
     import hoomd
-    device = hoomd.device.CPU(msg_file=job.fn('run_nvt_cpu.log'))
+
+    communicator = hoomd.communicator.Communicator(
+        ranks_per_partition=NUM_CPU_RANKS)
+    job = jobs[communicator.partition]
+
+    device = hoomd.device.CPU(communicator=communicator,
+                              msg_file=job.fn('run_nvt_cpu.log'))
     run_nvt_sim(job, device)
 
     if device.communicator.rank == 0:
@@ -205,12 +236,18 @@ def hard_sphere_nvt_cpu(job):
 @Project.post.true('hard_sphere_nvt_gpu_complete')
 @Project.operation(directives=dict(walltime=CONFIG["max_walltime"],
                                    executable=CONFIG["executable"],
-                                   nranks=1,
-                                   ngpu=1))
-def hard_sphere_nvt_gpu(job):
+                                   nranks=lambda *jobs: len(jobs),
+                                   ngpu=lambda *jobs: len(jobs)),
+                   aggregator=partition_jobs_gpu)
+def hard_sphere_nvt_gpu(*jobs):
     """Run NVT on the GPU."""
     import hoomd
-    device = hoomd.device.GPU(msg_file=job.fn('run_nvt_gpu.log'))
+
+    communicator = hoomd.communicator.Communicator(ranks_per_partition=1)
+    job = jobs[communicator.partition]
+
+    device = hoomd.device.GPU(communicator=communicator,
+                              msg_file=job.fn('run_nvt_gpu.log'))
     run_nvt_sim(job, device)
 
     if device.communicator.rank == 0:
@@ -281,13 +318,21 @@ def run_npt_sim(job, device):
 
 @Project.pre.after(hard_sphere_create_initial_state)
 @Project.post.true('hard_sphere_npt_cpu_complete')
-@Project.operation(directives=dict(walltime=CONFIG["max_walltime"],
-                                   executable=CONFIG["executable"],
-                                   nranks=min(8, CONFIG["max_cores_sim"])))
-def hard_sphere_npt_cpu(job):
+@Project.operation(directives=dict(
+    walltime=CONFIG["max_walltime"],
+    executable=CONFIG["executable"],
+    nranks=lambda *jobs: NUM_CPU_RANKS * len(jobs)),
+                   aggregator=partition_jobs_cpu_mpi)
+def hard_sphere_npt_cpu(*jobs):
     """Run NPT MC on the CPU."""
     import hoomd
-    device = hoomd.device.CPU(msg_file=job.fn('run_npt_cpu.log'))
+
+    communicator = hoomd.communicator.Communicator(
+        ranks_per_partition=NUM_CPU_RANKS)
+    job = jobs[communicator.partition]
+
+    device = hoomd.device.CPU(communicator=communicator,
+                              msg_file=job.fn('run_npt_cpu.log'))
     run_npt_sim(job, device)
 
     if device.communicator.rank == 0:
@@ -372,11 +417,17 @@ def run_nec_sim(job, device):
 @Project.post.true('hard_sphere_nec_cpu_complete')
 @Project.operation(directives=dict(walltime=CONFIG["max_walltime"],
                                    executable=CONFIG["executable"],
-                                   nranks=1))
-def hard_sphere_nec_cpu(job):
+                                   nranks=lambda *jobs: len(jobs)),
+                   aggregator=partition_jobs_cpu_serial)
+def hard_sphere_nec_cpu(*jobs):
     """Run NEC on the CPU."""
     import hoomd
-    device = hoomd.device.CPU(msg_file=job.fn('run_nec_cpu.log'))
+
+    communicator = hoomd.communicator.Communicator(ranks_per_partition=1)
+    job = jobs[communicator.partition]
+
+    device = hoomd.device.CPU(communicator=communicator,
+                              msg_file=job.fn('run_nec_cpu.log'))
     run_nec_sim(job, device)
 
     if device.communicator.rank == 0:

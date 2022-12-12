@@ -14,7 +14,7 @@ import hard_disk
 import hard_sphere
 
 # subprojects = [alj_2d, lj_fluid, hard_disk, hard_sphere]
-subprojects = [alj_2d, hard_disk]
+subprojects = [hard_sphere]
 
 project = signac.init_project(name="hoomd-validation", root=config.project_root)
 
