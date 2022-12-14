@@ -12,8 +12,8 @@ import math
 
 # Run parameters shared between simulations
 RANDOMIZE_STEPS = 10_000
-RUN_STEPS = 1_000_000
-NEC_STEP_FRACTION = 5
+RUN_STEPS = 600_000
+NEC_STEP_FRACTION = 4
 WRITE_PERIOD = 1000
 LOG_PERIOD = {'trajectory': 50000, 'quantities': 125}
 FRAMES_ANALYZE = int(RUN_STEPS / LOG_PERIOD['quantities'] * 1 / 2)
