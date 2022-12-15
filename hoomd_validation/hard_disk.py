@@ -407,7 +407,20 @@ def run_nec_sim(job, device):
 
     # run
     device.notice('Running...')
-    sim.run(RUN_STEPS)
+
+    # limit the run length to the given walltime
+    end_step = sim.timestep + RUN_STEPS
+    walltime_stop_seconds = CONFIG["max_walltime"] * 3600 - 10 * 60
+
+    while sim.timestep < end_step:
+        sim.run(min(20_000, end_step - sim.timestep))
+
+        next_walltime = sim.device.communicator.walltime + sim.walltime
+        if (next_walltime >= walltime_stop_seconds):
+            break
+
+    device.notice(f'{job.id} ended on step {sim.timestep} '
+                  f'after {sim.device.communicator.walltime} seconds')
     device.notice('Done.')
 
 
