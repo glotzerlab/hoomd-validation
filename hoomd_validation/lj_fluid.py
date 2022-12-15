@@ -12,7 +12,7 @@ import math
 import collections
 
 # Run parameters shared between simulations
-RANDOMIZE_STEPS = 10_000
+RANDOMIZE_STEPS = 20_000
 RUN_STEPS = 1_000_000
 WRITE_PERIOD = 4000
 LOG_PERIOD = {'trajectory': 50000, 'quantities': 2000}
@@ -623,7 +623,7 @@ def run_npt_mc_sim(job, device):
     # box updates
     boxmc = hpmc.update.BoxMC(betaP=job.statepoint.pressure / job.sp.kT,
                               trigger=hoomd.trigger.Periodic(1))
-    boxmc.volume = dict(weight=1.0, mode='ln', delta=0.001)
+    boxmc.volume = dict(weight=1.0, mode='ln', delta=0.01)
 
     # simulation
     sim = make_mc_simulation(job,
@@ -636,7 +636,7 @@ def run_npt_mc_sim(job, device):
 
     boxmc_tuner = hpmc.tune.BoxMCMoveSize.scale_solver(
         trigger=hoomd.trigger.And([
-            hoomd.trigger.Periodic(200),
+            hoomd.trigger.Periodic(400),
             hoomd.trigger.Before(sim.timestep + int(RANDOMIZE_STEPS))
         ]),
         boxmc=boxmc,
