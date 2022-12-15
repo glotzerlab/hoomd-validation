@@ -73,6 +73,9 @@ def hard_sphere_create_initial_state(*jobs):
         ranks_per_partition=NUM_CPU_RANKS)
     job = jobs[communicator.partition]
 
+    if communicator.rank == 0:
+        print('starting hard_sphere_create_initial_state:', job)
+
     num_particles = job.statepoint['num_particles']
     density = job.statepoint['density']
 
@@ -114,6 +117,9 @@ def hard_sphere_create_initial_state(*jobs):
     hoomd.write.GSD.write(state=sim.state,
                           filename=job.fn("hard_sphere_initial_state.gsd"),
                           mode='wb')
+
+    if communicator.rank == 0:
+        print('completed hard_sphere_create_initial_state:', job)
 
 
 def make_mc_simulation(job,
