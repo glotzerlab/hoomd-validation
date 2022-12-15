@@ -12,19 +12,19 @@ import math
 
 # Run parameters shared between simulations
 RANDOMIZE_STEPS = 20_000
-RUN_STEPS = 600_000
-NEC_STEP_FRACTION = 4
+RUN_STEPS = 1_000_000
 WRITE_PERIOD = 1000
 LOG_PERIOD = {'trajectory': 50000, 'quantities': 125}
 FRAMES_ANALYZE = int(RUN_STEPS / LOG_PERIOD['quantities'] * 1 / 2)
-NUM_CPU_RANKS = min(256, CONFIG["max_cores_sim"])
+NUM_CPU_RANKS = min(64, CONFIG["max_cores_sim"])
 
 
 def job_statepoints():
     """list(dict): A list of statepoints for this subproject."""
-    num_particles = 256**2
+    num_particles = 128**2
     replicate_indices = range(CONFIG["replicates"])
     # reference statepoint from: http://dx.doi.org/10.1016/j.jcp.2013.07.023
+    # Assume the same pressure for a 128**2 system as this is in the fluid
     params_list = [(0.8887212022251435, 9.17079)]
     for density, pressure in params_list:
         for idx in replicate_indices:
@@ -59,18 +59,19 @@ partition_jobs_gpu = aggregator.groupsof(num=min(CONFIG["replicates"],
 
 
 @Project.post.isfile('hard_disk_initial_state.gsd')
-@Project.operation(directives=dict(executable=CONFIG["executable"],
-                                   nranks=util.total_ranks_function(1),
-                                   walltime=1),
-                   aggregator=partition_jobs_cpu_serial)
+@Project.operation(directives=dict(
+    executable=CONFIG["executable"],
+    nranks=util.total_ranks_function(NUM_CPU_RANKS),
+    walltime=1),
+                   aggregator=partition_jobs_cpu_mpi)
 def hard_disk_create_initial_state(*jobs):
     """Create initial system configuration."""
     import hoomd
-    import gsd.hoomd
     import numpy
     import itertools
 
-    communicator = hoomd.communicator.Communicator(ranks_per_partition=1)
+    communicator = hoomd.communicator.Communicator(
+        ranks_per_partition=NUM_CPU_RANKS)
     job = jobs[communicator.partition]
 
     num_particles = job.statepoint['num_particles']
@@ -88,17 +89,32 @@ def hard_disk_create_initial_state(*jobs):
     position_2d = list(itertools.product(x, repeat=2))[:num_particles]
 
     # create snapshot
-    snap = gsd.hoomd.Snapshot()
+    device = hoomd.device.CPU(communicator=communicator,
+                              msg_file=job.fn('create_initial_state.log'))
+    snap = hoomd.Snapshot(communicator)
 
-    snap.particles.N = num_particles
-    snap.particles.types = ['A']
-    snap.configuration.box = [L, L, 0, 0, 0, 0]
-    snap.particles.position = numpy.zeros(shape=(num_particles, 3))
-    snap.particles.position[:, 0:2] = position_2d
-    snap.particles.typeid = [0] * num_particles
+    if communicator.rank == 0:
+        snap.particles.N = num_particles
+        snap.particles.types = ['A']
+        snap.configuration.box = [L, L, 0, 0, 0, 0]
+        snap.particles.position[:, 0:2] = position_2d
+        snap.particles.typeid[:] = [0] * num_particles
 
-    with gsd.hoomd.open(job.fn("hard_disk_initial_state.gsd"), 'wb') as f:
-        f.append(snap)
+    # Use hard sphere Monte-Carlo to randomize the initial configuration
+    mc = hoomd.hpmc.integrate.Sphere(default_d=0.01)
+    mc.shape['A'] = dict(diameter=1.0)
+
+    sim = hoomd.Simulation(device=device, seed=job.statepoint.replicate_idx)
+    sim.create_state_from_snapshot(snap)
+    sim.operations.integrator = mc
+
+    device.notice('Randomizing initial state...')
+    sim.run(RANDOMIZE_STEPS)
+    device.notice(f'Done. Move counts: {mc.translate_moves}')
+
+    hoomd.write.GSD.write(state=sim.state,
+                          filename=job.fn("hard_disk_initial_state.gsd"),
+                          mode='wb')
 
 
 def make_mc_simulation(job,
@@ -391,7 +407,7 @@ def run_nec_sim(job, device):
 
     # run
     device.notice('Running...')
-    sim.run(RUN_STEPS // NEC_STEP_FRACTION)
+    sim.run(RUN_STEPS)
     device.notice('Done.')
 
 
@@ -441,10 +457,6 @@ def hard_disk_analyze(job):
     densities = {}
 
     for sim_mode in sim_modes:
-        frames_analyze = FRAMES_ANALYZE
-        if 'nec' in sim_mode:
-            frames_analyze = frames_analyze // NEC_STEP_FRACTION
-
         with gsd.hoomd.open(job.fn(sim_mode + '_quantities.gsd')) as gsd_traj:
             # read GSD file once
             traj = read_gsd_log_trajectory(gsd_traj)
@@ -474,8 +486,8 @@ def hard_disk_analyze(job):
     # save averages
     for mode in sim_modes:
         job.document[mode] = dict(
-            pressure=float(numpy.mean(pressures[mode][-frames_analyze:])),
-            density=float(numpy.mean(densities[mode][-frames_analyze:])))
+            pressure=float(numpy.mean(pressures[mode][-FRAMES_ANALYZE:])),
+            density=float(numpy.mean(densities[mode][-FRAMES_ANALYZE:])))
 
     # Plot results
     def plot(*, ax, data, quantity_name, base_line=None, legend=False):
@@ -509,28 +521,28 @@ def hard_disk_analyze(job):
 
     # determine range for density and pressure histograms
     density_range = [
-        numpy.min(densities[sim_modes[0]][-frames_analyze:]),
-        numpy.max(densities[sim_modes[0]][-frames_analyze:])
+        numpy.min(densities[sim_modes[0]][-FRAMES_ANALYZE:]),
+        numpy.max(densities[sim_modes[0]][-FRAMES_ANALYZE:])
     ]
     pressure_range = [
-        numpy.min(pressures[sim_modes[0]][-frames_analyze:]),
-        numpy.max(pressures[sim_modes[0]][-frames_analyze:])
+        numpy.min(pressures[sim_modes[0]][-FRAMES_ANALYZE:]),
+        numpy.max(pressures[sim_modes[0]][-FRAMES_ANALYZE:])
     ]
 
     for mode in sim_modes[1:]:
         density_range[0] = min(density_range[0],
-                               numpy.min(densities[mode][-frames_analyze:]))
+                               numpy.min(densities[mode][-FRAMES_ANALYZE:]))
         density_range[1] = max(density_range[1],
-                               numpy.max(densities[mode][-frames_analyze:]))
+                               numpy.max(densities[mode][-FRAMES_ANALYZE:]))
         pressure_range[0] = min(pressure_range[0],
-                                numpy.min(pressures[mode][-frames_analyze:]))
+                                numpy.min(pressures[mode][-FRAMES_ANALYZE:]))
         pressure_range[1] = max(pressure_range[1],
-                                numpy.max(pressures[mode][-frames_analyze:]))
+                                numpy.max(pressures[mode][-FRAMES_ANALYZE:]))
 
     def plot_histogram(*, ax, data, quantity_name, sp_name, range):
         max_histogram = 0
         for mode in sim_modes:
-            histogram, bin_edges = numpy.histogram(data[mode][-frames_analyze:],
+            histogram, bin_edges = numpy.histogram(data[mode][-FRAMES_ANALYZE:],
                                                    bins=50,
                                                    range=range)
             if constant[mode] == sp_name:
