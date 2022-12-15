@@ -76,7 +76,9 @@ def alj_2d_create_initial_state(*jobs):
     communicator = hoomd.communicator.Communicator(
         ranks_per_partition=NUM_CPU_RANKS)
     job = jobs[communicator.partition]
-    print('starting alj2_create_initial_state:', job)
+
+    if communicator.rank == 0:
+        print('starting alj2_create_initial_state:', job)
 
     init_diameter = CIRCUMCIRCLE_RADIUS * 2 * 1.15
 
@@ -123,7 +125,6 @@ def alj_2d_create_initial_state(*jobs):
     hoomd.write.GSD.write(state=sim.state,
                           filename=job.fn("alj_2d_initial_state.gsd"),
                           mode='wb')
-    print('completed alj2_create_initial_state:', job)
 
 
 def make_md_simulation(job,
@@ -254,6 +255,9 @@ def alj_2d_nve_md_cpu(*jobs):
         ranks_per_partition=NUM_CPU_RANKS)
     job = jobs[communicator.partition]
 
+    if communicator.rank == 0:
+        print('starting alj2_2d_nve_md_cpu:', job)
+
     device = hoomd.device.CPU(communicator=communicator,
                               msg_file=job.fn('run_nve_md_cpu.log'))
     run_nve_md_sim(job, device, run_length=600e6)
@@ -275,6 +279,9 @@ def alj_2d_nve_md_gpu(*jobs):
 
     communicator = hoomd.communicator.Communicator(ranks_per_partition=1)
     job = jobs[communicator.partition]
+
+    if communicator.rank == 0:
+        print('starting alj2_2d_nve_md_gpu:', job)
 
     device = hoomd.device.GPU(communicator=communicator,
                               msg_file=job.fn('run_nve_md_gpu.log'))
@@ -307,6 +314,8 @@ def alj_2d_conservation_analyze(*jobs):
     import matplotlib.figure
     matplotlib.style.use('ggplot')
     from util import read_gsd_log_trajectory, get_log_quantity
+
+    print('starting alj_2d_conservation_analyze:', jobs[0])
 
     sim_modes = ['nve_md_cpu', 'nve_md_gpu']
 

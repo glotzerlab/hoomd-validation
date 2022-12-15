@@ -75,6 +75,9 @@ def lj_fluid_create_initial_state(*jobs):
         ranks_per_partition=NUM_CPU_RANKS)
     job = jobs[communicator.partition]
 
+    if communicator.rank == 0:
+        print('starting lj_fluid_create_initial_state:', job)
+
     sp = job.sp
     device = hoomd.device.CPU(communicator=communicator,
                               msg_file=job.fn('create_initial_state.log'))
@@ -233,6 +236,9 @@ def lj_fluid_langevin_md_cpu(*jobs):
         ranks_per_partition=NUM_CPU_RANKS)
     job = jobs[communicator.partition]
 
+    if communicator.rank == 0:
+        print('starting lj_fluid_langevin_md_cpu:', job)
+
     device = hoomd.device.CPU(communicator=communicator,
                               msg_file=job.fn('run_langevin_md_cpu.log'))
     run_langevin_md_sim(job, device)
@@ -254,6 +260,9 @@ def lj_fluid_langevin_md_gpu(*jobs):
 
     communicator = hoomd.communicator.Communicator(ranks_per_partition=1)
     job = jobs[communicator.partition]
+
+    if communicator.rank == 0:
+        print('starting lj_fluid_langevin_md_gpu:', job)
 
     device = hoomd.device.GPU(communicator=communicator,
                               msg_file=job.fn('run_langevin_md_gpu.log'))
@@ -304,6 +313,9 @@ def lj_fluid_nvt_md_cpu(*jobs):
         ranks_per_partition=NUM_CPU_RANKS)
     job = jobs[communicator.partition]
 
+    if communicator.rank == 0:
+        print('starting lj_fluid_nvt_md_cpu:', job)
+
     device = hoomd.device.CPU(communicator=communicator,
                               msg_file=job.fn('run_nvt_md_cpu.log'))
     run_nvt_md_sim(job, device)
@@ -325,6 +337,9 @@ def lj_fluid_nvt_md_gpu(*jobs):
 
     communicator = hoomd.communicator.Communicator(ranks_per_partition=1)
     job = jobs[communicator.partition]
+
+    if communicator.rank == 0:
+        print('starting lj_fluid_nvt_md_gpu:', job)
 
     device = hoomd.device.GPU(communicator=communicator,
                               msg_file=job.fn('run_nvt_md_gpu.log'))
@@ -393,6 +408,9 @@ def lj_fluid_npt_md_cpu(*jobs):
         ranks_per_partition=NUM_CPU_RANKS)
     job = jobs[communicator.partition]
 
+    if communicator.rank == 0:
+        print('starting lj_fluid_npt_md_cpu:', job)
+
     device = hoomd.device.CPU(communicator=communicator,
                               msg_file=job.fn('run_npt_md_cpu.log'))
     run_npt_md_sim(job, device)
@@ -414,6 +432,9 @@ def lj_fluid_npt_md_gpu(*jobs):
 
     communicator = hoomd.communicator.Communicator(ranks_per_partition=1)
     job = jobs[communicator.partition]
+
+    if communicator.rank == 0:
+        print('starting lj_fluid_npt_md_gpu:', job)
 
     device = hoomd.device.GPU(communicator=communicator,
                               msg_file=job.fn('run_npt_md_gpu.log'))
@@ -573,6 +594,9 @@ def lj_fluid_nvt_mc_cpu(*jobs):
         ranks_per_partition=NUM_CPU_RANKS)
     job = jobs[communicator.partition]
 
+    if communicator.rank == 0:
+        print('starting lj_fluid_nvt_mc_cpu:', job)
+
     device = hoomd.device.CPU(communicator=communicator,
                               msg_file=job.fn('run_nvt_mc_cpu.log'))
     run_nvt_mc_sim(job, device)
@@ -594,6 +618,9 @@ def lj_fluid_nvt_mc_gpu(*jobs):
 
     communicator = hoomd.communicator.Communicator(ranks_per_partition=1)
     job = jobs[communicator.partition]
+
+    if communicator.rank == 0:
+        print('starting lj_fluid_nvt_mc_gpu:', job)
 
     device = hoomd.device.GPU(communicator=communicator,
                               msg_file=job.fn('run_nvt_mc_gpu.log'))
@@ -682,6 +709,9 @@ def lj_fluid_npt_mc_cpu(*jobs):
         ranks_per_partition=NUM_CPU_RANKS)
     job = jobs[communicator.partition]
 
+    if communicator.rank == 0:
+        print('starting lj_fluid_npt_mc_cpu:', job)
+
     device = hoomd.device.CPU(communicator=communicator,
                               msg_file=job.fn('run_npt_mc_cpu.log'))
     run_npt_mc_sim(job, device)
@@ -711,6 +741,8 @@ def lj_fluid_analyze(job):
     import matplotlib.figure
     matplotlib.style.use('ggplot')
     from util import read_gsd_log_trajectory, get_log_quantity
+
+    print('starting lj_fluid_analyze:', job)
 
     constant = dict(
         langevin_md_cpu='density',
@@ -924,6 +956,8 @@ def lj_fluid_compare_modes(*jobs):
     import scipy.stats
     matplotlib.style.use('ggplot')
 
+    print('starting lj_fluid_compare_modes:', jobs[0])
+
     sim_modes = [
         'langevin_md_cpu',
         'langevin_md_gpu',
@@ -1042,6 +1076,8 @@ def lj_fluid_ke_analyze(*jobs):
     import matplotlib.figure
     import util
     matplotlib.style.use('ggplot')
+
+    print('starting lj_fluid_ke_analyze:', jobs[0])
 
     sim_modes = [
         'langevin_md_cpu', 'langevin_md_gpu', 'nvt_md_cpu', 'nvt_md_gpu',
@@ -1176,6 +1212,9 @@ def lj_fluid_nve_md_cpu(*jobs):
         ranks_per_partition=NUM_CPU_RANKS)
     job = jobs[communicator.partition]
 
+    if communicator.rank == 0:
+        print('starting lj_fluid_nve_md_gpu:', job)
+
     device = hoomd.device.CPU(communicator=communicator,
                               msg_file=job.fn('run_nve_md_cpu.log'))
     run_nve_md_sim(job, device, run_length=200e6)
@@ -1197,6 +1236,9 @@ def lj_fluid_nve_md_gpu(*jobs):
 
     communicator = hoomd.communicator.Communicator(ranks_per_partition=1)
     job = jobs[communicator.partition]
+
+    if communicator.rank == 0:
+        print('starting lj_fluid_nve_md_gpu:', job)
 
     device = hoomd.device.GPU(communicator=communicator,
                               msg_file=job.fn('run_nve_md_gpu.log'))
@@ -1224,6 +1266,8 @@ def lj_fluid_conservation_analyze(*jobs):
     import matplotlib.figure
     matplotlib.style.use('ggplot')
     from util import read_gsd_log_trajectory, get_log_quantity
+
+    print('starting lj_fluid_conservation_analyze:', jobs[0])
 
     sim_modes = ['nve_md_cpu', 'nve_md_gpu']
     jobs = jobs[0:NUM_NVE_RUNS]

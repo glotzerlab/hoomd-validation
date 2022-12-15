@@ -225,6 +225,9 @@ def hard_disk_nvt_cpu(*jobs):
         ranks_per_partition=NUM_CPU_RANKS)
     job = jobs[communicator.partition]
 
+    if communicator.rank == 0:
+        print('starting hard_disk_nvt_cpu:', job)
+
     device = hoomd.device.CPU(communicator=communicator,
                               msg_file=job.fn('run_nvt_cpu.log'))
     run_nvt_sim(job, device)
@@ -246,6 +249,9 @@ def hard_disk_nvt_gpu(*jobs):
 
     communicator = hoomd.communicator.Communicator(ranks_per_partition=1)
     job = jobs[communicator.partition]
+
+    if communicator.rank == 0:
+        print('starting hard_disk_nvt_gpu:', job)
 
     device = hoomd.device.GPU(communicator=communicator,
                               msg_file=job.fn('run_nvt_gpu.log'))
@@ -331,6 +337,9 @@ def hard_disk_npt_cpu(*jobs):
     communicator = hoomd.communicator.Communicator(
         ranks_per_partition=NUM_CPU_RANKS)
     job = jobs[communicator.partition]
+
+    if communicator.rank == 0:
+        print('starting hard_disk_npt_cpu:', job)
 
     device = hoomd.device.CPU(communicator=communicator,
                               msg_file=job.fn('run_npt_cpu.log'))
@@ -437,6 +446,9 @@ def hard_disk_nec_cpu(*jobs):
     communicator = hoomd.communicator.Communicator(ranks_per_partition=1)
     job = jobs[communicator.partition]
 
+    if communicator.rank == 0:
+        print('starting hard_disk_nec_cpu:', job)
+
     device = hoomd.device.CPU(communicator=communicator,
                               msg_file=job.fn('run_nec_cpu.log'))
     run_nec_sim(job, device)
@@ -459,6 +471,8 @@ def hard_disk_analyze(job):
     import matplotlib.figure
     matplotlib.style.use('ggplot')
     from util import read_gsd_log_trajectory, get_log_quantity
+
+    print('starting hard_disk_analyze:', job)
 
     constant = dict(nvt_cpu='density',
                     nvt_gpu='density',
@@ -611,6 +625,8 @@ def hard_disk_compare_modes(*jobs):
     import matplotlib.figure
     import scipy.stats
     matplotlib.style.use('ggplot')
+
+    print('starting hard_disk_compare_modes:', jobs[0])
 
     sim_modes = [
         'nvt_cpu',
