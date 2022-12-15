@@ -76,6 +76,7 @@ def alj_2d_create_initial_state(*jobs):
     communicator = hoomd.communicator.Communicator(
         ranks_per_partition=NUM_CPU_RANKS)
     job = jobs[communicator.partition]
+    print('starting alj2_create_initial_state:', job)
 
     init_diameter = CIRCUMCIRCLE_RADIUS * 2 * 1.15
 
@@ -122,6 +123,7 @@ def alj_2d_create_initial_state(*jobs):
     hoomd.write.GSD.write(state=sim.state,
                           filename=job.fn("alj_2d_initial_state.gsd"),
                           mode='wb')
+    print('completed alj2_create_initial_state:', job)
 
 
 def make_md_simulation(job,
