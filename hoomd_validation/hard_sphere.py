@@ -175,7 +175,7 @@ def make_mc_simulation(job,
         max_translation_move=0.5,
         trigger=hoomd.trigger.And([
             hoomd.trigger.Periodic(100),
-            hoomd.trigger.Before(RANDOMIZE_STEPS + EQUILIBRATION_STEPS//2)
+            hoomd.trigger.Before(RANDOMIZE_STEPS + EQUILIBRATE_STEPS//2)
         ]))
     sim.operations.add(move_size_tuner)
 
