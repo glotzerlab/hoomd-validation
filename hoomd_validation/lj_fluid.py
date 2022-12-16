@@ -1133,14 +1133,20 @@ def run_nve_md_sim(job, device, run_length):
     """Run the MD simulation in NVE."""
     import hoomd
 
-    initial_state = job.fn('lj_fluid_initial_state.gsd')
-    nvt = hoomd.md.methods.NVE(hoomd.filter.All())
     sim_mode = 'nve_md'
+    restart_filename = util.get_job_filename(sim_mode, device, 'restart', 'gsd')
+    if job.isfile(restart_filename):
+        initial_state = job.fn(restart_filename)
+    else:
+        initial_state = job.fn('lj_fluid_initial_state.gsd')
+
+
+    nve = hoomd.md.methods.NVE(hoomd.filter.All())
 
     sim = make_md_simulation(job,
                              device,
                              initial_state,
-                             nvt,
+                             nve,
                              sim_mode,
                              period_multiplier=400)
 
@@ -1149,14 +1155,21 @@ def run_nve_md_sim(job, device, run_length):
     walltime_stop_seconds = CONFIG["max_walltime"] * 3600 - 10 * 60
 
     device.notice('Running...')
-    while sim.timestep < end_step:
-        sim.run(min(500_000, end_step - sim.timestep))
 
-        next_walltime = sim.device.communicator.walltime + sim.walltime
-        if (next_walltime >= walltime_stop_seconds):
-            break
+    util.run_up_to_walltime(sim=sim,
+                            end_step=RANDOMIZE_STEPS + EQUILIBRATE_STEPS + run_length,
+                            steps=500_000,
+                            walltime_stop=CONFIG["max_walltime"] * 3600 - 10 * 60)
 
-    device.notice('Done.')
+    if sim.timestep == RANDOMIZE_STEPS + EQUILIBRATE_STEPS + run_length:
+        device.notice('Done.')
+    else:
+        device.notice('Ending run early due to walltime limits at:',
+                      device.communicator.walltime)
+
+    hoomd.write.GSD.write(state=sim.state,
+                          filename=job.fn(restart_filename),
+                          mode='wb')
 
 
 def is_lj_fluid_nve(job):
@@ -1196,7 +1209,7 @@ def lj_fluid_nve_md_cpu(*jobs):
 
     device = hoomd.device.CPU(communicator=communicator,
                               msg_file=job.fn('run_nve_md_cpu.log'))
-    run_nve_md_sim(job, device, run_length=200e6)
+    run_nve_md_sim(job, device, run_length=200_000_000)
 
 
 @Project.pre.after(lj_fluid_create_initial_state)
@@ -1218,7 +1231,7 @@ def lj_fluid_nve_md_gpu(*jobs):
 
     device = hoomd.device.GPU(communicator=communicator,
                               msg_file=job.fn('run_nve_md_gpu.log'))
-    run_nve_md_sim(job, device, run_length=800e6)
+    run_nve_md_sim(job, device, run_length=800_000_000)
 
 
 @Project.pre(lambda *jobs: util.true_all(*jobs[0:NUM_NVE_RUNS],
