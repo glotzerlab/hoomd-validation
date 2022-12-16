@@ -15,7 +15,7 @@ import json
 # Step counts must be even and a multiple of the log quantity period.
 RANDOMIZE_STEPS = 20_000
 EQUILIBRATE_STEPS = 100_000
-RUN_STEPS = 1_000_000
+RUN_STEPS = 2_000_000
 TOTAL_STEPS = RANDOMIZE_STEPS + EQUILIBRATE_STEPS + RUN_STEPS
 
 WRITE_PERIOD = 1_000
@@ -78,6 +78,9 @@ def hard_disk_create_initial_state(*jobs):
     communicator = hoomd.communicator.Communicator(
         ranks_per_partition=NUM_CPU_RANKS)
     job = jobs[communicator.partition]
+
+    if communicator.rank == 0:
+        print('starting hard_disk_create_initial_state:', job)
 
     num_particles = job.statepoint['num_particles']
     density = job.statepoint['density']
@@ -219,7 +222,7 @@ def run_nvt_sim(job, device):
         device.notice(f'Trial move size: {sim.operations.integrator.d["A"]}')
 
         # save move size to a file
-        if communicator.rank == 0:
+        if device.communicator.rank == 0:
             name = util.get_job_filename(sim_mode, device, 'move_size', 'json')
             with open(job.fn(name), 'w') as f:
                 json.dump(dict(d_A=sim.operations.integrator.d["A"]), f)
@@ -300,8 +303,14 @@ def run_npt_sim(job, device):
     from custom_actions import ComputeDensity
 
     # device
-    initial_state = job.fn('hard_disk_initial_state.gsd')
     sim_mode = 'npt'
+    restart_filename = util.get_job_filename(sim_mode, device, 'restart', 'gsd')
+    if job.isfile(restart_filename):
+        initial_state = job.fn(restart_filename)
+        restart = True
+    else:
+        initial_state = job.fn('hard_disk_initial_state.gsd')
+        restart = False
 
     # compute the density
     compute_density = ComputeDensity()
@@ -333,27 +342,55 @@ def run_npt_sim(job, device):
         target=0.5)
     sim.operations.add(boxmc_tuner)
 
-    # equilibrate
-    device.notice('Equilibrating...')
-    sim.run(EQUILIBRATE_STEPS // 2)
-    sim.run(EQUILIBRATE_STEPS // 2)
-    device.notice('Done.')
+    if not restart:
+        # equilibrate
+        device.notice('Equilibrating...')
+        sim.run(EQUILIBRATE_STEPS // 2)
+        sim.run(EQUILIBRATE_STEPS // 2)
+        device.notice('Done.')
 
-    # Print acceptance ratio as measured during the 2nd half of the equilibration
-    translate_moves = sim.operations.integrator.translate_moves
-    translate_acceptance = translate_moves[0] / sum(translate_moves)
-    device.notice(f'Translate move acceptance: {translate_acceptance}')
-    device.notice(f'Trial move size: {sim.operations.integrator.d["A"]}')
+        # Print acceptance ratio as measured during the 2nd half of the equilibration
+        translate_moves = sim.operations.integrator.translate_moves
+        translate_acceptance = translate_moves[0] / sum(translate_moves)
+        device.notice(f'Translate move acceptance: {translate_acceptance}')
+        device.notice(f'Trial move size: {sim.operations.integrator.d["A"]}')
 
-    volume_moves = boxmc.volume_moves
-    volume_acceptance = volume_moves[0] / sum(volume_moves)
-    device.notice(f'Volume move acceptance: {volume_acceptance}')
-    device.notice(f'Volume move size: {boxmc.volume["delta"]}')
+        volume_moves = boxmc.volume_moves
+        volume_acceptance = volume_moves[0] / sum(volume_moves)
+        device.notice(f'Volume move acceptance: {volume_acceptance}')
+        device.notice(f'Volume move size: {boxmc.volume["delta"]}')
+
+        # save move sizes to a file
+        if device.communicator.rank == 0:
+            name = util.get_job_filename(sim_mode, device, 'move_size', 'json')
+            with open(job.fn(name), 'w') as f:
+                json.dump(dict(d_A=sim.operations.integrator.d["A"],
+                               volume_delta = boxmc.volume['delta']), f)
+    else:
+        device.notice('Restarting...')
+        # read move size from the file
+        name = util.get_job_filename(sim_mode, device, 'move_size', 'json')
+        with open(job.fn(name), 'r') as f:
+            data = json.load(f)
+
+        sim.operations.integrator.d["A"] = data['d_A']
+        device.notice(f'Restored trial move size: {sim.operations.integrator.d["A"]}')
+        boxmc.volume = dict(weight=1.0, mode='ln', delta=data['volume_delta'])
+        device.notice(f'Resotred volume move size: {boxmc.volume["delta"]}')
 
     # run
     device.notice('Running...')
-    sim.run(RUN_STEPS)
-    device.notice('Done.')
+    util.run_up_to_walltime(sim=sim, end_step=TOTAL_STEPS, steps=100_000, walltime_stop=WALLTIME_STOP_SECONDS)
+
+    if sim.timestep == TOTAL_STEPS:
+        device.notice('Done.')
+    else:
+        device.notice('Ending run early due to walltime limits at:',
+                      device.communicator.walltime)
+
+    hoomd.write.GSD.write(state=sim.state,
+                          filename=job.fn(restart_filename),
+                          mode='wb')
 
 
 @Project.pre.after(hard_disk_create_initial_state)
@@ -382,8 +419,14 @@ def hard_disk_npt_cpu(*jobs):
 def run_nec_sim(job, device):
     """Run MC sim in NVT with NEC."""
     import hoomd
-    initial_state = job.fn('hard_disk_initial_state.gsd')
     sim_mode = 'nec'
+    restart_filename = util.get_job_filename(sim_mode, device, 'restart', 'gsd')
+    if job.isfile(restart_filename):
+        initial_state = job.fn(restart_filename)
+        restart = True
+    else:
+        initial_state = job.fn('hard_disk_initial_state.gsd')
+        restart = False
 
     mc = hoomd.hpmc.nec.integrate.Sphere(default_d=0.05,
                                          update_fraction=0.005,
@@ -431,34 +474,55 @@ def run_nec_sim(job, device):
     sim.operations.tuners.append(tune_nec_ct)
 
     # equilibrate
-    sim.state.thermalize_particle_momenta(hoomd.filter.All(), kT=1)
+    if not restart:
+        sim.state.thermalize_particle_momenta(hoomd.filter.All(), kT=1)
 
-    device.notice('Equilibrating...')
-    sim.run(EQUILIBRATE_STEPS // 2)
-    sim.run(EQUILIBRATE_STEPS // 2)
-    device.notice('Done.')
+        device.notice('Equilibrating...')
+        sim.run(EQUILIBRATE_STEPS // 2)
+        sim.run(EQUILIBRATE_STEPS // 2)
+        device.notice('Done.')
 
-    # Print acceptance ratio as measured during the 2nd half of the equilibration
-    translate_moves = sim.operations.integrator.translate_moves
-    translate_acceptance = translate_moves[0] / sum(translate_moves)
-    device.notice(f'Collision search acceptance: {translate_acceptance}')
-    device.notice(f'Collision search size: {sim.operations.integrator.d["A"]}')
-    device.notice(f'Particles per chain: {mc.particles_per_chain}')
+        # Print acceptance ratio as measured during the 2nd half of the equilibration.
+        translate_moves = sim.operations.integrator.translate_moves
+        translate_acceptance = translate_moves[0] / sum(translate_moves)
+        device.notice(f'Collision search acceptance: {translate_acceptance}')
+        device.notice(f'Collision search size: {sim.operations.integrator.d["A"]}')
+        device.notice(f'Particles per chain: {mc.particles_per_chain}')
+        device.notice(f'Chain time: {mc.chain_time}')
+
+        # save move sizes to a file
+        if device.communicator.rank == 0:
+            name = util.get_job_filename(sim_mode, device, 'move_size', 'json')
+            with open(job.fn(name), 'w') as f:
+                json.dump(dict(d_A=sim.operations.integrator.d["A"],
+                               chain_time = mc.chain_time), f)
+    else:
+        device.notice('Restarting...')
+        # read move size from the file
+        name = util.get_job_filename(sim_mode, device, 'move_size', 'json')
+        with open(job.fn(name), 'r') as f:
+            data = json.load(f)
+
+        sim.operations.integrator.d["A"] = data['d_A']
+        device.notice(f'Restored collision search size: {sim.operations.integrator.d["A"]}')
+        mc.chain_time = data['chain_time']
+        device.notice(f'Restored chain time: {mc.chain_time}')
 
     # run
     device.notice('Running...')
 
     # limit the run length to the given walltime
-    while sim.timestep < TOTAL_STEPS:
-        sim.run(min(20_000, TOTAL_STEPS - sim.timestep))
+    util.run_up_to_walltime(sim=sim, end_step=TOTAL_STEPS, steps=20_000, walltime_stop=WALLTIME_STOP_SECONDS)
 
-        next_walltime = sim.device.communicator.walltime + sim.walltime
-        if (next_walltime >= WALLTIME_STOP_SECONDS):
-            break
+    if sim.timestep == TOTAL_STEPS:
+        device.notice('Done.')
+    else:
+        device.notice('Ending run early due to walltime limits at:',
+                      device.communicator.walltime)
 
-    device.notice(f'{job.id} ended on step {sim.timestep} '
-                  f'after {sim.device.communicator.walltime} seconds')
-    device.notice('Done.')
+    hoomd.write.GSD.write(state=sim.state,
+                          filename=job.fn(restart_filename),
+                          mode='wb')
 
 
 @Project.pre.after(hard_disk_create_initial_state)

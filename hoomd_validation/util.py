@@ -155,7 +155,7 @@ def make_simulation(
 
     # write to terminal
     if sim.device.communicator.rank == 0:
-        file = open(job.fn(f'{sim_mode}_{suffix}_tps.log'),
+        file = open(job.fn(get_job_filename(sim_mode, device, 'tps', 'log')),
                     mode='w',
                     newline='\n')
     else:
