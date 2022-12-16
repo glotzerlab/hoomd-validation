@@ -218,14 +218,19 @@ def run_nve_md_sim(job, device):
     """Run the MD simulation in NVE."""
     import hoomd
 
-    initial_state = job.fn('alj_2d_initial_state.gsd')
-    nvt = hoomd.md.methods.NVE(hoomd.filter.All())
     sim_mode = 'nve_md'
+    restart_filename = util.get_job_filename(sim_mode, device, 'restart', 'gsd')
+    if job.isfile(restart_filename):
+        initial_state = job.fn(restart_filename)
+    else:
+        initial_state = job.fn('alj_2d_initial_state.gsd')
+
+    nve = hoomd.md.methods.NVE(hoomd.filter.All())
 
     sim = make_md_simulation(job,
                              device,
                              initial_state,
-                             nvt,
+                             nve,
                              sim_mode,
                              period_multiplier=300)
 
@@ -240,7 +245,9 @@ def run_nve_md_sim(job, device):
         device.notice('Ending run early due to walltime limits at:',
                       device.communicator.walltime)
 
-    device.notice('Done.')
+    hoomd.write.GSD.write(state=sim.state,
+                          filename=job.fn(restart_filename),
+                          mode='wb')
 
 
 @Project.pre.after(alj_2d_create_initial_state)
