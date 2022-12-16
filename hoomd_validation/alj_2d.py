@@ -9,9 +9,12 @@ from flow import aggregator
 import util
 import os
 
-# Run parameters shared between simulations
-RANDOMIZE_STEPS = 10_000
-RUN_STEPS = 2_000_000
+# Run parameters shared between simulations.
+# Step counts must be even and a multiple of the log quantity period.
+RANDOMIZE_STEPS = 20_000
+RUN_STEPS = 300_000_000
+TOTAL_STEPS = RANDOMIZE_STEPS + RUN_STEPS
+
 WRITE_PERIOD = 4_000
 LOG_PERIOD = {'trajectory': 50_000, 'quantities': 2_000}
 ALJ_PARAMS = {'epsilon': 1.0}
@@ -198,10 +201,11 @@ def make_md_simulation(job,
     logger.add(integrator, quantities=['linear_momentum'])
 
     # simulation
-    sim = util.make_simulation(job, device, initial_state, integrator, sim_mode,
-                               logger, WRITE_PERIOD,
-                               LOG_PERIOD['trajectory'] * period_multiplier,
-                               LOG_PERIOD['quantities'] * period_multiplier)
+    sim = util.make_simulation(job=job, device=device, initial_state=initial_state, integrator=integrator, sim_mode=sim_mode,
+                               logger=logger, table_write_period=WRITE_PERIOD,
+                               trajectory_write_period=LOG_PERIOD['trajectory'] * period_multiplier,
+                               log_write_period=LOG_PERIOD['quantities'] * period_multiplier,
+                               log_start_step=RANDOMIZE_STEPS)
     sim.operations.add(thermo)
 
     # thermalize momenta
@@ -210,7 +214,7 @@ def make_md_simulation(job,
     return sim
 
 
-def run_nve_md_sim(job, device, run_length):
+def run_nve_md_sim(job, device):
     """Run the MD simulation in NVE."""
     import hoomd
 
@@ -226,22 +230,21 @@ def run_nve_md_sim(job, device, run_length):
                              period_multiplier=300)
 
     # Run for a long time to look for energy and momentum drift
-    end_step = sim.timestep + run_length
-    walltime_stop_seconds = CONFIG["max_walltime"] * 3600 - 10 * 60
-
     device.notice('Running...')
-    while sim.timestep < end_step:
-        sim.run(min(500_000, end_step - sim.timestep))
 
-        next_walltime = sim.device.communicator.walltime + sim.walltime
-        if (next_walltime >= walltime_stop_seconds):
-            break
+    util.run_up_to_walltime(sim=sim, end_step=TOTAL_STEPS, steps=500_000, walltime_stop= CONFIG["max_walltime"] * 3600 - 10 * 60)
+
+    if sim.timestep == TOTAL_STEPS:
+        device.notice('Done.')
+    else:
+        device.notice('Ending run early due to walltime limits at:',
+                      device.communicator.walltime)
 
     device.notice('Done.')
 
 
 @Project.pre.after(alj_2d_create_initial_state)
-@Project.post.true('alj_2d_nve_md_cpu_complete')
+@Project.post(util.gsd_step_greater_equal_function('nve_cpu_quantities.gsd', TOTAL_STEPS))
 @Project.operation(directives=dict(
     walltime=CONFIG["max_walltime"],
     executable=CONFIG["executable"],
@@ -260,14 +263,11 @@ def alj_2d_nve_md_cpu(*jobs):
 
     device = hoomd.device.CPU(communicator=communicator,
                               msg_file=job.fn('run_nve_md_cpu.log'))
-    run_nve_md_sim(job, device, run_length=600e6)
-
-    if device.communicator.rank == 0:
-        job.document['alj_2d_nve_md_cpu_complete'] = True
+    run_nve_md_sim(job, device)
 
 
 @Project.pre.after(alj_2d_create_initial_state)
-@Project.post.true('alj_2d_nve_md_gpu_complete')
+@Project.post(util.gsd_step_greater_equal_function('nve_gpu_quantities.gsd', TOTAL_STEPS))
 @Project.operation(directives=dict(walltime=CONFIG["max_walltime"],
                                    executable=CONFIG["executable"],
                                    nranks=util.total_ranks_function(1),
@@ -285,10 +285,7 @@ def alj_2d_nve_md_gpu(*jobs):
 
     device = hoomd.device.GPU(communicator=communicator,
                               msg_file=job.fn('run_nve_md_gpu.log'))
-    run_nve_md_sim(job, device, run_length=600e6)
-
-    if device.communicator.rank == 0:
-        job.document['alj_2d_nve_md_gpu_complete'] = True
+    run_nve_md_sim(job, device)
 
 
 analysis_aggregator = aggregator.groupby(key=['kT', 'density', 'num_particles'],
@@ -296,10 +293,8 @@ analysis_aggregator = aggregator.groupby(key=['kT', 'density', 'num_particles'],
                                          select=is_alj_2d)
 
 
-@Project.pre(
-    lambda *jobs: util.true_all(*jobs, key='alj_2d_nve_md_cpu_complete'))
-@Project.pre(
-    lambda *jobs: util.true_all(*jobs, key='alj_2d_nve_md_gpu_complete'))
+@Project.pre(util.gsd_step_greater_equal_function('nve_cpu_quantities.gsd', TOTAL_STEPS))
+@Project.pre(util.gsd_step_greater_equal_function('nve_gpu_quantities.gsd', TOTAL_STEPS))
 @Project.post(lambda *jobs: util.true_all(
     *jobs, key='alj_2d_conservation_analysis_complete'))
 @Project.operation(directives=dict(walltime=1, executable=CONFIG["executable"]),

@@ -9,15 +9,20 @@ from flow import aggregator
 import util
 import os
 import math
+import json
 
-# Run parameters shared between simulations
+# Run parameters shared between simulations.
+# Step counts must be even and a multiple of the log quantity period.
 RANDOMIZE_STEPS = 20_000
+EQUILIBRATE_STEPS = 100_000
 RUN_STEPS = 1_000_000
-WRITE_PERIOD = 1000
-LOG_PERIOD = {'trajectory': 50000, 'quantities': 125}
-FRAMES_ANALYZE = int(RUN_STEPS / LOG_PERIOD['quantities'] * 1 / 2)
+TOTAL_STEPS = RANDOMIZE_STEPS + EQUILIBRATE_STEPS + RUN_STEPS
+
+WRITE_PERIOD = 1_000
+LOG_PERIOD = {'trajectory': 50_000, 'quantities': 1_000}
 NUM_CPU_RANKS = min(64, CONFIG["max_cores_sim"])
 
+WALLTIME_STOP_SECONDS = CONFIG["max_walltime"] * 3600 - 10 * 60
 
 def job_statepoints():
     """list(dict): A list of statepoints for this subproject."""
@@ -151,10 +156,11 @@ def make_mc_simulation(job,
         logger_gsd.add(loggable, quantities=[quantity])
 
     # make simulation
-    sim = util.make_simulation(job, device, initial_state, mc, sim_mode,
-                               logger_gsd, WRITE_PERIOD,
-                               LOG_PERIOD['trajectory'],
-                               LOG_PERIOD['quantities'])
+    sim = util.make_simulation(job=job, device=device, initial_state=initial_state, integrator=mc, sim_mode=sim_mode,
+                               logger=logger_gsd, table_write_period=WRITE_PERIOD,
+                               trajectory_write_period=LOG_PERIOD['trajectory'],
+                               log_write_period=LOG_PERIOD['quantities'],
+                               log_start_step=RANDOMIZE_STEPS + EQUILIBRATE_STEPS)
 
     for loggable, _ in extra_loggables:
         # call attach method explicitly so we can access simulation state when
@@ -169,7 +175,7 @@ def make_mc_simulation(job,
         max_translation_move=0.5,
         trigger=hoomd.trigger.And([
             hoomd.trigger.Periodic(100),
-            hoomd.trigger.Before(sim.timestep + int(RANDOMIZE_STEPS))
+            hoomd.trigger.Before(RANDOMIZE_STEPS + EQUILIBRATE_STEPS // 2)
         ]))
     sim.operations.add(move_size_tuner)
 
@@ -179,8 +185,15 @@ def make_mc_simulation(job,
 def run_nvt_sim(job, device):
     """Run MC sim in NVT."""
     import hoomd
-    initial_state = job.fn('hard_disk_initial_state.gsd')
+
     sim_mode = 'nvt'
+    restart_filename = util.get_job_filename(sim_mode, device, 'restart', 'gsd')
+    if job.isfile(restart_filename):
+        initial_state = job.fn(restart_filename)
+        restart = True
+    else:
+        initial_state = job.fn('hard_disk_initial_state.gsd')
+        restart = False
 
     sdf = hoomd.hpmc.compute.SDF(xmax=0.02, dx=1e-4)
 
@@ -192,26 +205,52 @@ def run_nvt_sim(job, device):
 
     sim.operations.computes.append(sdf)
 
-    # equilibrate
-    device.notice('Equilibrating...')
-    sim.run(RANDOMIZE_STEPS)
-    sim.run(RANDOMIZE_STEPS)
-    device.notice('Done.')
+    if not restart:
+        # equilibrate
+        device.notice('Equilibrating...')
+        sim.run(EQUILIBRATE_STEPS // 2)
+        sim.run(EQUILIBRATE_STEPS // 2)
+        device.notice('Done.')
 
-    # Print acceptance ratio
-    translate_moves = sim.operations.integrator.translate_moves
-    translate_acceptance = translate_moves[0] / sum(translate_moves)
-    device.notice(f'Translate move acceptance: {translate_acceptance}')
-    device.notice(f'Trial move size: {sim.operations.integrator.d["A"]}')
+        # Print acceptance ratio as measured during the 2nd half of the equilibration
+        translate_moves = sim.operations.integrator.translate_moves
+        translate_acceptance = translate_moves[0] / sum(translate_moves)
+        device.notice(f'Translate move acceptance: {translate_acceptance}')
+        device.notice(f'Trial move size: {sim.operations.integrator.d["A"]}')
+
+        # save move size to a file
+        if communicator.rank == 0:
+            name = util.get_job_filename(sim_mode, device, 'move_size', 'json')
+            with open(job.fn(name), 'w') as f:
+                json.dump(dict(d_A=sim.operations.integrator.d["A"]), f)
+    else:
+        device.notice('Restarting...')
+        # read move size from the file
+        name = util.get_job_filename(sim_mode, device, 'move_size', 'json')
+        with open(job.fn(name), 'r') as f:
+            data = json.load(f)
+
+        sim.operations.integrator.d["A"] = data['d_A']
+        device.notice(f'Restored trial move size: {sim.operations.integrator.d["A"]}')
 
     # run
     device.notice('Running...')
-    sim.run(RUN_STEPS)
-    device.notice('Done.')
+
+    util.run_up_to_walltime(sim=sim, end_step=TOTAL_STEPS, steps=100_000, walltime_stop=WALLTIME_STOP_SECONDS)
+
+    if sim.timestep == TOTAL_STEPS:
+        device.notice('Done.')
+    else:
+        device.notice('Ending run early due to walltime limits at:',
+                      device.communicator.walltime)
+
+    hoomd.write.GSD.write(state=sim.state,
+                          filename=job.fn(restart_filename),
+                          mode='wb')
 
 
 @Project.pre.after(hard_disk_create_initial_state)
-@Project.post.true('hard_disk_nvt_cpu_complete')
+@Project.post(util.gsd_step_greater_equal_function('nvt_cpu_quantities.gsd', TOTAL_STEPS))
 @Project.operation(directives=dict(
     walltime=CONFIG["max_walltime"],
     executable=CONFIG["executable"],
@@ -232,12 +271,9 @@ def hard_disk_nvt_cpu(*jobs):
                               msg_file=job.fn('run_nvt_cpu.log'))
     run_nvt_sim(job, device)
 
-    if device.communicator.rank == 0:
-        job.document['hard_disk_nvt_cpu_complete'] = True
-
 
 @Project.pre.after(hard_disk_create_initial_state)
-@Project.post.true('hard_disk_nvt_gpu_complete')
+@Project.post(util.gsd_step_greater_equal_function('nvt_gpu_quantities.gsd', TOTAL_STEPS))
 @Project.operation(directives=dict(walltime=CONFIG["max_walltime"],
                                    executable=CONFIG["executable"],
                                    nranks=util.total_ranks_function(1),
@@ -256,9 +292,6 @@ def hard_disk_nvt_gpu(*jobs):
     device = hoomd.device.GPU(communicator=communicator,
                               msg_file=job.fn('run_nvt_gpu.log'))
     run_nvt_sim(job, device)
-
-    if device.communicator.rank == 0:
-        job.document['hard_disk_nvt_gpu_complete'] = True
 
 
 def run_npt_sim(job, device):
@@ -293,7 +326,7 @@ def run_npt_sim(job, device):
     boxmc_tuner = hoomd.hpmc.tune.BoxMCMoveSize.scale_solver(
         trigger=hoomd.trigger.And([
             hoomd.trigger.Periodic(400),
-            hoomd.trigger.Before(sim.timestep + int(RANDOMIZE_STEPS))
+            hoomd.trigger.Before(RANDOMIZE_STEPS + EQUILIBRATE_STEPS // 2)
         ]),
         boxmc=boxmc,
         moves=['volume'],
@@ -302,11 +335,11 @@ def run_npt_sim(job, device):
 
     # equilibrate
     device.notice('Equilibrating...')
-    sim.run(RANDOMIZE_STEPS)
-    sim.run(RANDOMIZE_STEPS)
+    sim.run(EQUILIBRATE_STEPS // 2)
+    sim.run(EQUILIBRATE_STEPS // 2)
     device.notice('Done.')
 
-    # Print acceptance ratio
+    # Print acceptance ratio as measured during the 2nd half of the equilibration
     translate_moves = sim.operations.integrator.translate_moves
     translate_acceptance = translate_moves[0] / sum(translate_moves)
     device.notice(f'Translate move acceptance: {translate_acceptance}')
@@ -324,7 +357,7 @@ def run_npt_sim(job, device):
 
 
 @Project.pre.after(hard_disk_create_initial_state)
-@Project.post.true('hard_disk_npt_cpu_complete')
+@Project.post(util.gsd_step_greater_equal_function('npt_cpu_quantities.gsd', TOTAL_STEPS))
 @Project.operation(directives=dict(
     walltime=CONFIG["max_walltime"],
     executable=CONFIG["executable"],
@@ -344,9 +377,6 @@ def hard_disk_npt_cpu(*jobs):
     device = hoomd.device.CPU(communicator=communicator,
                               msg_file=job.fn('run_npt_cpu.log'))
     run_npt_sim(job, device)
-
-    if device.communicator.rank == 0:
-        job.document['hard_disk_npt_cpu_complete'] = True
 
 
 def run_nec_sim(job, device):
@@ -373,16 +403,17 @@ def run_nec_sim(job, device):
     logger_gsd.add(sdf, quantities=['betaP'])
 
     # make simulation
-    sim = util.make_simulation(job, device, initial_state, mc, sim_mode,
-                               logger_gsd, WRITE_PERIOD,
-                               LOG_PERIOD['trajectory'],
-                               LOG_PERIOD['quantities'])
+    sim = util.make_simulation(job=job, device=device, initial_state=initial_state, integrator=mc, sim_mode=sim_mode,
+                               logger=logger_gsd, table_write_period=WRITE_PERIOD,
+                               trajectory_write_period=LOG_PERIOD['trajectory'],
+                               log_write_period=LOG_PERIOD['quantities'],
+                               log_start_step=RANDOMIZE_STEPS + EQUILIBRATE_STEPS)
 
     sim.operations.computes.append(sdf)
 
     trigger_tune = hoomd.trigger.And([
         hoomd.trigger.Periodic(5),
-        hoomd.trigger.Before(sim.timestep + int(RANDOMIZE_STEPS))
+        hoomd.trigger.Before(RANDOMIZE_STEPS + EQUILIBRATE_STEPS // 2)
     ])
 
     tune_nec_d = hoomd.hpmc.tune.MoveSize.scale_solver(
@@ -403,11 +434,11 @@ def run_nec_sim(job, device):
     sim.state.thermalize_particle_momenta(hoomd.filter.All(), kT=1)
 
     device.notice('Equilibrating...')
-    sim.run(RANDOMIZE_STEPS)
-    sim.run(RANDOMIZE_STEPS)
+    sim.run(EQUILIBRATE_STEPS // 2)
+    sim.run(EQUILIBRATE_STEPS // 2)
     device.notice('Done.')
 
-    # Print acceptance ratio
+    # Print acceptance ratio as measured during the 2nd half of the equilibration
     translate_moves = sim.operations.integrator.translate_moves
     translate_acceptance = translate_moves[0] / sum(translate_moves)
     device.notice(f'Collision search acceptance: {translate_acceptance}')
@@ -418,14 +449,11 @@ def run_nec_sim(job, device):
     device.notice('Running...')
 
     # limit the run length to the given walltime
-    end_step = sim.timestep + RUN_STEPS
-    walltime_stop_seconds = CONFIG["max_walltime"] * 3600 - 10 * 60
-
-    while sim.timestep < end_step:
-        sim.run(min(20_000, end_step - sim.timestep))
+    while sim.timestep < TOTAL_STEPS:
+        sim.run(min(20_000, TOTAL_STEPS - sim.timestep))
 
         next_walltime = sim.device.communicator.walltime + sim.walltime
-        if (next_walltime >= walltime_stop_seconds):
+        if (next_walltime >= WALLTIME_STOP_SECONDS):
             break
 
     device.notice(f'{job.id} ended on step {sim.timestep} '
@@ -434,7 +462,7 @@ def run_nec_sim(job, device):
 
 
 @Project.pre.after(hard_disk_create_initial_state)
-@Project.post.true('hard_disk_nec_cpu_complete')
+@Project.post(util.gsd_step_greater_equal_function('nec_cpu_quantities.gsd', TOTAL_STEPS))
 @Project.operation(directives=dict(walltime=CONFIG["max_walltime"],
                                    executable=CONFIG["executable"],
                                    nranks=util.total_ranks_function(1)),
@@ -453,8 +481,6 @@ def hard_disk_nec_cpu(*jobs):
                               msg_file=job.fn('run_nec_cpu.log'))
     run_nec_sim(job, device)
 
-    if device.communicator.rank == 0:
-        job.document['hard_disk_nec_cpu_complete'] = True
 
 
 @Project.pre.after(hard_disk_nvt_cpu)
@@ -513,15 +539,13 @@ def hard_disk_analyze(job):
     # save averages
     for mode in sim_modes:
         job.document[mode] = dict(
-            pressure=float(numpy.mean(pressures[mode][-FRAMES_ANALYZE:])),
-            density=float(numpy.mean(densities[mode][-FRAMES_ANALYZE:])))
+            pressure=float(numpy.mean(pressures[mode])),
+            density=float(numpy.mean(densities[mode])))
 
     # Plot results
     def plot(*, ax, data, quantity_name, base_line=None, legend=False):
-        # subsample the values for time series plots
-        sample_rate = 8
         for mode in sim_modes:
-            ax.plot(data[mode][::sample_rate], label=mode)
+            ax.plot(data[mode], label=mode)
         ax.set_xlabel('frame')
         ax.set_ylabel(quantity_name)
 
@@ -531,7 +555,7 @@ def hard_disk_analyze(job):
         if base_line is not None:
             ax.hlines(y=base_line,
                       xmin=0,
-                      xmax=len(data[sim_modes[0]]) / sample_rate,
+                      xmax=len(data[sim_modes[0]]),
                       linestyles='dashed',
                       colors='k')
 
@@ -548,28 +572,28 @@ def hard_disk_analyze(job):
 
     # determine range for density and pressure histograms
     density_range = [
-        numpy.min(densities[sim_modes[0]][-FRAMES_ANALYZE:]),
-        numpy.max(densities[sim_modes[0]][-FRAMES_ANALYZE:])
+        numpy.min(densities[sim_modes[0]]),
+        numpy.max(densities[sim_modes[0]])
     ]
     pressure_range = [
-        numpy.min(pressures[sim_modes[0]][-FRAMES_ANALYZE:]),
-        numpy.max(pressures[sim_modes[0]][-FRAMES_ANALYZE:])
+        numpy.min(pressures[sim_modes[0]]),
+        numpy.max(pressures[sim_modes[0]])
     ]
 
     for mode in sim_modes[1:]:
         density_range[0] = min(density_range[0],
-                               numpy.min(densities[mode][-FRAMES_ANALYZE:]))
+                               numpy.min(densities[mode]))
         density_range[1] = max(density_range[1],
-                               numpy.max(densities[mode][-FRAMES_ANALYZE:]))
+                               numpy.max(densities[mode]))
         pressure_range[0] = min(pressure_range[0],
-                                numpy.min(pressures[mode][-FRAMES_ANALYZE:]))
+                                numpy.min(pressures[mode]))
         pressure_range[1] = max(pressure_range[1],
-                                numpy.max(pressures[mode][-FRAMES_ANALYZE:]))
+                                numpy.max(pressures[mode]))
 
     def plot_histogram(*, ax, data, quantity_name, sp_name, range):
         max_histogram = 0
         for mode in sim_modes:
-            histogram, bin_edges = numpy.histogram(data[mode][-FRAMES_ANALYZE:],
+            histogram, bin_edges = numpy.histogram(data[mode],
                                                    bins=50,
                                                    range=range)
             if constant[mode] == sp_name:

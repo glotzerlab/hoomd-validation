@@ -5,6 +5,7 @@ validation test workflows in this repository are organized into signac projects.
 
 ## Requirements
 
+* gsd >= 2.0.0
 * numpy
 * signac >=1.8.0
 * signac-flow >= 0.23.0
@@ -15,7 +16,6 @@ validation test workflows in this repository are organized into signac projects.
 * Analysis workflow steps require either the [glotzerlab-software container] or
   the following software:
     * matplotlib
-    * gsd
     * numpy
     * scipy
 * Workstation or HPC system with at least 16 CPU cores and 1 GPU supported by

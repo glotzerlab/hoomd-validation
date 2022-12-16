@@ -11,12 +11,15 @@ import os
 import math
 import collections
 
-# Run parameters shared between simulations
+# Run parameters shared between simulations.
+# Step counts must be even and a multiple of the log quantity period.
 RANDOMIZE_STEPS = 20_000
+EQUILIBRATE_STEPS = 100_000
 RUN_STEPS = 1_000_000
-WRITE_PERIOD = 4000
-LOG_PERIOD = {'trajectory': 50000, 'quantities': 2000}
-FRAMES_ANALYZE = int(RUN_STEPS / LOG_PERIOD['quantities'] * 1 / 2)
+TOTAL_STEPS = RANDOMIZE_STEPS + EQUILIBRATE_STEPS + RUN_STEPS
+
+WRITE_PERIOD = 4_000
+LOG_PERIOD = {'trajectory': 5_0000, 'quantities': 2_000}
 LJ_PARAMS = {'epsilon': 1.0, 'sigma': 1.0, 'r_on': 2.0, 'r_cut': 2.5}
 NUM_CPU_RANKS = min(8, CONFIG["max_cores_sim"])
 
@@ -180,10 +183,11 @@ def make_md_simulation(job,
         logger.add(loggable)
 
     # simulation
-    sim = util.make_simulation(job, device, initial_state, integrator, sim_mode,
-                               logger, WRITE_PERIOD,
-                               LOG_PERIOD['trajectory'] * period_multiplier,
-                               LOG_PERIOD['quantities'] * period_multiplier)
+    sim = util.make_simulation(job=job, device=device, initial_state=initial_state, integrator=integrator, sim_mode=sim_mode,
+                               logger=logger, table_write_period=WRITE_PERIOD,
+                               trajectory_write_period=LOG_PERIOD['trajectory'] * period_multiplier,
+                               log_write_period=LOG_PERIOD['quantities'] * period_multiplier,
+                               log_start_step=RANDOMIZE_STEPS + EQUILIBRATE_STEPS)
     sim.operations.add(thermo)
     for loggable in extra_loggables:
         # call attach explicitly so we can access sim state when computing the
@@ -212,7 +216,7 @@ def run_langevin_md_sim(job, device):
 
     # equilibrate
     device.notice('Equilibrating...')
-    sim.run(RANDOMIZE_STEPS)
+    sim.run(EQUILIBRATE_STEPS)
     device.notice('Done.')
 
     # run
@@ -222,7 +226,7 @@ def run_langevin_md_sim(job, device):
 
 
 @Project.pre.after(lj_fluid_create_initial_state)
-@Project.post.true('lj_fluid_langevin_md_cpu_complete')
+@Project.post(util.gsd_step_greater_equal_function('langevin_md_cpu_quantities.gsd', TOTAL_STEPS))
 @Project.operation(directives=dict(
     walltime=CONFIG["max_walltime"],
     executable=CONFIG["executable"],
@@ -243,12 +247,9 @@ def lj_fluid_langevin_md_cpu(*jobs):
                               msg_file=job.fn('run_langevin_md_cpu.log'))
     run_langevin_md_sim(job, device)
 
-    if device.communicator.rank == 0:
-        job.document['lj_fluid_langevin_md_cpu_complete'] = True
-
 
 @Project.pre.after(lj_fluid_create_initial_state)
-@Project.post.true('lj_fluid_langevin_md_gpu_complete')
+@Project.post(util.gsd_step_greater_equal_function('langevin_md_gpu_quantities.gsd', TOTAL_STEPS))
 @Project.operation(directives=dict(walltime=CONFIG["max_walltime"],
                                    executable=CONFIG["executable"],
                                    nranks=util.total_ranks_function(1),
@@ -268,9 +269,6 @@ def lj_fluid_langevin_md_gpu(*jobs):
                               msg_file=job.fn('run_langevin_md_gpu.log'))
     run_langevin_md_sim(job, device)
 
-    if device.communicator.rank == 0:
-        job.document['lj_fluid_langevin_md_gpu_complete'] = True
-
 
 def run_nvt_md_sim(job, device):
     """Run the MD simulation in NVT."""
@@ -289,7 +287,7 @@ def run_nvt_md_sim(job, device):
 
     # equilibrate
     device.notice('Equilibrating...')
-    sim.run(RANDOMIZE_STEPS)
+    sim.run(EQUILIBRATE_STEPS)
     device.notice('Done.')
 
     # run
@@ -299,7 +297,7 @@ def run_nvt_md_sim(job, device):
 
 
 @Project.pre.after(lj_fluid_create_initial_state)
-@Project.post.true('lj_fluid_nvt_md_cpu_complete')
+@Project.post(util.gsd_step_greater_equal_function('nvt_md_cpu_quantities.gsd', TOTAL_STEPS))
 @Project.operation(directives=dict(
     walltime=CONFIG["max_walltime"],
     executable=CONFIG["executable"],
@@ -320,12 +318,9 @@ def lj_fluid_nvt_md_cpu(*jobs):
                               msg_file=job.fn('run_nvt_md_cpu.log'))
     run_nvt_md_sim(job, device)
 
-    if device.communicator.rank == 0:
-        job.document['lj_fluid_nvt_md_cpu_complete'] = True
-
 
 @Project.pre.after(lj_fluid_create_initial_state)
-@Project.post.true('lj_fluid_nvt_md_gpu_complete')
+@Project.post(util.gsd_step_greater_equal_function('nvt_md_gpu_quantities.gsd', TOTAL_STEPS))
 @Project.operation(directives=dict(walltime=CONFIG["max_walltime"],
                                    executable=CONFIG["executable"],
                                    nranks=util.total_ranks_function(1),
@@ -344,9 +339,6 @@ def lj_fluid_nvt_md_gpu(*jobs):
     device = hoomd.device.GPU(communicator=communicator,
                               msg_file=job.fn('run_nvt_md_gpu.log'))
     run_nvt_md_sim(job, device)
-
-    if device.communicator.rank == 0:
-        job.document['lj_fluid_nvt_md_gpu_complete'] = True
 
 
 def run_npt_md_sim(job, device):
@@ -380,12 +372,13 @@ def run_npt_md_sim(job, device):
 
     # equilibrate in NVT
     device.notice('Equilibrating...')
-    sim.run(RANDOMIZE_STEPS)
-    device.notice('Done.')
+    sim.run(EQUILIBRATE_STEPS // 2)
 
     # switch to NPT
-    # thermalize the thermostat and barostat
     sim.operations.integrator.methods[0] = npt
+
+    sim.run(EQUILIBRATE_STEPS // 2)
+    device.notice('Done.')
 
     # run
     device.notice('Running...')
@@ -394,7 +387,7 @@ def run_npt_md_sim(job, device):
 
 
 @Project.pre.after(lj_fluid_create_initial_state)
-@Project.post.true('lj_fluid_npt_md_cpu_complete')
+@Project.post(util.gsd_step_greater_equal_function('npt_md_cpu_quantities.gsd', TOTAL_STEPS))
 @Project.operation(directives=dict(
     walltime=CONFIG["max_walltime"],
     executable=CONFIG["executable"],
@@ -415,12 +408,9 @@ def lj_fluid_npt_md_cpu(*jobs):
                               msg_file=job.fn('run_npt_md_cpu.log'))
     run_npt_md_sim(job, device)
 
-    if device.communicator.rank == 0:
-        job.document['lj_fluid_npt_md_cpu_complete'] = True
-
 
 @Project.pre.after(lj_fluid_create_initial_state)
-@Project.post.true('lj_fluid_npt_md_gpu_complete')
+@Project.post(util.gsd_step_greater_equal_function('npt_md_gpu_quantities.gsd', TOTAL_STEPS))
 @Project.operation(directives=dict(walltime=CONFIG["max_walltime"],
                                    executable=CONFIG["executable"],
                                    nranks=util.total_ranks_function(1),
@@ -439,9 +429,6 @@ def lj_fluid_npt_md_gpu(*jobs):
     device = hoomd.device.GPU(communicator=communicator,
                               msg_file=job.fn('run_npt_md_gpu.log'))
     run_npt_md_sim(job, device)
-
-    if device.communicator.rank == 0:
-        job.document['lj_fluid_npt_md_gpu_complete'] = True
 
 
 def make_mc_simulation(job,
@@ -524,10 +511,11 @@ def make_mc_simulation(job,
         logger_gsd.add(loggable)
 
     # make simulation
-    sim = util.make_simulation(job, device, initial_state, mc, sim_mode,
-                               logger_gsd, WRITE_PERIOD,
-                               LOG_PERIOD['trajectory'],
-                               LOG_PERIOD['quantities'])
+    sim = util.make_simulation(job=job, device=device, initial_state=initial_state, integrator=mc, sim_mode=sim_mode,
+                               logger=logger_gsd, table_write_period=WRITE_PERIOD,
+                               trajectory_write_period=LOG_PERIOD['trajectory'],
+                               log_write_period=LOG_PERIOD['quantities'],
+                               log_start_step=RANDOMIZE_STEPS + EQUILIBRATE_STEPS)
     for loggable in extra_loggables:
         # call attach method explicitly so we can access simulation state when
         # computing the loggable quantity
@@ -541,7 +529,7 @@ def make_mc_simulation(job,
         max_translation_move=0.5,
         trigger=hoomd.trigger.And([
             hoomd.trigger.Periodic(100),
-            hoomd.trigger.Before(sim.timestep + int(RANDOMIZE_STEPS))
+            hoomd.trigger.Before(RANDOMIZE_STEPS | EQUILIBRATE_STEPS // 2)
         ]))
     sim.operations.add(mstuner)
 
@@ -563,11 +551,11 @@ def run_nvt_mc_sim(job, device):
 
     # equilibrate
     device.notice('Equilibrating...')
-    sim.run(RANDOMIZE_STEPS)
-    sim.run(RANDOMIZE_STEPS)
+    sim.run(EQUILIBRATE_STEPS // 2)
+    sim.run(EQUILIBRATE_STEPS // 2)
     device.notice('Done.')
 
-    # Print acceptance ratio
+    # Print acceptance ratio as measured during the 2nd half of the equilibration.
     translate_moves = sim.operations.integrator.translate_moves
     translate_acceptance = translate_moves[0] / sum(translate_moves)
     device.notice(f'Translate move acceptance: {translate_acceptance}')
@@ -580,7 +568,7 @@ def run_nvt_mc_sim(job, device):
 
 
 @Project.pre.after(lj_fluid_create_initial_state)
-@Project.post.true('lj_fluid_nvt_mc_cpu_complete')
+@Project.post(util.gsd_step_greater_equal_function('nvt_mc_cpu_quantities.gsd', TOTAL_STEPS))
 @Project.operation(directives=dict(
     walltime=CONFIG["max_walltime"],
     executable=CONFIG["executable"],
@@ -601,12 +589,9 @@ def lj_fluid_nvt_mc_cpu(*jobs):
                               msg_file=job.fn('run_nvt_mc_cpu.log'))
     run_nvt_mc_sim(job, device)
 
-    if device.communicator.rank == 0:
-        job.document['lj_fluid_nvt_mc_cpu_complete'] = True
-
 
 @Project.pre.after(lj_fluid_create_initial_state)
-@Project.post.true('lj_fluid_nvt_mc_gpu_complete')
+@Project.post(util.gsd_step_greater_equal_function('nvt_mc_gpu_quantities.gsd', TOTAL_STEPS))
 @Project.operation(directives=dict(walltime=CONFIG["max_walltime"],
                                    executable=CONFIG["executable"],
                                    nranks=util.total_ranks_function(1),
@@ -625,9 +610,6 @@ def lj_fluid_nvt_mc_gpu(*jobs):
     device = hoomd.device.GPU(communicator=communicator,
                               msg_file=job.fn('run_nvt_mc_gpu.log'))
     run_nvt_mc_sim(job, device)
-
-    if device.communicator.rank == 0:
-        job.document['lj_fluid_nvt_mc_gpu_complete'] = True
 
 
 def run_npt_mc_sim(job, device):
@@ -664,7 +646,7 @@ def run_npt_mc_sim(job, device):
     boxmc_tuner = hpmc.tune.BoxMCMoveSize.scale_solver(
         trigger=hoomd.trigger.And([
             hoomd.trigger.Periodic(400),
-            hoomd.trigger.Before(sim.timestep + int(RANDOMIZE_STEPS))
+            hoomd.trigger.Before(RANDOMIZE_STEPS + EQUILIBRATE_STEPS // 2)
         ]),
         boxmc=boxmc,
         moves=['volume'],
@@ -673,11 +655,11 @@ def run_npt_mc_sim(job, device):
 
     # equilibrate
     device.notice('Equilibrating...')
-    sim.run(RANDOMIZE_STEPS)
-    sim.run(RANDOMIZE_STEPS)
+    sim.run(EQUILIBRATE_STEPS // 2)
+    sim.run(EQUILIBRATE_STEPS // 2)
     device.notice('Done.')
 
-    # Print acceptance ratio
+    # Print acceptance ratio as measured during the 2nd half of the equilibration.
     translate_moves = sim.operations.integrator.translate_moves
     translate_acceptance = translate_moves[0] / sum(translate_moves)
     device.notice(f'Translate move acceptance: {translate_acceptance}')
@@ -695,7 +677,7 @@ def run_npt_mc_sim(job, device):
 
 
 @Project.pre.after(lj_fluid_create_initial_state)
-@Project.post.true('lj_fluid_npt_mc_cpu_complete')
+@Project.post(util.gsd_step_greater_equal_function('npt_mc_cpu_quantities.gsd', TOTAL_STEPS))
 @Project.operation(directives=dict(
     walltime=CONFIG["max_walltime"],
     executable=CONFIG["executable"],
@@ -715,9 +697,6 @@ def lj_fluid_npt_mc_cpu(*jobs):
     device = hoomd.device.CPU(communicator=communicator,
                               msg_file=job.fn('run_npt_mc_cpu.log'))
     run_npt_mc_sim(job, device)
-
-    if device.communicator.rank == 0:
-        job.document['lj_fluid_npt_mc_cpu_complete'] = True
 
 
 @Project.pre.after(lj_fluid_langevin_md_cpu)
@@ -823,10 +802,10 @@ def lj_fluid_analyze(job):
     # save averages
     for mode in sim_modes:
         job.document[mode] = dict(
-            pressure=float(numpy.mean(pressures[mode][-FRAMES_ANALYZE:])),
+            pressure=float(numpy.mean(pressures[mode])),
             potential_energy=float(numpy.mean(
-                energies[mode][-FRAMES_ANALYZE:])),
-            density=float(numpy.mean(densities[mode][-FRAMES_ANALYZE:])))
+                energies[mode])),
+            density=float(numpy.mean(densities[mode])))
 
     # Plot results
     def plot(*, ax, data, quantity_name, base_line=None, legend=False):
@@ -875,28 +854,28 @@ def lj_fluid_analyze(job):
 
     # determine range for density and pressure histograms
     density_range = [
-        numpy.min(densities[sim_modes[0]][-FRAMES_ANALYZE:]),
-        numpy.max(densities[sim_modes[0]][-FRAMES_ANALYZE:])
+        numpy.min(densities[sim_modes[0]]),
+        numpy.max(densities[sim_modes[0]])
     ]
     pressure_range = [
-        numpy.min(pressures[sim_modes[0]][-FRAMES_ANALYZE:]),
-        numpy.max(pressures[sim_modes[0]][-FRAMES_ANALYZE:])
+        numpy.min(pressures[sim_modes[0]]),
+        numpy.max(pressures[sim_modes[0]])
     ]
 
     for mode in sim_modes[1:]:
         density_range[0] = min(density_range[0],
-                               numpy.min(densities[mode][-FRAMES_ANALYZE:]))
+                               numpy.min(densities[mode]))
         density_range[1] = max(density_range[1],
-                               numpy.max(densities[mode][-FRAMES_ANALYZE:]))
+                               numpy.max(densities[mode]))
         pressure_range[0] = min(pressure_range[0],
-                                numpy.min(pressures[mode][-FRAMES_ANALYZE:]))
+                                numpy.min(pressures[mode]))
         pressure_range[1] = max(pressure_range[1],
-                                numpy.max(pressures[mode][-FRAMES_ANALYZE:]))
+                                numpy.max(pressures[mode]))
 
     def plot_histo(*, ax, data, quantity_name, sp_name, range):
         max_density_histogram = 0
         for mode in sim_modes:
-            histogram, bin_edges = numpy.histogram(data[mode][-FRAMES_ANALYZE:],
+            histogram, bin_edges = numpy.histogram(data[mode],
                                                    bins=50,
                                                    range=range)
             if constant[mode] == sp_name:
@@ -1104,8 +1083,8 @@ def lj_fluid_ke_analyze(*jobs):
 
                 ke = util.get_log_quantity(
                     traj, 'md/compute/ThermodynamicQuantities/kinetic_energy')
-                ke_means[sim_mode].append(numpy.mean(ke[-FRAMES_ANALYZE:]))
-                ke_sigmas[sim_mode].append(numpy.std(ke[-FRAMES_ANALYZE:]))
+                ke_means[sim_mode].append(numpy.mean(ke))
+                ke_sigmas[sim_mode].append(numpy.std(ke))
 
     def plot_vs_expected(ax, values, expected, name):
         # compute stats with data
@@ -1198,7 +1177,7 @@ partition_jobs_gpu_nve = aggregator.groupsof(num=min(
 
 
 @Project.pre.after(lj_fluid_create_initial_state)
-@Project.post.true('lj_fluid_nve_md_cpu_complete')
+@Project.post(util.gsd_step_greater_equal_function('nve_md_cpu_quantities.gsd', 200_000_000))
 @Project.operation(directives=dict(
     walltime=CONFIG["max_walltime"],
     executable=CONFIG["executable"],
@@ -1219,12 +1198,9 @@ def lj_fluid_nve_md_cpu(*jobs):
                               msg_file=job.fn('run_nve_md_cpu.log'))
     run_nve_md_sim(job, device, run_length=200e6)
 
-    if device.communicator.rank == 0:
-        job.document['lj_fluid_nve_md_cpu_complete'] = True
-
 
 @Project.pre.after(lj_fluid_create_initial_state)
-@Project.post.true('lj_fluid_nve_md_gpu_complete')
+@Project.post(util.gsd_step_greater_equal_function('nve_md_cpu_quantities.gsd', 800_000_000))
 @Project.operation(directives=dict(walltime=CONFIG["max_walltime"],
                                    executable=CONFIG["executable"],
                                    nranks=util.total_ranks_function(1),
@@ -1243,9 +1219,6 @@ def lj_fluid_nve_md_gpu(*jobs):
     device = hoomd.device.GPU(communicator=communicator,
                               msg_file=job.fn('run_nve_md_gpu.log'))
     run_nve_md_sim(job, device, run_length=800e6)
-
-    if device.communicator.rank == 0:
-        job.document['lj_fluid_nve_md_gpu_complete'] = True
 
 
 @Project.pre(lambda *jobs: util.true_all(*jobs[0:NUM_NVE_RUNS],

@@ -10,12 +10,15 @@ import util
 import os
 import math
 
-# Run parameters shared between simulations
+# Run parameters shared between simulations.
+# Step counts must be even and a multiple of the log quantity period.
 RANDOMIZE_STEPS = 20_000
+EQUILIBRATE_STEPS = 100_000
 RUN_STEPS = 1_000_000
-WRITE_PERIOD = 1000
-LOG_PERIOD = {'trajectory': 50000, 'quantities': 125}
-FRAMES_ANALYZE = int(RUN_STEPS / LOG_PERIOD['quantities'] * 1 / 2)
+TOTAL_STEPS = RANDOMIZE_STEPS + EQUILIBRATE_STEPS + RUN_STEPS
+
+WRITE_PERIOD = 1_000
+LOG_PERIOD = {'trajectory': 50_000, 'quantities': 1_000}
 NUM_CPU_RANKS = min(8, CONFIG["max_cores_sim"])
 
 
@@ -153,10 +156,11 @@ def make_mc_simulation(job,
         logger_gsd.add(loggable, quantities=[quantity])
 
     # make simulation
-    sim = util.make_simulation(job, device, initial_state, mc, sim_mode,
-                               logger_gsd, WRITE_PERIOD,
-                               LOG_PERIOD['trajectory'],
-                               LOG_PERIOD['quantities'])
+    sim = util.make_simulation(job=job, device=device, initial_state=initial_state, integrator=mc, sim_mode=sim_mode,
+                            logger=logger_gsd, table_write_period=WRITE_PERIOD,
+                            trajectory_write_period=LOG_PERIOD['trajectory'],
+                            log_write_period=LOG_PERIOD['quantities'],
+                            log_start_step=RANDOMIZE_STEPS + EQUILIBRATE_STEPS)
 
     for loggable, _ in extra_loggables:
         # call attach method explicitly so we can access simulation state when
@@ -171,7 +175,7 @@ def make_mc_simulation(job,
         max_translation_move=0.5,
         trigger=hoomd.trigger.And([
             hoomd.trigger.Periodic(100),
-            hoomd.trigger.Before(sim.timestep + int(RANDOMIZE_STEPS))
+            hoomd.trigger.Before(RANDOMIZE_STEPS + EQUILIBRATION_STEPS//2)
         ]))
     sim.operations.add(move_size_tuner)
 
@@ -196,11 +200,11 @@ def run_nvt_sim(job, device):
 
     # equilibrate
     device.notice('Equilibrating...')
-    sim.run(RANDOMIZE_STEPS)
-    sim.run(RANDOMIZE_STEPS)
+    sim.run(EQUILIBRATE_STEPS // 2)
+    sim.run(EQUILIBRATE_STEPS // 2)
     device.notice('Done.')
 
-    # Print acceptance ratio
+    # Print acceptance ratio as measured during the 2nd half of the equilibration.
     translate_moves = sim.operations.integrator.translate_moves
     translate_acceptance = translate_moves[0] / sum(translate_moves)
     device.notice(f'Translate move acceptance: {translate_acceptance}')
@@ -213,7 +217,7 @@ def run_nvt_sim(job, device):
 
 
 @Project.pre.after(hard_sphere_create_initial_state)
-@Project.post.true('hard_sphere_nvt_cpu_complete')
+@Project.post(util.gsd_step_greater_equal_function('nvt_cpu_quantities.gsd', TOTAL_STEPS))
 @Project.operation(directives=dict(
     walltime=CONFIG["max_walltime"],
     executable=CONFIG["executable"],
@@ -234,12 +238,9 @@ def hard_sphere_nvt_cpu(*jobs):
                               msg_file=job.fn('run_nvt_cpu.log'))
     run_nvt_sim(job, device)
 
-    if device.communicator.rank == 0:
-        job.document['hard_sphere_nvt_cpu_complete'] = True
-
 
 @Project.pre.after(hard_sphere_create_initial_state)
-@Project.post.true('hard_sphere_nvt_gpu_complete')
+@Project.post(util.gsd_step_greater_equal_function('nvt_gpu_quantities.gsd', TOTAL_STEPS))
 @Project.operation(directives=dict(walltime=CONFIG["max_walltime"],
                                    executable=CONFIG["executable"],
                                    nranks=util.total_ranks_function(1),
@@ -258,9 +259,6 @@ def hard_sphere_nvt_gpu(*jobs):
     device = hoomd.device.GPU(communicator=communicator,
                               msg_file=job.fn('run_nvt_gpu.log'))
     run_nvt_sim(job, device)
-
-    if device.communicator.rank == 0:
-        job.document['hard_sphere_nvt_gpu_complete'] = True
 
 
 def run_npt_sim(job, device):
@@ -295,7 +293,7 @@ def run_npt_sim(job, device):
     boxmc_tuner = hoomd.hpmc.tune.BoxMCMoveSize.scale_solver(
         trigger=hoomd.trigger.And([
             hoomd.trigger.Periodic(400),
-            hoomd.trigger.Before(sim.timestep + int(RANDOMIZE_STEPS))
+            hoomd.trigger.Before(RANDOMIZE_STEPS + EQUILIBRATE_STEPS // 2)
         ]),
         boxmc=boxmc,
         moves=['volume'],
@@ -304,11 +302,11 @@ def run_npt_sim(job, device):
 
     # equilibrate
     device.notice('Equilibrating...')
-    sim.run(RANDOMIZE_STEPS)
-    sim.run(RANDOMIZE_STEPS)
+    sim.run(EQUILIBRATE_STEPS // 2)
+    sim.run(EQUILIBRATE_STEPS // 2)
     device.notice('Done.')
 
-    # Print acceptance ratio
+    # Print acceptance ratio as measured during the 2nd half of the equilibration
     translate_moves = sim.operations.integrator.translate_moves
     translate_acceptance = translate_moves[0] / sum(translate_moves)
     device.notice(f'Translate move acceptance: {translate_acceptance}')
@@ -326,7 +324,7 @@ def run_npt_sim(job, device):
 
 
 @Project.pre.after(hard_sphere_create_initial_state)
-@Project.post.true('hard_sphere_npt_cpu_complete')
+@Project.post(util.gsd_step_greater_equal_function('npt_cpu_quantities.gsd', TOTAL_STEPS))
 @Project.operation(directives=dict(
     walltime=CONFIG["max_walltime"],
     executable=CONFIG["executable"],
@@ -346,9 +344,6 @@ def hard_sphere_npt_cpu(*jobs):
     device = hoomd.device.CPU(communicator=communicator,
                               msg_file=job.fn('run_npt_cpu.log'))
     run_npt_sim(job, device)
-
-    if device.communicator.rank == 0:
-        job.document['hard_sphere_npt_cpu_complete'] = True
 
 
 def run_nec_sim(job, device):
@@ -375,16 +370,17 @@ def run_nec_sim(job, device):
     logger_gsd.add(sdf, quantities=['betaP'])
 
     # make simulation
-    sim = util.make_simulation(job, device, initial_state, mc, sim_mode,
-                               logger_gsd, WRITE_PERIOD,
-                               LOG_PERIOD['trajectory'],
-                               LOG_PERIOD['quantities'])
+    sim = util.make_simulation(job=job, device=device, initial_state=initial_state, integrator=mc, sim_mode=sim_mode,
+                               logger=logger_gsd, table_write_period=WRITE_PERIOD,
+                               trajectory_write_period=LOG_PERIOD['trajectory'],
+                               log_write_period=LOG_PERIOD['quantities'],
+                               log_start_step=RANDOMIZE_STEPS + EQUILIBRATE_STEPS)
 
     sim.operations.computes.append(sdf)
 
     trigger_tune = hoomd.trigger.And([
         hoomd.trigger.Periodic(5),
-        hoomd.trigger.Before(sim.timestep + int(RANDOMIZE_STEPS))
+        hoomd.trigger.Before(RANDOMIZE_STEPS + EQUILIBRATE_STEPS // 2)
     ])
 
     tune_nec_d = hoomd.hpmc.tune.MoveSize.scale_solver(trigger=trigger_tune,
@@ -404,11 +400,11 @@ def run_nec_sim(job, device):
     sim.state.thermalize_particle_momenta(hoomd.filter.All(), kT=1)
 
     device.notice('Equilibrating...')
-    sim.run(RANDOMIZE_STEPS)
-    sim.run(RANDOMIZE_STEPS)
+    sim.run(EQUILIBRATE_STEPS // 2)
+    sim.run(EQUILIBRATE_STEPS // 2)
     device.notice('Done.')
 
-    # Print acceptance ratio
+    # Print acceptance ratio as measured during the 2nd half of the equilibration
     translate_moves = sim.operations.integrator.translate_moves
     if sum(translate_moves) > 0:
         translate_acceptance = translate_moves[0] / sum(translate_moves)
@@ -426,7 +422,7 @@ def run_nec_sim(job, device):
 
 
 @Project.pre.after(hard_sphere_create_initial_state)
-@Project.post.true('hard_sphere_nec_cpu_complete')
+@Project.post(util.gsd_step_greater_equal_function('nec_cpu_quantities.gsd', TOTAL_STEPS))
 @Project.operation(directives=dict(walltime=CONFIG["max_walltime"],
                                    executable=CONFIG["executable"],
                                    nranks=util.total_ranks_function(1)),
@@ -444,9 +440,6 @@ def hard_sphere_nec_cpu(*jobs):
     device = hoomd.device.CPU(communicator=communicator,
                               msg_file=job.fn('run_nec_cpu.log'))
     run_nec_sim(job, device)
-
-    if device.communicator.rank == 0:
-        job.document['hard_sphere_nec_cpu_complete'] = True
 
 
 @Project.pre.after(hard_sphere_nvt_cpu)
@@ -505,15 +498,14 @@ def hard_sphere_analyze(job):
     # save averages
     for mode in sim_modes:
         job.document[mode] = dict(
-            pressure=float(numpy.mean(pressures[mode][-FRAMES_ANALYZE:])),
-            density=float(numpy.mean(densities[mode][-FRAMES_ANALYZE:])))
+            pressure=float(numpy.mean(pressures[mode])),
+            density=float(numpy.mean(densities[mode])))
 
     # Plot results
     def plot(*, ax, data, quantity_name, base_line=None, legend=False):
         # subsample the values for time series plots
-        sample_rate = 8
         for mode in sim_modes:
-            ax.plot(data[mode][::sample_rate], label=mode)
+            ax.plot(data[mode], label=mode)
         ax.set_xlabel('frame')
         ax.set_ylabel(quantity_name)
 
@@ -523,7 +515,7 @@ def hard_sphere_analyze(job):
         if base_line is not None:
             ax.hlines(y=base_line,
                       xmin=0,
-                      xmax=len(data[sim_modes[0]]) / sample_rate,
+                      xmax=len(data[sim_modes[0]]),
                       linestyles='dashed',
                       colors='k')
 
@@ -541,28 +533,28 @@ def hard_sphere_analyze(job):
 
     # determine range for density and pressure histograms
     density_range = [
-        numpy.min(densities[sim_modes[0]][-FRAMES_ANALYZE:]),
-        numpy.max(densities[sim_modes[0]][-FRAMES_ANALYZE:])
+        numpy.min(densities[sim_modes[0]]),
+        numpy.max(densities[sim_modes[0]])
     ]
     pressure_range = [
-        numpy.min(pressures[sim_modes[0]][-FRAMES_ANALYZE:]),
-        numpy.max(pressures[sim_modes[0]][-FRAMES_ANALYZE:])
+        numpy.min(pressures[sim_modes[0]]),
+        numpy.max(pressures[sim_modes[0]])
     ]
 
     for mode in sim_modes[1:]:
         density_range[0] = min(density_range[0],
-                               numpy.min(densities[mode][-FRAMES_ANALYZE:]))
+                               numpy.min(densities[mode]))
         density_range[1] = max(density_range[1],
-                               numpy.max(densities[mode][-FRAMES_ANALYZE:]))
+                               numpy.max(densities[mode]))
         pressure_range[0] = min(pressure_range[0],
-                                numpy.min(pressures[mode][-FRAMES_ANALYZE:]))
+                                numpy.min(pressures[mode]))
         pressure_range[1] = max(pressure_range[1],
-                                numpy.max(pressures[mode][-FRAMES_ANALYZE:]))
+                                numpy.max(pressures[mode]))
 
     def plot_histogram(*, ax, data, quantity_name, sp_name, range):
         max_histogram = 0
         for mode in sim_modes:
-            histogram, bin_edges = numpy.histogram(data[mode][-FRAMES_ANALYZE:],
+            histogram, bin_edges = numpy.histogram(data[mode],
                                                    bins=50,
                                                    range=range)
             if constant[mode] == sp_name:
