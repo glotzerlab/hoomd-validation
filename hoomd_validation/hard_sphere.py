@@ -156,11 +156,17 @@ def make_mc_simulation(job,
         logger_gsd.add(loggable, quantities=[quantity])
 
     # make simulation
-    sim = util.make_simulation(job=job, device=device, initial_state=initial_state, integrator=mc, sim_mode=sim_mode,
-                            logger=logger_gsd, table_write_period=WRITE_PERIOD,
-                            trajectory_write_period=LOG_PERIOD['trajectory'],
-                            log_write_period=LOG_PERIOD['quantities'],
-                            log_start_step=RANDOMIZE_STEPS + EQUILIBRATE_STEPS)
+    sim = util.make_simulation(job=job,
+                               device=device,
+                               initial_state=initial_state,
+                               integrator=mc,
+                               sim_mode=sim_mode,
+                               logger=logger_gsd,
+                               table_write_period=WRITE_PERIOD,
+                               trajectory_write_period=LOG_PERIOD['trajectory'],
+                               log_write_period=LOG_PERIOD['quantities'],
+                               log_start_step=RANDOMIZE_STEPS
+                               + EQUILIBRATE_STEPS)
 
     for loggable, _ in extra_loggables:
         # call attach method explicitly so we can access simulation state when
@@ -175,7 +181,7 @@ def make_mc_simulation(job,
         max_translation_move=0.5,
         trigger=hoomd.trigger.And([
             hoomd.trigger.Periodic(100),
-            hoomd.trigger.Before(RANDOMIZE_STEPS + EQUILIBRATE_STEPS//2)
+            hoomd.trigger.Before(RANDOMIZE_STEPS + EQUILIBRATE_STEPS // 2)
         ]))
     sim.operations.add(move_size_tuner)
 
@@ -204,7 +210,8 @@ def run_nvt_sim(job, device):
     sim.run(EQUILIBRATE_STEPS // 2)
     device.notice('Done.')
 
-    # Print acceptance ratio as measured during the 2nd half of the equilibration.
+    # Print acceptance ratio as measured during the 2nd half of the
+    # equilibration.
     translate_moves = sim.operations.integrator.translate_moves
     translate_acceptance = translate_moves[0] / sum(translate_moves)
     device.notice(f'Translate move acceptance: {translate_acceptance}')
@@ -217,7 +224,8 @@ def run_nvt_sim(job, device):
 
 
 @Project.pre.after(hard_sphere_create_initial_state)
-@Project.post(util.gsd_step_greater_equal_function('nvt_cpu_quantities.gsd', TOTAL_STEPS))
+@Project.post(
+    util.gsd_step_greater_equal_function('nvt_cpu_quantities.gsd', TOTAL_STEPS))
 @Project.operation(directives=dict(
     walltime=CONFIG["max_walltime"],
     executable=CONFIG["executable"],
@@ -240,7 +248,8 @@ def hard_sphere_nvt_cpu(*jobs):
 
 
 @Project.pre.after(hard_sphere_create_initial_state)
-@Project.post(util.gsd_step_greater_equal_function('nvt_gpu_quantities.gsd', TOTAL_STEPS))
+@Project.post(
+    util.gsd_step_greater_equal_function('nvt_gpu_quantities.gsd', TOTAL_STEPS))
 @Project.operation(directives=dict(walltime=CONFIG["max_walltime"],
                                    executable=CONFIG["executable"],
                                    nranks=util.total_ranks_function(1),
@@ -306,7 +315,8 @@ def run_npt_sim(job, device):
     sim.run(EQUILIBRATE_STEPS // 2)
     device.notice('Done.')
 
-    # Print acceptance ratio as measured during the 2nd half of the equilibration
+    # Print acceptance ratio as measured during the 2nd half of the
+    # equilibration
     translate_moves = sim.operations.integrator.translate_moves
     translate_acceptance = translate_moves[0] / sum(translate_moves)
     device.notice(f'Translate move acceptance: {translate_acceptance}')
@@ -324,7 +334,8 @@ def run_npt_sim(job, device):
 
 
 @Project.pre.after(hard_sphere_create_initial_state)
-@Project.post(util.gsd_step_greater_equal_function('npt_cpu_quantities.gsd', TOTAL_STEPS))
+@Project.post(
+    util.gsd_step_greater_equal_function('npt_cpu_quantities.gsd', TOTAL_STEPS))
 @Project.operation(directives=dict(
     walltime=CONFIG["max_walltime"],
     executable=CONFIG["executable"],
@@ -370,11 +381,17 @@ def run_nec_sim(job, device):
     logger_gsd.add(sdf, quantities=['betaP'])
 
     # make simulation
-    sim = util.make_simulation(job=job, device=device, initial_state=initial_state, integrator=mc, sim_mode=sim_mode,
-                               logger=logger_gsd, table_write_period=WRITE_PERIOD,
+    sim = util.make_simulation(job=job,
+                               device=device,
+                               initial_state=initial_state,
+                               integrator=mc,
+                               sim_mode=sim_mode,
+                               logger=logger_gsd,
+                               table_write_period=WRITE_PERIOD,
                                trajectory_write_period=LOG_PERIOD['trajectory'],
                                log_write_period=LOG_PERIOD['quantities'],
-                               log_start_step=RANDOMIZE_STEPS + EQUILIBRATE_STEPS)
+                               log_start_step=RANDOMIZE_STEPS
+                               + EQUILIBRATE_STEPS)
 
     sim.operations.computes.append(sdf)
 
@@ -404,7 +421,8 @@ def run_nec_sim(job, device):
     sim.run(EQUILIBRATE_STEPS // 2)
     device.notice('Done.')
 
-    # Print acceptance ratio as measured during the 2nd half of the equilibration
+    # Print acceptance ratio as measured during the 2nd half of the
+    # equilibration
     translate_moves = sim.operations.integrator.translate_moves
     if sum(translate_moves) > 0:
         translate_acceptance = translate_moves[0] / sum(translate_moves)
@@ -422,7 +440,8 @@ def run_nec_sim(job, device):
 
 
 @Project.pre.after(hard_sphere_create_initial_state)
-@Project.post(util.gsd_step_greater_equal_function('nec_cpu_quantities.gsd', TOTAL_STEPS))
+@Project.post(
+    util.gsd_step_greater_equal_function('nec_cpu_quantities.gsd', TOTAL_STEPS))
 @Project.operation(directives=dict(walltime=CONFIG["max_walltime"],
                                    executable=CONFIG["executable"],
                                    nranks=util.total_ranks_function(1)),
@@ -497,9 +516,8 @@ def hard_sphere_analyze(job):
 
     # save averages
     for mode in sim_modes:
-        job.document[mode] = dict(
-            pressure=float(numpy.mean(pressures[mode])),
-            density=float(numpy.mean(densities[mode])))
+        job.document[mode] = dict(pressure=float(numpy.mean(pressures[mode])),
+                                  density=float(numpy.mean(densities[mode])))
 
     # Plot results
     def plot(*, ax, data, quantity_name, base_line=None, legend=False):
@@ -542,14 +560,10 @@ def hard_sphere_analyze(job):
     ]
 
     for mode in sim_modes[1:]:
-        density_range[0] = min(density_range[0],
-                               numpy.min(densities[mode]))
-        density_range[1] = max(density_range[1],
-                               numpy.max(densities[mode]))
-        pressure_range[0] = min(pressure_range[0],
-                                numpy.min(pressures[mode]))
-        pressure_range[1] = max(pressure_range[1],
-                                numpy.max(pressures[mode]))
+        density_range[0] = min(density_range[0], numpy.min(densities[mode]))
+        density_range[1] = max(density_range[1], numpy.max(densities[mode]))
+        pressure_range[0] = min(pressure_range[0], numpy.min(pressures[mode]))
+        pressure_range[1] = max(pressure_range[1], numpy.max(pressures[mode]))
 
     def plot_histogram(*, ax, data, quantity_name, sp_name, range):
         max_histogram = 0

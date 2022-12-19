@@ -41,7 +41,7 @@ def true_all(*jobs, key):
 
 
 def total_ranks_function(ranks_per_job):
-    """Make a function that computes the number of ranks for an aggregate job."""
+    """Make a function that computes the number of ranks for an aggregate."""
     return lambda *jobs: ranks_per_job * len(jobs)
 
 
@@ -54,6 +54,7 @@ def gsd_step_greater_equal_function(gsd_filename, step):
     The function returns `False` for files that do not exist and files that
     have no frames.
     """
+
     def gsd_step_greater_equal(*jobs):
         for job in jobs:
             if not job.isfile(gsd_filename):
@@ -66,14 +67,17 @@ def gsd_step_greater_equal_function(gsd_filename, step):
 
                     last_frame = f.nframes - 1
 
-                    if f.chunk_exists(frame=last_frame, name='configuration/step'):
-                        gsd_step = f.read_chunk(frame=last_frame, name='configuration/step')[0]
+                    if f.chunk_exists(frame=last_frame,
+                                      name='configuration/step'):
+                        gsd_step = f.read_chunk(frame=last_frame,
+                                                name='configuration/step')[0]
                         if gsd_step < step:
                             return False
                     else:
                         return False
             except RuntimeError:
-                # treat corrupt GSD files as not complete, as these are still being written.
+                # treat corrupt GSD files as not complete, as these are still
+                # being written.
                 return False
 
         return True
@@ -174,20 +178,24 @@ def make_simulation(
 
     # write particle trajectory to gsd file
     trajectory_writer = hoomd.write.GSD(
-        filename=job.fn(get_job_filename(sim_mode, device, 'trajectory', 'gsd')),
+        filename=job.fn(get_job_filename(sim_mode, device, 'trajectory',
+                                         'gsd')),
         trigger=hoomd.trigger.And([
             hoomd.trigger.Periodic(trajectory_write_period),
-            hoomd.trigger.After(log_start_step)]),
+            hoomd.trigger.After(log_start_step)
+        ]),
         mode='ab')
     sim.operations.add(trajectory_writer)
 
     # write logged quantities to gsd file
     quantity_writer = hoomd.write.GSD(
         filter=hoomd.filter.Null(),
-        filename=job.fn(get_job_filename(sim_mode, device, 'quantities', 'gsd')),
+        filename=job.fn(get_job_filename(sim_mode, device, 'quantities',
+                                         'gsd')),
         trigger=hoomd.trigger.And([
             hoomd.trigger.Periodic(log_write_period),
-            hoomd.trigger.After(log_start_step)]),
+            hoomd.trigger.After(log_start_step)
+        ]),
         mode='ab',
         log=logger)
     sim.operations.add(quantity_writer)

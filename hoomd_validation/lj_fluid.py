@@ -183,11 +183,17 @@ def make_md_simulation(job,
         logger.add(loggable)
 
     # simulation
-    sim = util.make_simulation(job=job, device=device, initial_state=initial_state, integrator=integrator, sim_mode=sim_mode,
-                               logger=logger, table_write_period=WRITE_PERIOD,
-                               trajectory_write_period=LOG_PERIOD['trajectory'] * period_multiplier,
-                               log_write_period=LOG_PERIOD['quantities'] * period_multiplier,
-                               log_start_step=RANDOMIZE_STEPS + EQUILIBRATE_STEPS)
+    sim = util.make_simulation(
+        job=job,
+        device=device,
+        initial_state=initial_state,
+        integrator=integrator,
+        sim_mode=sim_mode,
+        logger=logger,
+        table_write_period=WRITE_PERIOD,
+        trajectory_write_period=LOG_PERIOD['trajectory'] * period_multiplier,
+        log_write_period=LOG_PERIOD['quantities'] * period_multiplier,
+        log_start_step=RANDOMIZE_STEPS + EQUILIBRATE_STEPS)
     sim.operations.add(thermo)
     for loggable in extra_loggables:
         # call attach explicitly so we can access sim state when computing the
@@ -226,7 +232,9 @@ def run_langevin_md_sim(job, device):
 
 
 @Project.pre.after(lj_fluid_create_initial_state)
-@Project.post(util.gsd_step_greater_equal_function('langevin_md_cpu_quantities.gsd', TOTAL_STEPS))
+@Project.post(
+    util.gsd_step_greater_equal_function('langevin_md_cpu_quantities.gsd',
+                                         TOTAL_STEPS))
 @Project.operation(directives=dict(
     walltime=CONFIG["max_walltime"],
     executable=CONFIG["executable"],
@@ -249,7 +257,9 @@ def lj_fluid_langevin_md_cpu(*jobs):
 
 
 @Project.pre.after(lj_fluid_create_initial_state)
-@Project.post(util.gsd_step_greater_equal_function('langevin_md_gpu_quantities.gsd', TOTAL_STEPS))
+@Project.post(
+    util.gsd_step_greater_equal_function('langevin_md_gpu_quantities.gsd',
+                                         TOTAL_STEPS))
 @Project.operation(directives=dict(walltime=CONFIG["max_walltime"],
                                    executable=CONFIG["executable"],
                                    nranks=util.total_ranks_function(1),
@@ -297,7 +307,9 @@ def run_nvt_md_sim(job, device):
 
 
 @Project.pre.after(lj_fluid_create_initial_state)
-@Project.post(util.gsd_step_greater_equal_function('nvt_md_cpu_quantities.gsd', TOTAL_STEPS))
+@Project.post(
+    util.gsd_step_greater_equal_function('nvt_md_cpu_quantities.gsd',
+                                         TOTAL_STEPS))
 @Project.operation(directives=dict(
     walltime=CONFIG["max_walltime"],
     executable=CONFIG["executable"],
@@ -320,7 +332,9 @@ def lj_fluid_nvt_md_cpu(*jobs):
 
 
 @Project.pre.after(lj_fluid_create_initial_state)
-@Project.post(util.gsd_step_greater_equal_function('nvt_md_gpu_quantities.gsd', TOTAL_STEPS))
+@Project.post(
+    util.gsd_step_greater_equal_function('nvt_md_gpu_quantities.gsd',
+                                         TOTAL_STEPS))
 @Project.operation(directives=dict(walltime=CONFIG["max_walltime"],
                                    executable=CONFIG["executable"],
                                    nranks=util.total_ranks_function(1),
@@ -387,7 +401,9 @@ def run_npt_md_sim(job, device):
 
 
 @Project.pre.after(lj_fluid_create_initial_state)
-@Project.post(util.gsd_step_greater_equal_function('npt_md_cpu_quantities.gsd', TOTAL_STEPS))
+@Project.post(
+    util.gsd_step_greater_equal_function('npt_md_cpu_quantities.gsd',
+                                         TOTAL_STEPS))
 @Project.operation(directives=dict(
     walltime=CONFIG["max_walltime"],
     executable=CONFIG["executable"],
@@ -410,7 +426,9 @@ def lj_fluid_npt_md_cpu(*jobs):
 
 
 @Project.pre.after(lj_fluid_create_initial_state)
-@Project.post(util.gsd_step_greater_equal_function('npt_md_gpu_quantities.gsd', TOTAL_STEPS))
+@Project.post(
+    util.gsd_step_greater_equal_function('npt_md_gpu_quantities.gsd',
+                                         TOTAL_STEPS))
 @Project.operation(directives=dict(walltime=CONFIG["max_walltime"],
                                    executable=CONFIG["executable"],
                                    nranks=util.total_ranks_function(1),
@@ -511,11 +529,17 @@ def make_mc_simulation(job,
         logger_gsd.add(loggable)
 
     # make simulation
-    sim = util.make_simulation(job=job, device=device, initial_state=initial_state, integrator=mc, sim_mode=sim_mode,
-                               logger=logger_gsd, table_write_period=WRITE_PERIOD,
+    sim = util.make_simulation(job=job,
+                               device=device,
+                               initial_state=initial_state,
+                               integrator=mc,
+                               sim_mode=sim_mode,
+                               logger=logger_gsd,
+                               table_write_period=WRITE_PERIOD,
                                trajectory_write_period=LOG_PERIOD['trajectory'],
                                log_write_period=LOG_PERIOD['quantities'],
-                               log_start_step=RANDOMIZE_STEPS + EQUILIBRATE_STEPS)
+                               log_start_step=RANDOMIZE_STEPS
+                               + EQUILIBRATE_STEPS)
     for loggable in extra_loggables:
         # call attach method explicitly so we can access simulation state when
         # computing the loggable quantity
@@ -555,7 +579,8 @@ def run_nvt_mc_sim(job, device):
     sim.run(EQUILIBRATE_STEPS // 2)
     device.notice('Done.')
 
-    # Print acceptance ratio as measured during the 2nd half of the equilibration.
+    # Print acceptance ratio as measured during the 2nd half of the
+    # equilibration.
     translate_moves = sim.operations.integrator.translate_moves
     translate_acceptance = translate_moves[0] / sum(translate_moves)
     device.notice(f'Translate move acceptance: {translate_acceptance}')
@@ -568,7 +593,9 @@ def run_nvt_mc_sim(job, device):
 
 
 @Project.pre.after(lj_fluid_create_initial_state)
-@Project.post(util.gsd_step_greater_equal_function('nvt_mc_cpu_quantities.gsd', TOTAL_STEPS))
+@Project.post(
+    util.gsd_step_greater_equal_function('nvt_mc_cpu_quantities.gsd',
+                                         TOTAL_STEPS))
 @Project.operation(directives=dict(
     walltime=CONFIG["max_walltime"],
     executable=CONFIG["executable"],
@@ -591,7 +618,9 @@ def lj_fluid_nvt_mc_cpu(*jobs):
 
 
 @Project.pre.after(lj_fluid_create_initial_state)
-@Project.post(util.gsd_step_greater_equal_function('nvt_mc_gpu_quantities.gsd', TOTAL_STEPS))
+@Project.post(
+    util.gsd_step_greater_equal_function('nvt_mc_gpu_quantities.gsd',
+                                         TOTAL_STEPS))
 @Project.operation(directives=dict(walltime=CONFIG["max_walltime"],
                                    executable=CONFIG["executable"],
                                    nranks=util.total_ranks_function(1),
@@ -659,7 +688,8 @@ def run_npt_mc_sim(job, device):
     sim.run(EQUILIBRATE_STEPS // 2)
     device.notice('Done.')
 
-    # Print acceptance ratio as measured during the 2nd half of the equilibration.
+    # Print acceptance ratio as measured during the 2nd half of the
+    # equilibration.
     translate_moves = sim.operations.integrator.translate_moves
     translate_acceptance = translate_moves[0] / sum(translate_moves)
     device.notice(f'Translate move acceptance: {translate_acceptance}')
@@ -677,7 +707,9 @@ def run_npt_mc_sim(job, device):
 
 
 @Project.pre.after(lj_fluid_create_initial_state)
-@Project.post(util.gsd_step_greater_equal_function('npt_mc_cpu_quantities.gsd', TOTAL_STEPS))
+@Project.post(
+    util.gsd_step_greater_equal_function('npt_mc_cpu_quantities.gsd',
+                                         TOTAL_STEPS))
 @Project.operation(directives=dict(
     walltime=CONFIG["max_walltime"],
     executable=CONFIG["executable"],
@@ -801,11 +833,10 @@ def lj_fluid_analyze(job):
 
     # save averages
     for mode in sim_modes:
-        job.document[mode] = dict(
-            pressure=float(numpy.mean(pressures[mode])),
-            potential_energy=float(numpy.mean(
-                energies[mode])),
-            density=float(numpy.mean(densities[mode])))
+        job.document[mode] = dict(pressure=float(numpy.mean(pressures[mode])),
+                                  potential_energy=float(
+                                      numpy.mean(energies[mode])),
+                                  density=float(numpy.mean(densities[mode])))
 
     # Plot results
     def plot(*, ax, data, quantity_name, base_line=None, legend=False):
@@ -863,14 +894,10 @@ def lj_fluid_analyze(job):
     ]
 
     for mode in sim_modes[1:]:
-        density_range[0] = min(density_range[0],
-                               numpy.min(densities[mode]))
-        density_range[1] = max(density_range[1],
-                               numpy.max(densities[mode]))
-        pressure_range[0] = min(pressure_range[0],
-                                numpy.min(pressures[mode]))
-        pressure_range[1] = max(pressure_range[1],
-                                numpy.max(pressures[mode]))
+        density_range[0] = min(density_range[0], numpy.min(densities[mode]))
+        density_range[1] = max(density_range[1], numpy.max(densities[mode]))
+        pressure_range[0] = min(pressure_range[0], numpy.min(pressures[mode]))
+        pressure_range[1] = max(pressure_range[1], numpy.max(pressures[mode]))
 
     def plot_histo(*, ax, data, quantity_name, sp_name, range):
         max_density_histogram = 0
@@ -1140,7 +1167,6 @@ def run_nve_md_sim(job, device, run_length):
     else:
         initial_state = job.fn('lj_fluid_initial_state.gsd')
 
-
     nve = hoomd.md.methods.NVE(hoomd.filter.All())
 
     sim = make_md_simulation(job,
@@ -1151,15 +1177,13 @@ def run_nve_md_sim(job, device, run_length):
                              period_multiplier=400)
 
     # Run for a long time to look for energy and momentum drift
-    end_step = sim.timestep + run_length
-    walltime_stop_seconds = CONFIG["max_walltime"] * 3600 - 10 * 60
-
     device.notice('Running...')
 
-    util.run_up_to_walltime(sim=sim,
-                            end_step=RANDOMIZE_STEPS + EQUILIBRATE_STEPS + run_length,
-                            steps=500_000,
-                            walltime_stop=CONFIG["max_walltime"] * 3600 - 10 * 60)
+    util.run_up_to_walltime(
+        sim=sim,
+        end_step=RANDOMIZE_STEPS + EQUILIBRATE_STEPS + run_length,
+        steps=500_000,
+        walltime_stop=CONFIG["max_walltime"] * 3600 - 10 * 60)
 
     if sim.timestep == RANDOMIZE_STEPS + EQUILIBRATE_STEPS + run_length:
         device.notice('Done.')
@@ -1190,7 +1214,9 @@ partition_jobs_gpu_nve = aggregator.groupsof(num=min(
 
 
 @Project.pre.after(lj_fluid_create_initial_state)
-@Project.post(util.gsd_step_greater_equal_function('nve_md_cpu_quantities.gsd', 200_000_000))
+@Project.post(
+    util.gsd_step_greater_equal_function('nve_md_cpu_quantities.gsd',
+                                         200_000_000))
 @Project.operation(directives=dict(
     walltime=CONFIG["max_walltime"],
     executable=CONFIG["executable"],
@@ -1213,7 +1239,9 @@ def lj_fluid_nve_md_cpu(*jobs):
 
 
 @Project.pre.after(lj_fluid_create_initial_state)
-@Project.post(util.gsd_step_greater_equal_function('nve_md_cpu_quantities.gsd', 800_000_000))
+@Project.post(
+    util.gsd_step_greater_equal_function('nve_md_cpu_quantities.gsd',
+                                         800_000_000))
 @Project.operation(directives=dict(walltime=CONFIG["max_walltime"],
                                    executable=CONFIG["executable"],
                                    nranks=util.total_ranks_function(1),
