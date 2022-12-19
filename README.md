@@ -7,6 +7,7 @@ validation test workflows in this repository are organized into signac projects.
 
 * gsd >= 2.0.0
 * numpy
+* PyYAML
 * signac >=1.8.0
 * signac-flow >= 0.23.0
 * signac-dashboard [optional]
