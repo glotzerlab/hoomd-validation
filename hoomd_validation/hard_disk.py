@@ -241,15 +241,15 @@ def run_nvt_sim(job, device):
 
     util.run_up_to_walltime(sim=sim, end_step=TOTAL_STEPS, steps=100_000, walltime_stop=WALLTIME_STOP_SECONDS)
 
-    if sim.timestep == TOTAL_STEPS:
-        device.notice('Done.')
-    else:
-        device.notice('Ending run early due to walltime limits at:',
-                      device.communicator.walltime)
-
     hoomd.write.GSD.write(state=sim.state,
                           filename=job.fn(restart_filename),
                           mode='wb')
+
+    if sim.timestep == TOTAL_STEPS:
+        device.notice('Done.')
+    else:
+        device.notice('Ending run early due to walltime limits at:'
+                      f'{device.communicator.walltime}')
 
 
 @Project.pre.after(hard_disk_create_initial_state)
@@ -382,15 +382,15 @@ def run_npt_sim(job, device):
     device.notice('Running...')
     util.run_up_to_walltime(sim=sim, end_step=TOTAL_STEPS, steps=100_000, walltime_stop=WALLTIME_STOP_SECONDS)
 
-    if sim.timestep == TOTAL_STEPS:
-        device.notice('Done.')
-    else:
-        device.notice('Ending run early due to walltime limits at:',
-                      device.communicator.walltime)
-
     hoomd.write.GSD.write(state=sim.state,
                           filename=job.fn(restart_filename),
                           mode='wb')
+
+    if sim.timestep == TOTAL_STEPS:
+        device.notice('Done.')
+    else:
+        device.notice('Ending run early due to walltime limits at:'
+                      f'{device.communicator.walltime}')
 
 
 @Project.pre.after(hard_disk_create_initial_state)
@@ -514,15 +514,15 @@ def run_nec_sim(job, device):
     # limit the run length to the given walltime
     util.run_up_to_walltime(sim=sim, end_step=TOTAL_STEPS, steps=20_000, walltime_stop=WALLTIME_STOP_SECONDS)
 
-    if sim.timestep == TOTAL_STEPS:
-        device.notice('Done.')
-    else:
-        device.notice('Ending run early due to walltime limits at:',
-                      device.communicator.walltime)
-
     hoomd.write.GSD.write(state=sim.state,
                           filename=job.fn(restart_filename),
                           mode='wb')
+
+    if sim.timestep == TOTAL_STEPS:
+        device.notice('Done.')
+    else:
+        device.notice('Ending run early due to walltime limits at:'
+                      f'{device.communicator.walltime}')
 
 
 @Project.pre.after(hard_disk_create_initial_state)

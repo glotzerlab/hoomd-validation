@@ -1164,8 +1164,8 @@ def run_nve_md_sim(job, device, run_length):
     if sim.timestep == RANDOMIZE_STEPS + EQUILIBRATE_STEPS + run_length:
         device.notice('Done.')
     else:
-        device.notice('Ending run early due to walltime limits at:',
-                      device.communicator.walltime)
+        device.notice('Ending run early due to walltime limits at:'
+                      f'{device.communicator.walltime}')
 
     hoomd.write.GSD.write(state=sim.state,
                           filename=job.fn(restart_filename),

@@ -239,15 +239,16 @@ def run_nve_md_sim(job, device):
 
     util.run_up_to_walltime(sim=sim, end_step=TOTAL_STEPS, steps=500_000, walltime_stop= CONFIG["max_walltime"] * 3600 - 10 * 60)
 
-    if sim.timestep == TOTAL_STEPS:
-        device.notice('Done.')
-    else:
-        device.notice('Ending run early due to walltime limits at:',
-                      device.communicator.walltime)
-
     hoomd.write.GSD.write(state=sim.state,
                           filename=job.fn(restart_filename),
                           mode='wb')
+
+    if sim.timestep == TOTAL_STEPS:
+        device.notice('Done.')
+    else:
+        device.notice('Ending run early due to walltime limits at:'
+                      f'{device.communicator.walltime}')
+
 
 
 @Project.pre.after(alj_2d_create_initial_state)
