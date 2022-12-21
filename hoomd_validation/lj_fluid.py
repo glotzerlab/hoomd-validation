@@ -122,6 +122,9 @@ def lj_fluid_create_initial_state(*jobs):
                           filename=job.fn("lj_fluid_initial_state.gsd"),
                           mode='wb')
 
+#################################
+## MD ensemble simulations
+#################################
 
 def make_md_simulation(job,
                        device,
@@ -207,191 +210,47 @@ def make_md_simulation(job,
     return sim
 
 
-def run_langevin_md_sim(job, device):
-    """Run the MD simulation in Langevin."""
-    import hoomd
-    from hoomd import md
-
-    initial_state = job.fn('lj_fluid_initial_state.gsd')
-    langevin = md.methods.Langevin(hoomd.filter.All(), kT=job.sp.kT)
-    langevin.gamma.default = 1.0
-
-    sim_mode = 'langevin_md'
-
-    sim = make_md_simulation(job, device, initial_state, langevin, sim_mode)
-
-    # equilibrate
-    device.notice('Equilibrating...')
-    sim.run(EQUILIBRATE_STEPS)
-    device.notice('Done.')
-
-    # run
-    device.notice('Running...')
-    sim.run(RUN_STEPS)
-    device.notice('Done.')
-
-
-@Project.pre.after(lj_fluid_create_initial_state)
-@Project.post(
-    util.gsd_step_greater_equal_function('langevin_md_cpu_quantities.gsd',
-                                         TOTAL_STEPS))
-@Project.operation(directives=dict(
-    walltime=CONFIG["max_walltime"],
-    executable=CONFIG["executable"],
-    nranks=util.total_ranks_function(NUM_CPU_RANKS)),
-                   aggregator=partition_jobs_cpu_mpi)
-def lj_fluid_langevin_md_cpu(*jobs):
-    """Run Langevin MD on the CPU."""
-    import hoomd
-
-    communicator = hoomd.communicator.Communicator(
-        ranks_per_partition=NUM_CPU_RANKS)
-    job = jobs[communicator.partition]
-
-    if communicator.rank == 0:
-        print('starting lj_fluid_langevin_md_cpu:', job)
-
-    device = hoomd.device.CPU(communicator=communicator,
-                              msg_file=job.fn('run_langevin_md_cpu.log'))
-    run_langevin_md_sim(job, device)
-
-
-@Project.pre.after(lj_fluid_create_initial_state)
-@Project.post(
-    util.gsd_step_greater_equal_function('langevin_md_gpu_quantities.gsd',
-                                         TOTAL_STEPS))
-@Project.operation(directives=dict(walltime=CONFIG["max_walltime"],
-                                   executable=CONFIG["executable"],
-                                   nranks=util.total_ranks_function(1),
-                                   ngpu=util.total_ranks_function(1)),
-                   aggregator=partition_jobs_gpu)
-def lj_fluid_langevin_md_gpu(*jobs):
-    """Run Langevin MD on the GPU."""
-    import hoomd
-
-    communicator = hoomd.communicator.Communicator(ranks_per_partition=1)
-    job = jobs[communicator.partition]
-
-    if communicator.rank == 0:
-        print('starting lj_fluid_langevin_md_gpu:', job)
-
-    device = hoomd.device.GPU(communicator=communicator,
-                              msg_file=job.fn('run_langevin_md_gpu.log'))
-    run_langevin_md_sim(job, device)
-
-
-def run_nvt_md_sim(job, device):
-    """Run the MD simulation in NVT."""
-    import hoomd
-    from hoomd import md
-
-    initial_state = job.fn('lj_fluid_initial_state.gsd')
-    nvt = md.methods.NVT(hoomd.filter.All(), kT=job.sp.kT, tau=0.25)
-    sim_mode = 'nvt_md'
-
-    sim = make_md_simulation(job, device, initial_state, nvt, sim_mode)
-
-    # thermalize the thermostat
-    sim.run(0)
-    nvt.thermalize_thermostat_dof()
-
-    # equilibrate
-    device.notice('Equilibrating...')
-    sim.run(EQUILIBRATE_STEPS)
-    device.notice('Done.')
-
-    # run
-    device.notice('Running...')
-    sim.run(RUN_STEPS)
-    device.notice('Done.')
-
-
-@Project.pre.after(lj_fluid_create_initial_state)
-@Project.post(
-    util.gsd_step_greater_equal_function('nvt_md_cpu_quantities.gsd',
-                                         TOTAL_STEPS))
-@Project.operation(directives=dict(
-    walltime=CONFIG["max_walltime"],
-    executable=CONFIG["executable"],
-    nranks=util.total_ranks_function(NUM_CPU_RANKS)),
-                   aggregator=partition_jobs_cpu_mpi)
-def lj_fluid_nvt_md_cpu(*jobs):
-    """Run NVT MD on the CPU."""
-    import hoomd
-
-    communicator = hoomd.communicator.Communicator(
-        ranks_per_partition=NUM_CPU_RANKS)
-    job = jobs[communicator.partition]
-
-    if communicator.rank == 0:
-        print('starting lj_fluid_nvt_md_cpu:', job)
-
-    device = hoomd.device.CPU(communicator=communicator,
-                              msg_file=job.fn('run_nvt_md_cpu.log'))
-    run_nvt_md_sim(job, device)
-
-
-@Project.pre.after(lj_fluid_create_initial_state)
-@Project.post(
-    util.gsd_step_greater_equal_function('nvt_md_gpu_quantities.gsd',
-                                         TOTAL_STEPS))
-@Project.operation(directives=dict(walltime=CONFIG["max_walltime"],
-                                   executable=CONFIG["executable"],
-                                   nranks=util.total_ranks_function(1),
-                                   ngpu=util.total_ranks_function(1)),
-                   aggregator=partition_jobs_gpu)
-def lj_fluid_nvt_md_gpu(*jobs):
-    """Run NVT MD on the GPU."""
-    import hoomd
-
-    communicator = hoomd.communicator.Communicator(ranks_per_partition=1)
-    job = jobs[communicator.partition]
-
-    if communicator.rank == 0:
-        print('starting lj_fluid_nvt_md_gpu:', job)
-
-    device = hoomd.device.GPU(communicator=communicator,
-                              msg_file=job.fn('run_nvt_md_gpu.log'))
-    run_nvt_md_sim(job, device)
-
-
-def run_npt_md_sim(job, device):
-    """Run an NPT simulation at the pressure computed by the NVT simulation."""
+def run_md_sim(job, device, ensemble, thermostat):
+    """Run the MD simulation in the given ensemble with the chosen thermostat."""
     import hoomd
     from hoomd import md
     from custom_actions import ComputeDensity
 
     initial_state = job.fn('lj_fluid_initial_state.gsd')
-    p = job.statepoint.pressure
-    nvt = md.methods.NVT(hoomd.filter.All(), kT=job.sp.kT, tau=0.25)
-    npt = md.methods.NPT(hoomd.filter.All(),
-                         kT=job.sp.kT,
-                         tau=0.25,
-                         S=[p, p, p, 0, 0, 0],
-                         tauS=3,
-                         couple='xyz')
-    sim_mode = 'npt_md'
+
+    if ensemble == 'nvt':
+        if thermostat == 'langevin':
+            method = md.methods.Langevin(hoomd.filter.All(), kT=job.statepoint.kT)
+            method.gamma.default = 1.0
+        elif thermostat == 'mttk':
+            method = md.methods.NVT(hoomd.filter.All(), kT=job.statepoint.kT, tau=0.25)
+        else:
+            raise ValueError(f'Unsupported thermostat {thermostat}')
+    elif ensemble == 'npt':
+        if thermostat == 'mttk':
+            p = job.statepoint.pressure
+            method = md.methods.NPT(hoomd.filter.All(),
+                                kT=job.sp.kT,
+                                tau=0.25,
+                                S=[p, p, p, 0, 0, 0],
+                                tauS=3,
+                                couple='xyz')
+        else:
+            raise ValueError(f'Unsupported thermostat {thermostat}')
+
+    sim_mode = f'{ensemble}_{thermostat}_md'
+
     density_compute = ComputeDensity()
+    sim = make_md_simulation(job, device, initial_state, method, sim_mode, extra_loggables=[density_compute])
 
-    sim = make_md_simulation(job,
-                             device,
-                             initial_state,
-                             nvt,
-                             sim_mode,
-                             extra_loggables=[density_compute])
+    # thermalize the thermostat (if applicable)
+    if hasattr(method, 'thermalize_thermostat_dof'):
+        sim.run(0)
+        method.thermalize_thermostat_dof()
 
-    # thermalize the thermostat
-    sim.run(0)
-    nvt.thermalize_thermostat_dof()
-
-    # equilibrate in NVT
+    # equilibrate
     device.notice('Equilibrating...')
-    sim.run(EQUILIBRATE_STEPS // 2)
-
-    # switch to NPT
-    sim.operations.integrator.methods[0] = npt
-
-    sim.run(EQUILIBRATE_STEPS // 2)
+    sim.run(EQUILIBRATE_STEPS)
     device.notice('Done.')
 
     # run
@@ -400,54 +259,102 @@ def run_npt_md_sim(job, device):
     device.notice('Done.')
 
 
-@Project.pre.after(lj_fluid_create_initial_state)
-@Project.post(
-    util.gsd_step_greater_equal_function('npt_md_cpu_quantities.gsd',
-                                         TOTAL_STEPS))
-@Project.operation(directives=dict(
-    walltime=CONFIG["max_walltime"],
-    executable=CONFIG["executable"],
-    nranks=util.total_ranks_function(NUM_CPU_RANKS)),
-                   aggregator=partition_jobs_cpu_mpi)
-def lj_fluid_npt_md_cpu(*jobs):
-    """Run NPT MD on the CPU."""
-    import hoomd
+md_sampling_jobs = []
+md_job_definitions = [
+    {
+        'ensemble': 'nvt',
+        'thermostat': 'langevin',
+        'device_name': 'cpu',
+        'ranks_per_partition': NUM_CPU_RANKS,
+        'aggregator': partition_jobs_cpu_mpi
+    },
+    {
+        'ensemble': 'nvt',
+        'thermostat': 'langevin',
+        'device_name': 'gpu',
+        'ranks_per_partition': 1,
+        'aggregator': partition_jobs_gpu
+    },
+    {
+        'ensemble': 'nvt',
+        'thermostat': 'mttk',
+        'device_name': 'cpu',
+        'ranks_per_partition': NUM_CPU_RANKS,
+        'aggregator': partition_jobs_cpu_mpi
+    },
+    {
+        'ensemble': 'nvt',
+        'thermostat': 'mttk',
+        'device_name': 'gpu',
+        'ranks_per_partition': 1,
+        'aggregator': partition_jobs_gpu
+    },
+    {
+        'ensemble': 'npt',
+        'thermostat': 'mttk',
+        'device_name': 'cpu',
+        'ranks_per_partition': NUM_CPU_RANKS,
+        'aggregator': partition_jobs_cpu_mpi
+    },
+    {
+        'ensemble': 'npt',
+        'thermostat': 'mttk',
+        'device_name': 'gpu',
+        'ranks_per_partition': 1,
+        'aggregator': partition_jobs_gpu
+    },
+]
 
-    communicator = hoomd.communicator.Communicator(
-        ranks_per_partition=NUM_CPU_RANKS)
-    job = jobs[communicator.partition]
 
-    if communicator.rank == 0:
-        print('starting lj_fluid_npt_md_cpu:', job)
+def add_md_sampling_job(ensemble, thermostat, device_name, ranks_per_partition, aggregator):
+    """Add a MD sampling job to the workflow."""
+    sim_mode = f'{ensemble}_{thermostat}_md'
 
-    device = hoomd.device.CPU(communicator=communicator,
-                              msg_file=job.fn('run_npt_md_cpu.log'))
-    run_npt_md_sim(job, device)
+    directives = dict(walltime=CONFIG["max_walltime"],
+                      executable=CONFIG["executable"],
+                      nranks=util.total_ranks_function(ranks_per_partition))
+
+    if device_name == 'gpu':
+        directives['ngpu'] = directives['nranks']
+
+    @Project.pre.after(lj_fluid_create_initial_state)
+    @Project.post(
+        util.gsd_step_greater_equal_function(
+            f'{sim_mode}_{device_name}_quantities.gsd', TOTAL_STEPS))
+    @Project.operation(name=f'lj_fluid_{sim_mode}_{device_name}',
+                       directives=directives,
+                       aggregator=aggregator)
+    def md_sampling_operation(*jobs):
+        """Perform sampling simulation given the definition."""
+        import hoomd
+
+        communicator = hoomd.communicator.Communicator(
+            ranks_per_partition=ranks_per_partition)
+        job = jobs[communicator.partition]
+
+        if communicator.rank == 0:
+            print(f'starting lj_fluid_{sim_mode}_{device_name}', job)
+
+        if device_name == 'gpu':
+            device_cls = hoomd.device.GPU
+        elif device_name == 'cpu':
+            device_cls = hoomd.device.CPU
+
+        device = device_cls(communicator=communicator,
+                            msg_file=job.fn(f'run_{sim_mode}_{device_name}.log'))
+
+        run_md_sim(job, device, ensemble, thermostat)
+
+    md_sampling_jobs.append(md_sampling_operation)
 
 
-@Project.pre.after(lj_fluid_create_initial_state)
-@Project.post(
-    util.gsd_step_greater_equal_function('npt_md_gpu_quantities.gsd',
-                                         TOTAL_STEPS))
-@Project.operation(directives=dict(walltime=CONFIG["max_walltime"],
-                                   executable=CONFIG["executable"],
-                                   nranks=util.total_ranks_function(1),
-                                   ngpu=util.total_ranks_function(1)),
-                   aggregator=partition_jobs_gpu)
-def lj_fluid_npt_md_gpu(*jobs):
-    """Run NPT MD on the GPU."""
-    import hoomd
+for definition in md_job_definitions:
+    add_md_sampling_job(**definition)
 
-    communicator = hoomd.communicator.Communicator(ranks_per_partition=1)
-    job = jobs[communicator.partition]
 
-    if communicator.rank == 0:
-        print('starting lj_fluid_npt_md_gpu:', job)
-
-    device = hoomd.device.GPU(communicator=communicator,
-                              msg_file=job.fn('run_npt_md_gpu.log'))
-    run_npt_md_sim(job, device)
-
+#################################
+## MC simulations
+#################################
 
 def make_mc_simulation(job,
                        device,
@@ -731,15 +638,75 @@ def lj_fluid_npt_mc_cpu(*jobs):
     run_npt_mc_sim(job, device)
 
 
-@Project.pre.after(lj_fluid_langevin_md_cpu)
-@Project.pre.after(lj_fluid_langevin_md_gpu)
-@Project.pre.after(lj_fluid_nvt_md_cpu)
-@Project.pre.after(lj_fluid_nvt_md_gpu)
-@Project.pre.after(lj_fluid_npt_md_cpu)
-@Project.pre.after(lj_fluid_npt_md_gpu)
-@Project.pre.after(lj_fluid_nvt_mc_cpu)
-@Project.pre.after(lj_fluid_nvt_mc_gpu)
-@Project.pre.after(lj_fluid_npt_mc_cpu)
+mc_sampling_jobs = []
+mc_job_definitions = [
+    {
+        'mode': 'nvt',
+        'device_name': 'cpu',
+        'ranks_per_partition': NUM_CPU_RANKS,
+        'aggregator': partition_jobs_cpu_mpi
+    },
+    {
+        'mode': 'nvt',
+        'device_name': 'gpu',
+        'ranks_per_partition': 1,
+        'aggregator': partition_jobs_gpu
+    },
+    {
+        'mode': 'npt',
+        'device_name': 'cpu',
+        'ranks_per_partition': NUM_CPU_RANKS,
+        'aggregator': partition_jobs_cpu_mpi
+    },
+]
+
+
+def add_mc_sampling_job(mode, device_name, ranks_per_partition, aggregator):
+    """Add a MC sampling job to the workflow."""
+    directives = dict(walltime=CONFIG["max_walltime"],
+                      executable=CONFIG["executable"],
+                      nranks=util.total_ranks_function(ranks_per_partition))
+
+    if device_name == 'gpu':
+        directives['ngpu'] = directives['nranks']
+
+    @Project.pre.after(lj_fluid_create_initial_state)
+    @Project.post(
+        util.gsd_step_greater_equal_function(
+            f'{mode}_{device_name}_quantities.gsd', TOTAL_STEPS))
+    @Project.operation(name=f'lj_fluid_{mode}_{device_name}',
+                       directives=directives,
+                       aggregator=aggregator)
+    def sampling_operation(*jobs):
+        """Perform sampling simulation given the definition."""
+        import hoomd
+
+        communicator = hoomd.communicator.Communicator(
+            ranks_per_partition=ranks_per_partition)
+        job = jobs[communicator.partition]
+
+        if communicator.rank == 0:
+            print(f'starting lj_fluid_{mode}_{device_name}', job)
+
+        if device_name == 'gpu':
+            device_cls = hoomd.device.GPU
+        elif device_name == 'cpu':
+            device_cls = hoomd.device.CPU
+
+        device = device_cls(communicator=communicator,
+                            msg_file=job.fn(f'run_{mode}_{device_name}.log'))
+
+        globals().get(f'run_{mode}_mc_sim')(job, device)
+
+    mc_sampling_jobs.append(sampling_operation)
+
+
+for definition in mc_job_definitions:
+    add_mc_sampling_job(**definition)
+
+
+@Project.pre.after(*md_sampling_jobs)
+@Project.pre.after(*mc_sampling_jobs)
 @Project.post.true('lj_fluid_analysis_complete')
 @Project.operation(directives=dict(walltime=1, executable=CONFIG["executable"]))
 def lj_fluid_analyze(job):
@@ -768,12 +735,12 @@ def lj_fluid_analyze(job):
         npt_mc_gpu='pressure',
     )
     sim_modes = [
-        'langevin_md_cpu',
-        'langevin_md_gpu',
-        'nvt_md_cpu',
-        'nvt_md_gpu',
-        'npt_md_cpu',
-        'npt_md_gpu',
+        'nvt_langevin_md_cpu',
+        'nvt_langevin_md_gpu',
+        'nvt_mttk_md_cpu',
+        'nvt_mttk_md_gpu',
+        'npt_mttk_md_cpu',
+        'npt_mttk_md_gpu',
     ]
 
     if os.path.exists(job.fn('nvt_mc_cpu_quantities.gsd')):
@@ -965,12 +932,12 @@ def lj_fluid_compare_modes(*jobs):
     print('starting lj_fluid_compare_modes:', jobs[0])
 
     sim_modes = [
-        'langevin_md_cpu',
-        'langevin_md_gpu',
-        'nvt_md_cpu',
-        'nvt_md_gpu',
-        'npt_md_cpu',
-        'npt_md_gpu',
+        'nvt_langevin_md_cpu',
+        'nvt_langevin_md_gpu',
+        'nvt_mttk_md_cpu',
+        'nvt_mttk_md_gpu',
+        'npt_mttk_md_cpu',
+        'npt_mttk_md_gpu',
     ]
 
     if os.path.exists(jobs[0].fn('nvt_mc_cpu_quantities.gsd')):
@@ -1086,8 +1053,12 @@ def lj_fluid_ke_analyze(*jobs):
     print('starting lj_fluid_ke_analyze:', jobs[0])
 
     sim_modes = [
-        'langevin_md_cpu', 'langevin_md_gpu', 'nvt_md_cpu', 'nvt_md_gpu',
-        'npt_md_cpu', 'npt_md_gpu'
+        'nvt_langevin_md_cpu',
+        'nvt_langevin_md_gpu',
+        'nvt_mttk_md_cpu',
+        'nvt_mttk_md_gpu',
+        'npt_mttk_md_cpu',
+        'npt_mttk_md_gpu',
     ]
 
     # grab the common statepoint parameters
@@ -1155,6 +1126,9 @@ def lj_fluid_ke_analyze(*jobs):
     for job in jobs:
         job.document['lj_fluid_ke_analyze_complete'] = True
 
+#################################
+## MD conservation simulations
+#################################
 
 def run_nve_md_sim(job, device, run_length):
     """Run the MD simulation in NVE."""
