@@ -122,9 +122,11 @@ def lj_fluid_create_initial_state(*jobs):
                           filename=job.fn("lj_fluid_initial_state.gsd"),
                           mode='wb')
 
+
 #################################
-## MD ensemble simulations
+# MD ensemble simulations
 #################################
+
 
 def make_md_simulation(job,
                        device,
@@ -211,7 +213,7 @@ def make_md_simulation(job,
 
 
 def run_md_sim(job, device, ensemble, thermostat):
-    """Run the MD simulation in the given ensemble with the chosen thermostat."""
+    """Run the MD simulation with the given ensemble and thermostat."""
     import hoomd
     from hoomd import md
     from custom_actions import ComputeDensity
@@ -220,28 +222,36 @@ def run_md_sim(job, device, ensemble, thermostat):
 
     if ensemble == 'nvt':
         if thermostat == 'langevin':
-            method = md.methods.Langevin(hoomd.filter.All(), kT=job.statepoint.kT)
+            method = md.methods.Langevin(hoomd.filter.All(),
+                                         kT=job.statepoint.kT)
             method.gamma.default = 1.0
         elif thermostat == 'mttk':
-            method = md.methods.NVT(hoomd.filter.All(), kT=job.statepoint.kT, tau=0.25)
+            method = md.methods.NVT(hoomd.filter.All(),
+                                    kT=job.statepoint.kT,
+                                    tau=0.25)
         else:
             raise ValueError(f'Unsupported thermostat {thermostat}')
     elif ensemble == 'npt':
         if thermostat == 'mttk':
             p = job.statepoint.pressure
             method = md.methods.NPT(hoomd.filter.All(),
-                                kT=job.sp.kT,
-                                tau=0.25,
-                                S=[p, p, p, 0, 0, 0],
-                                tauS=3,
-                                couple='xyz')
+                                    kT=job.sp.kT,
+                                    tau=0.25,
+                                    S=[p, p, p, 0, 0, 0],
+                                    tauS=3,
+                                    couple='xyz')
         else:
             raise ValueError(f'Unsupported thermostat {thermostat}')
 
     sim_mode = f'{ensemble}_{thermostat}_md'
 
     density_compute = ComputeDensity()
-    sim = make_md_simulation(job, device, initial_state, method, sim_mode, extra_loggables=[density_compute])
+    sim = make_md_simulation(job,
+                             device,
+                             initial_state,
+                             method,
+                             sim_mode,
+                             extra_loggables=[density_compute])
 
     # thermalize the thermostat (if applicable)
     if hasattr(method, 'thermalize_thermostat_dof'):
@@ -306,7 +316,8 @@ md_job_definitions = [
 ]
 
 
-def add_md_sampling_job(ensemble, thermostat, device_name, ranks_per_partition, aggregator):
+def add_md_sampling_job(ensemble, thermostat, device_name, ranks_per_partition,
+                        aggregator):
     """Add a MD sampling job to the workflow."""
     sim_mode = f'{ensemble}_{thermostat}_md'
 
@@ -340,8 +351,9 @@ def add_md_sampling_job(ensemble, thermostat, device_name, ranks_per_partition, 
         elif device_name == 'cpu':
             device_cls = hoomd.device.CPU
 
-        device = device_cls(communicator=communicator,
-                            msg_file=job.fn(f'run_{sim_mode}_{device_name}.log'))
+        device = device_cls(
+            communicator=communicator,
+            msg_file=job.fn(f'run_{sim_mode}_{device_name}.log'))
 
         run_md_sim(job, device, ensemble, thermostat)
 
@@ -351,10 +363,10 @@ def add_md_sampling_job(ensemble, thermostat, device_name, ranks_per_partition, 
 for definition in md_job_definitions:
     add_md_sampling_job(**definition)
 
+#################################
+# MC simulations
+#################################
 
-#################################
-## MC simulations
-#################################
 
 def make_mc_simulation(job,
                        device,
@@ -1126,9 +1138,11 @@ def lj_fluid_ke_analyze(*jobs):
     for job in jobs:
         job.document['lj_fluid_ke_analyze_complete'] = True
 
+
 #################################
-## MD conservation simulations
+# MD conservation simulations
 #################################
+
 
 def run_nve_md_sim(job, device, run_length):
     """Run the MD simulation in NVE."""
