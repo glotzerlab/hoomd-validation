@@ -264,53 +264,6 @@ def run_nvt_sim(job, device):
                       f'{device.communicator.walltime}')
 
 
-@Project.pre.after(hard_disk_create_initial_state)
-@Project.post(
-    util.gsd_step_greater_equal_function('nvt_cpu_quantities.gsd', TOTAL_STEPS))
-@Project.operation(directives=dict(
-    walltime=CONFIG["max_walltime"],
-    executable=CONFIG["executable"],
-    nranks=util.total_ranks_function(NUM_CPU_RANKS)),
-                   aggregator=partition_jobs_cpu_mpi)
-def hard_disk_nvt_cpu(*jobs):
-    """Run NVT on the CPU."""
-    import hoomd
-
-    communicator = hoomd.communicator.Communicator(
-        ranks_per_partition=NUM_CPU_RANKS)
-    job = jobs[communicator.partition]
-
-    if communicator.rank == 0:
-        print('starting hard_disk_nvt_cpu:', job)
-
-    device = hoomd.device.CPU(communicator=communicator,
-                              msg_file=job.fn('run_nvt_cpu.log'))
-    run_nvt_sim(job, device)
-
-
-@Project.pre.after(hard_disk_create_initial_state)
-@Project.post(
-    util.gsd_step_greater_equal_function('nvt_gpu_quantities.gsd', TOTAL_STEPS))
-@Project.operation(directives=dict(walltime=CONFIG["max_walltime"],
-                                   executable=CONFIG["executable"],
-                                   nranks=util.total_ranks_function(1),
-                                   ngpu=util.total_ranks_function(1)),
-                   aggregator=partition_jobs_gpu)
-def hard_disk_nvt_gpu(*jobs):
-    """Run NVT on the GPU."""
-    import hoomd
-
-    communicator = hoomd.communicator.Communicator(ranks_per_partition=1)
-    job = jobs[communicator.partition]
-
-    if communicator.rank == 0:
-        print('starting hard_disk_nvt_gpu:', job)
-
-    device = hoomd.device.GPU(communicator=communicator,
-                              msg_file=job.fn('run_nvt_gpu.log'))
-    run_nvt_sim(job, device)
-
-
 def run_npt_sim(job, device):
     """Run MC sim in NPT."""
     import hoomd
@@ -411,30 +364,6 @@ def run_npt_sim(job, device):
     else:
         device.notice('Ending run early due to walltime limits at:'
                       f'{device.communicator.walltime}')
-
-
-@Project.pre.after(hard_disk_create_initial_state)
-@Project.post(
-    util.gsd_step_greater_equal_function('npt_cpu_quantities.gsd', TOTAL_STEPS))
-@Project.operation(directives=dict(
-    walltime=CONFIG["max_walltime"],
-    executable=CONFIG["executable"],
-    nranks=util.total_ranks_function(NUM_CPU_RANKS)),
-                   aggregator=partition_jobs_cpu_mpi)
-def hard_disk_npt_cpu(*jobs):
-    """Run NPT MC on the CPU."""
-    import hoomd
-
-    communicator = hoomd.communicator.Communicator(
-        ranks_per_partition=NUM_CPU_RANKS)
-    job = jobs[communicator.partition]
-
-    if communicator.rank == 0:
-        print('starting hard_disk_npt_cpu:', job)
-
-    device = hoomd.device.CPU(communicator=communicator,
-                              msg_file=job.fn('run_npt_cpu.log'))
-    run_npt_sim(job, device)
 
 
 def run_nec_sim(job, device):
@@ -559,31 +488,80 @@ def run_nec_sim(job, device):
                       f'{device.communicator.walltime}')
 
 
-@Project.pre.after(hard_disk_create_initial_state)
-@Project.post(
-    util.gsd_step_greater_equal_function('nec_cpu_quantities.gsd', TOTAL_STEPS))
-@Project.operation(directives=dict(walltime=CONFIG["max_walltime"],
-                                   executable=CONFIG["executable"],
-                                   nranks=util.total_ranks_function(1)),
-                   aggregator=partition_jobs_cpu_serial)
-def hard_disk_nec_cpu(*jobs):
-    """Run NEC on the CPU."""
-    import hoomd
+sampling_jobs = []
+job_definitions = [
+    {
+        'mode': 'nvt',
+        'device_name': 'cpu',
+        'ranks_per_partition': NUM_CPU_RANKS,
+        'aggregator': partition_jobs_cpu_mpi
+    },
+    {
+        'mode': 'nvt',
+        'device_name': 'gpu',
+        'ranks_per_partition': 1,
+        'aggregator': partition_jobs_gpu
+    },
+    {
+        'mode': 'npt',
+        'device_name': 'cpu',
+        'ranks_per_partition': NUM_CPU_RANKS,
+        'aggregator': partition_jobs_cpu_mpi
+    },
+    {
+        'mode': 'nec',
+        'device_name': 'cpu',
+        'ranks_per_partition': 1,
+        'aggregator': partition_jobs_cpu_serial
+    },
+]
 
-    communicator = hoomd.communicator.Communicator(ranks_per_partition=1)
-    job = jobs[communicator.partition]
 
-    if communicator.rank == 0:
-        print('starting hard_disk_nec_cpu:', job)
+def add_sampling_job(mode, device_name, ranks_per_partition, aggregator):
+    """Add a sampling job to the workflow."""
+    directives = dict(walltime=CONFIG["max_walltime"],
+                      executable=CONFIG["executable"],
+                      nranks=util.total_ranks_function(ranks_per_partition))
 
-    device = hoomd.device.CPU(communicator=communicator,
-                              msg_file=job.fn('run_nec_cpu.log'))
-    run_nec_sim(job, device)
+    if device_name == 'gpu':
+        directives['ngpu'] = directives['nranks']
+
+    @Project.pre.after(hard_disk_create_initial_state)
+    @Project.post(
+        util.gsd_step_greater_equal_function(
+            f'{mode}_{device_name}_quantities.gsd', TOTAL_STEPS))
+    @Project.operation(name=f'hard_disk_{mode}_{device_name}',
+                       directives=directives,
+                       aggregator=aggregator)
+    def sampling_operation(*jobs):
+        """Perform sampling simulation given the definition."""
+        import hoomd
+
+        communicator = hoomd.communicator.Communicator(
+            ranks_per_partition=ranks_per_partition)
+        job = jobs[communicator.partition]
+
+        if communicator.rank == 0:
+            print(f'starting hard_disk_{mode}_{device_name}', job)
+
+        if device_name == 'gpu':
+            device_cls = hoomd.device.GPU
+        elif device_name == 'cpu':
+            device_cls = hoomd.device.CPU
+
+        device = device_cls(communicator=communicator,
+                            msg_file=job.fn(f'run_{mode}_{device_name}.log'))
+
+        globals().get(f'run_{mode}_sim')(job, device)
+
+    sampling_jobs.append(sampling_operation)
 
 
-@Project.pre.after(hard_disk_nvt_cpu)
-@Project.pre.after(hard_disk_nvt_gpu)
-@Project.pre.after(hard_disk_npt_cpu)
+for definition in job_definitions:
+    add_sampling_job(**definition)
+
+
+@Project.pre.after(*sampling_jobs)
 @Project.post.true('hard_disk_analysis_complete')
 @Project.operation(directives=dict(walltime=1, executable=CONFIG["executable"]))
 def hard_disk_analyze(job):
