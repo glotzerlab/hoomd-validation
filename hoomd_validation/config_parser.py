@@ -35,6 +35,7 @@ class ConfigFile(dict):
         self["max_gpus_submission"] = int(config.get("max_gpus_submission", 1))
         self["max_walltime"] = int(config.get("max_walltime", 24))
         self["replicates"] = int(config.get("replicates", 16))
+        self["enable_llvm"] = bool(config.get("enable_llvm", True))
 
     @staticmethod
     def _parse_executable_string(config_file):

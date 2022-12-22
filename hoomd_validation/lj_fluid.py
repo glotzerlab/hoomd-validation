@@ -639,8 +639,9 @@ def add_mc_sampling_job(mode, device_name, ranks_per_partition, aggregator):
     mc_sampling_jobs.append(sampling_operation)
 
 
-for definition in mc_job_definitions:
-    add_mc_sampling_job(**definition)
+if CONFIG['enable_llvm']:
+    for definition in mc_job_definitions:
+        add_mc_sampling_job(**definition)
 
 
 @Project.pre.after(*md_sampling_jobs)
