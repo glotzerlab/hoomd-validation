@@ -231,7 +231,7 @@ def run_nve_md_sim(job, device):
     else:
         initial_state = job.fn('alj_2d_initial_state.gsd')
 
-    nve = hoomd.md.methods.NVE(hoomd.filter.All())
+    nve = hoomd.md.methods.ConstantVolume(hoomd.filter.All())
 
     sim = make_md_simulation(job,
                              device,

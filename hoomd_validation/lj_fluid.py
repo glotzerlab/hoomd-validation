@@ -226,20 +226,26 @@ def run_md_sim(job, device, ensemble, thermostat):
                                          kT=job.statepoint.kT)
             method.gamma.default = 1.0
         elif thermostat == 'mttk':
-            method = md.methods.NVT(hoomd.filter.All(),
-                                    kT=job.statepoint.kT,
+            method = md.methods.ConstantVolume(filter=hoomd.filter.All())
+            method.thermostat = hoomd.md.methods.thermostats.MTTK(kT=job.statepoint.kT,
                                     tau=0.25)
+        elif thermostat == 'bussi':
+            method = md.methods.ConstantVolume(filter=hoomd.filter.All())
+            method.thermostat = hoomd.md.methods.thermostats.Bussi(kT=job.statepoint.kT)
         else:
             raise ValueError(f'Unsupported thermostat {thermostat}')
     elif ensemble == 'npt':
+        p = job.statepoint.pressure
+        method = md.methods.ConstantPressure(hoomd.filter.All(),
+                                S=[p, p, p, 0, 0, 0],
+                                tauS=3,
+                                couple='xyz',
+                                gamma=2.0)
         if thermostat == 'mttk':
-            p = job.statepoint.pressure
-            method = md.methods.NPT(hoomd.filter.All(),
-                                    kT=job.sp.kT,
-                                    tau=0.25,
-                                    S=[p, p, p, 0, 0, 0],
-                                    tauS=3,
-                                    couple='xyz')
+            method.thermostat = hoomd.md.methods.thermostats.MTTK(kT=job.statepoint.kT,
+                                    tau=0.25)
+        elif thermostat == 'bussi':
+            method.thermostat = hoomd.md.methods.thermostats.Bussi(kT=job.statepoint.kT)
         else:
             raise ValueError(f'Unsupported thermostat {thermostat}')
 
@@ -300,15 +306,29 @@ md_job_definitions = [
         'aggregator': partition_jobs_gpu
     },
     {
+        'ensemble': 'nvt',
+        'thermostat': 'bussi',
+        'device_name': 'cpu',
+        'ranks_per_partition': NUM_CPU_RANKS,
+        'aggregator': partition_jobs_cpu_mpi
+    },
+    {
+        'ensemble': 'nvt',
+        'thermostat': 'bussi',
+        'device_name': 'gpu',
+        'ranks_per_partition': 1,
+        'aggregator': partition_jobs_gpu
+    },
+    {
         'ensemble': 'npt',
-        'thermostat': 'mttk',
+        'thermostat': 'bussi',
         'device_name': 'cpu',
         'ranks_per_partition': NUM_CPU_RANKS,
         'aggregator': partition_jobs_cpu_mpi
     },
     {
         'ensemble': 'npt',
-        'thermostat': 'mttk',
+        'thermostat': 'bussi',
         'device_name': 'gpu',
         'ranks_per_partition': 1,
         'aggregator': partition_jobs_gpu
@@ -646,7 +666,7 @@ if CONFIG['enable_llvm']:
 
 @Project.pre.after(*md_sampling_jobs)
 @Project.pre.after(*mc_sampling_jobs)
-@Project.post.true('lj_fluid_analysis_complete')
+# @Project.post.true('lj_fluid_analysis_complete')
 @Project.operation(directives=dict(walltime=1, executable=CONFIG["executable"]))
 def lj_fluid_analyze(job):
     """Analyze the output of all simulation modes."""
@@ -662,14 +682,16 @@ def lj_fluid_analyze(job):
     print('starting lj_fluid_analyze:', job)
 
     constant = dict(
-        langevin_md_cpu='density',
-        langevin_md_gpu='density',
-        nvt_md_cpu='density',
-        nvt_md_gpu='density',
+        nvt_langevin_md_cpu='density',
+        nvt_langevin_md_gpu='density',
+        nvt_mttk_md_cpu='density',
+        nvt_mttk_md_gpu='density',
+        nvt_bussi_md_cpu='density',
+        nvt_bussi_md_gpu='density',
         nvt_mc_cpu='density',
         nvt_mc_gpu='density',
-        npt_md_cpu='pressure',
-        npt_md_gpu='pressure',
+        npt_bussi_md_cpu='pressure',
+        npt_bussi_md_gpu='pressure',
         npt_mc_cpu='pressure',
         npt_mc_gpu='pressure',
     )
@@ -678,8 +700,10 @@ def lj_fluid_analyze(job):
         'nvt_langevin_md_gpu',
         'nvt_mttk_md_cpu',
         'nvt_mttk_md_gpu',
-        'npt_mttk_md_cpu',
-        'npt_mttk_md_gpu',
+        'nvt_bussi_md_cpu',
+        'nvt_bussi_md_gpu',
+        'npt_bussi_md_cpu',
+        'npt_bussi_md_gpu',
     ]
 
     if os.path.exists(job.fn('nvt_mc_cpu_quantities.gsd')):
@@ -721,7 +745,7 @@ def lj_fluid_analyze(job):
             densities[sim_mode] = numpy.ones(len(
                 energies[sim_mode])) * job.statepoint.density
 
-        if 'md' in sim_mode and not sim_mode.startswith('langevin'):
+        if 'md' in sim_mode and not 'langevin' in sim_mode:
             momentum_vector = get_log_quantity(traj,
                                                'md/Integrator/linear_momentum')
             linear_momentum[sim_mode] = [
@@ -764,12 +788,12 @@ def lj_fluid_analyze(job):
     ax = fig.add_subplot(3, 2, 1)
     plot(ax=ax,
          data=densities,
-         quantity_name=r"$\rho",
+         quantity_name=r"$\rho$",
          base_line=job.sp.density,
          legend=True)
 
     ax = fig.add_subplot(3, 2, 2)
-    plot(ax=ax, data=pressures, quantity_name=r"$P", base_line=job.sp.pressure)
+    plot(ax=ax, data=pressures, quantity_name=r"$P$", base_line=job.sp.pressure)
 
     ax = fig.add_subplot(3, 2, 3)
     plot(ax=ax, data=energies, quantity_name="$U / N$")
@@ -875,8 +899,10 @@ def lj_fluid_compare_modes(*jobs):
         'nvt_langevin_md_gpu',
         'nvt_mttk_md_cpu',
         'nvt_mttk_md_gpu',
-        'npt_mttk_md_cpu',
-        'npt_mttk_md_gpu',
+        'nvt_bussi_md_cpu',
+        'nvt_bussi_md_gpu',
+        'npt_bussi_md_cpu',
+        'npt_bussi_md_gpu',
     ]
 
     if os.path.exists(jobs[0].fn('nvt_mc_cpu_quantities.gsd')):
@@ -996,8 +1022,10 @@ def lj_fluid_ke_analyze(*jobs):
         'nvt_langevin_md_gpu',
         'nvt_mttk_md_cpu',
         'nvt_mttk_md_gpu',
-        'npt_mttk_md_cpu',
-        'npt_mttk_md_gpu',
+        'nvt_bussi_md_cpu',
+        'nvt_bussi_md_gpu',
+        'npt_bussi_md_cpu',
+        'npt_bussi_md_gpu',
     ]
 
     # grab the common statepoint parameters
@@ -1082,7 +1110,7 @@ def run_nve_md_sim(job, device, run_length):
     else:
         initial_state = job.fn('lj_fluid_initial_state.gsd')
 
-    nve = hoomd.md.methods.NVE(hoomd.filter.All())
+    nve = hoomd.md.methods.ConstantVolume(hoomd.filter.All())
 
     sim = make_md_simulation(job,
                              device,
