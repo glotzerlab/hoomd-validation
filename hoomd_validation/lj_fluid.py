@@ -511,55 +511,6 @@ def run_nvt_mc_sim(job, device):
     device.notice('Done.')
 
 
-@Project.pre.after(lj_fluid_create_initial_state)
-@Project.post(
-    util.gsd_step_greater_equal_function('nvt_mc_cpu_quantities.gsd',
-                                         TOTAL_STEPS))
-@Project.operation(directives=dict(
-    walltime=CONFIG["max_walltime"],
-    executable=CONFIG["executable"],
-    nranks=util.total_ranks_function(NUM_CPU_RANKS)),
-                   aggregator=partition_jobs_cpu_mpi)
-def lj_fluid_nvt_mc_cpu(*jobs):
-    """Run NVT MC on the CPU."""
-    import hoomd
-
-    communicator = hoomd.communicator.Communicator(
-        ranks_per_partition=NUM_CPU_RANKS)
-    job = jobs[communicator.partition]
-
-    if communicator.rank == 0:
-        print('starting lj_fluid_nvt_mc_cpu:', job)
-
-    device = hoomd.device.CPU(communicator=communicator,
-                              msg_file=job.fn('run_nvt_mc_cpu.log'))
-    run_nvt_mc_sim(job, device)
-
-
-@Project.pre.after(lj_fluid_create_initial_state)
-@Project.post(
-    util.gsd_step_greater_equal_function('nvt_mc_gpu_quantities.gsd',
-                                         TOTAL_STEPS))
-@Project.operation(directives=dict(walltime=CONFIG["max_walltime"],
-                                   executable=CONFIG["executable"],
-                                   nranks=util.total_ranks_function(1),
-                                   ngpu=util.total_ranks_function(1)),
-                   aggregator=partition_jobs_gpu)
-def lj_fluid_nvt_mc_gpu(*jobs):
-    """Run NVT MC on the GPU."""
-    import hoomd
-
-    communicator = hoomd.communicator.Communicator(ranks_per_partition=1)
-    job = jobs[communicator.partition]
-
-    if communicator.rank == 0:
-        print('starting lj_fluid_nvt_mc_gpu:', job)
-
-    device = hoomd.device.GPU(communicator=communicator,
-                              msg_file=job.fn('run_nvt_mc_gpu.log'))
-    run_nvt_mc_sim(job, device)
-
-
 def run_npt_mc_sim(job, device):
     """Run MC sim in NPT."""
     import hoomd
@@ -625,31 +576,6 @@ def run_npt_mc_sim(job, device):
     device.notice('Done.')
 
 
-@Project.pre.after(lj_fluid_create_initial_state)
-@Project.post(
-    util.gsd_step_greater_equal_function('npt_mc_cpu_quantities.gsd',
-                                         TOTAL_STEPS))
-@Project.operation(directives=dict(
-    walltime=CONFIG["max_walltime"],
-    executable=CONFIG["executable"],
-    nranks=util.total_ranks_function(NUM_CPU_RANKS)),
-                   aggregator=partition_jobs_cpu_mpi)
-def lj_fluid_npt_mc_cpu(*jobs):
-    """Run NPT MC on the CPU."""
-    import hoomd
-
-    communicator = hoomd.communicator.Communicator(
-        ranks_per_partition=NUM_CPU_RANKS)
-    job = jobs[communicator.partition]
-
-    if communicator.rank == 0:
-        print('starting lj_fluid_npt_mc_cpu:', job)
-
-    device = hoomd.device.CPU(communicator=communicator,
-                              msg_file=job.fn('run_npt_mc_cpu.log'))
-    run_npt_mc_sim(job, device)
-
-
 mc_sampling_jobs = []
 mc_job_definitions = [
     {
@@ -685,8 +611,8 @@ def add_mc_sampling_job(mode, device_name, ranks_per_partition, aggregator):
     @Project.pre.after(lj_fluid_create_initial_state)
     @Project.post(
         util.gsd_step_greater_equal_function(
-            f'{mode}_{device_name}_quantities.gsd', TOTAL_STEPS))
-    @Project.operation(name=f'lj_fluid_{mode}_{device_name}',
+            f'{mode}_mc_{device_name}_quantities.gsd', TOTAL_STEPS))
+    @Project.operation(name=f'lj_fluid_{mode}_mc_{device_name}',
                        directives=directives,
                        aggregator=aggregator)
     def sampling_operation(*jobs):
@@ -698,7 +624,7 @@ def add_mc_sampling_job(mode, device_name, ranks_per_partition, aggregator):
         job = jobs[communicator.partition]
 
         if communicator.rank == 0:
-            print(f'starting lj_fluid_{mode}_{device_name}', job)
+            print(f'starting lj_fluid_{mode}_mc_{device_name}', job)
 
         if device_name == 'gpu':
             device_cls = hoomd.device.GPU
@@ -706,7 +632,7 @@ def add_mc_sampling_job(mode, device_name, ranks_per_partition, aggregator):
             device_cls = hoomd.device.CPU
 
         device = device_cls(communicator=communicator,
-                            msg_file=job.fn(f'run_{mode}_{device_name}.log'))
+                            msg_file=job.fn(f'run_{mode}_mc_{device_name}.log'))
 
         globals().get(f'run_{mode}_mc_sim')(job, device)
 
