@@ -662,14 +662,14 @@ def lj_fluid_analyze(job):
     print('starting lj_fluid_analyze:', job)
 
     constant = dict(
-        langevin_md_cpu='density',
-        langevin_md_gpu='density',
-        nvt_md_cpu='density',
-        nvt_md_gpu='density',
+        nvt_langevin_md_cpu='density',
+        nvt_langevin_md_gpu='density',
+        nvt_mttk_md_cpu='density',
+        nvt_mttk_md_gpu='density',
         nvt_mc_cpu='density',
         nvt_mc_gpu='density',
-        npt_md_cpu='pressure',
-        npt_md_gpu='pressure',
+        npt_mttk_md_cpu='pressure',
+        npt_mttk_md_gpu='pressure',
         npt_mc_cpu='pressure',
         npt_mc_gpu='pressure',
     )
@@ -721,7 +721,7 @@ def lj_fluid_analyze(job):
             densities[sim_mode] = numpy.ones(len(
                 energies[sim_mode])) * job.statepoint.density
 
-        if 'md' in sim_mode and not sim_mode.startswith('langevin'):
+        if 'md' in sim_mode and not 'langevin' in sim_mode:
             momentum_vector = get_log_quantity(traj,
                                                'md/Integrator/linear_momentum')
             linear_momentum[sim_mode] = [
