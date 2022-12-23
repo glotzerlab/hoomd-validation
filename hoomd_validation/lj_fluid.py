@@ -721,7 +721,7 @@ def lj_fluid_analyze(job):
             densities[sim_mode] = numpy.ones(len(
                 energies[sim_mode])) * job.statepoint.density
 
-        if 'md' in sim_mode and not 'langevin' in sim_mode:
+        if 'md' in sim_mode and 'langevin' not in sim_mode:
             momentum_vector = get_log_quantity(traj,
                                                'md/Integrator/linear_momentum')
             linear_momentum[sim_mode] = [
