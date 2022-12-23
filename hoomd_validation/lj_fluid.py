@@ -227,25 +227,27 @@ def run_md_sim(job, device, ensemble, thermostat):
             method.gamma.default = 1.0
         elif thermostat == 'mttk':
             method = md.methods.ConstantVolume(filter=hoomd.filter.All())
-            method.thermostat = hoomd.md.methods.thermostats.MTTK(kT=job.statepoint.kT,
-                                    tau=0.25)
+            method.thermostat = hoomd.md.methods.thermostats.MTTK(
+                kT=job.statepoint.kT, tau=0.25)
         elif thermostat == 'bussi':
             method = md.methods.ConstantVolume(filter=hoomd.filter.All())
-            method.thermostat = hoomd.md.methods.thermostats.Bussi(kT=job.statepoint.kT)
+            method.thermostat = hoomd.md.methods.thermostats.Bussi(
+                kT=job.statepoint.kT)
         else:
             raise ValueError(f'Unsupported thermostat {thermostat}')
     elif ensemble == 'npt':
         p = job.statepoint.pressure
         method = md.methods.ConstantPressure(hoomd.filter.All(),
-                                S=[p, p, p, 0, 0, 0],
-                                tauS=3,
-                                couple='xyz',
-                                gamma=2.0)
+                                             S=[p, p, p, 0, 0, 0],
+                                             tauS=3,
+                                             couple='xyz',
+                                             gamma=2.0)
         if thermostat == 'mttk':
-            method.thermostat = hoomd.md.methods.thermostats.MTTK(kT=job.statepoint.kT,
-                                    tau=0.25)
+            method.thermostat = hoomd.md.methods.thermostats.MTTK(
+                kT=job.statepoint.kT, tau=0.25)
         elif thermostat == 'bussi':
-            method.thermostat = hoomd.md.methods.thermostats.Bussi(kT=job.statepoint.kT)
+            method.thermostat = hoomd.md.methods.thermostats.Bussi(
+                kT=job.statepoint.kT)
         else:
             raise ValueError(f'Unsupported thermostat {thermostat}')
 
@@ -745,7 +747,7 @@ def lj_fluid_analyze(job):
             densities[sim_mode] = numpy.ones(len(
                 energies[sim_mode])) * job.statepoint.density
 
-        if 'md' in sim_mode and not 'langevin' in sim_mode:
+        if 'md' in sim_mode and 'langevin' not in sim_mode:
             momentum_vector = get_log_quantity(traj,
                                                'md/Integrator/linear_momentum')
             linear_momentum[sim_mode] = [
