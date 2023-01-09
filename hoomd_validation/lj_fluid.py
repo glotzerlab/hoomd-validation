@@ -1176,7 +1176,7 @@ def lj_fluid_nve_md_cpu(*jobs):
     job = jobs[communicator.partition]
 
     if communicator.rank == 0:
-        print('starting lj_fluid_nve_md_gpu:', job)
+        print('starting lj_fluid_nve_md_cpu:', job)
 
     device = hoomd.device.CPU(communicator=communicator,
                               msg_file=job.fn('run_nve_md_cpu.log'))
@@ -1185,7 +1185,7 @@ def lj_fluid_nve_md_cpu(*jobs):
 
 @Project.pre.after(lj_fluid_create_initial_state)
 @Project.post(
-    util.gsd_step_greater_equal_function('nve_md_cpu_quantities.gsd',
+    util.gsd_step_greater_equal_function('nve_md_gpu_quantities.gsd',
                                          800_000_000))
 @Project.operation(directives=dict(walltime=CONFIG["max_walltime"],
                                    executable=CONFIG["executable"],
