@@ -23,7 +23,7 @@ hoomd build at submission time:
 
 CPU:
 ```
-SBATCH_ACCOUNT=bbgw-delta-cpu PYTHONPATH=/scratch/bbgw/${USER}build/hoomd-cpu SBATCH_EXPORT=PYTHONPATH python hoomd_validation/project.py submit -o 'hard_disk_npt_cpu'
+SBATCH_ACCOUNT=bbgw-delta-cpu PYTHONPATH=/scratch/bbgw/${USER}build/hoomd-cpu SBATCH_EXPORT=PYTHONPATH python hoomd_validation/project.py submit -o '.*_cpu'
 ```
 
 GPU:
