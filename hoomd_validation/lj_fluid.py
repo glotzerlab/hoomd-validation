@@ -348,7 +348,7 @@ def add_md_sampling_job(ensemble, thermostat, device_name, ranks_per_partition,
                       nranks=util.total_ranks_function(ranks_per_partition))
 
     if device_name == 'gpu':
-        directives['ngpu'] = directives['nranks']
+        directives['ngpu'] = util.total_ranks_function(ranks_per_partition)
 
     @Project.pre.after(lj_fluid_create_initial_state)
     @Project.post(
@@ -628,7 +628,7 @@ def add_mc_sampling_job(mode, device_name, ranks_per_partition, aggregator):
                       nranks=util.total_ranks_function(ranks_per_partition))
 
     if device_name == 'gpu':
-        directives['ngpu'] = directives['nranks']
+        directives['ngpu'] = util.total_ranks_function(ranks_per_partition)
 
     @Project.pre.after(lj_fluid_create_initial_state)
     @Project.post(
