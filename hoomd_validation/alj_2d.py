@@ -313,9 +313,9 @@ analysis_aggregator = aggregator.groupby(key=['kT', 'density', 'num_particles'],
 
 
 @Project.pre(
-    util.gsd_step_greater_equal_function('nve_md_cpu_quantities.gsd', TOTAL_STEPS))
+    util.gsd_step_greater_equal_function('nve_md_cpu_quantities.gsd', RUN_STEPS))
 @Project.pre(
-    util.gsd_step_greater_equal_function('nve_md_gpu_quantities.gsd', TOTAL_STEPS))
+    util.gsd_step_greater_equal_function('nve_md_gpu_quantities.gsd', RUN_STEPS))
 @Project.post(lambda *jobs: util.true_all(
     *jobs, key='alj_2d_conservation_analysis_complete'))
 @Project.operation(directives=dict(walltime=1, executable=CONFIG["executable"]),
