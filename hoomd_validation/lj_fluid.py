@@ -992,17 +992,23 @@ def lj_fluid_compare_modes(*jobs):
 
 
 @Project.pre(
-    lambda *jobs: util.true_all(*jobs, key='lj_fluid_langevin_md_cpu_complete'))
+    util.gsd_step_greater_equal_function('nvt_langevin_md_cpu_quantities.gsd',
+                                         TOTAL_STEPS))
 @Project.pre(
-    lambda *jobs: util.true_all(*jobs, key='lj_fluid_langevin_md_gpu_complete'))
+    util.gsd_step_greater_equal_function('nvt_langevin_md_gpu_quantities.gsd',
+                                         TOTAL_STEPS))
 @Project.pre(
-    lambda *jobs: util.true_all(*jobs, key='lj_fluid_nvt_md_cpu_complete'))
+    util.gsd_step_greater_equal_function('nvt_mttk_md_cpu_quantities.gsd',
+                                         TOTAL_STEPS))
 @Project.pre(
-    lambda *jobs: util.true_all(*jobs, key='lj_fluid_nvt_md_gpu_complete'))
+    util.gsd_step_greater_equal_function('nvt_mttk_md_gpu_quantities.gsd',
+                                         TOTAL_STEPS))
 @Project.pre(
-    lambda *jobs: util.true_all(*jobs, key='lj_fluid_npt_md_cpu_complete'))
+    util.gsd_step_greater_equal_function('npt_mttk_md_cpu_quantities.gsd',
+                                         TOTAL_STEPS))
 @Project.pre(
-    lambda *jobs: util.true_all(*jobs, key='lj_fluid_npt_md_gpu_complete'))
+    util.gsd_step_greater_equal_function('npt_mttk_md_gpu_quantities.gsd',
+                                         TOTAL_STEPS))
 @Project.post(
     lambda *jobs: util.true_all(*jobs, key='lj_fluid_ke_analyze_complete'))
 @Project.operation(directives=dict(walltime=1, executable=CONFIG["executable"]),
@@ -1207,12 +1213,10 @@ def lj_fluid_nve_md_gpu(*jobs):
     run_nve_md_sim(job, device, run_length=800_000_000)
 
 
-@Project.pre(lambda *jobs:
-    util.gsd_step_greater_equal_function('nve_md_gpu_quantities.gsd',
-                                         800_000_000)(*jobs[0:NUM_NVE_RUNS]))
-@Project.pre(lambda *jobs:
-    util.gsd_step_greater_equal_function('nve_md_cpu_quantities.gsd',
-                                         200_000_000)(*jobs[0:NUM_NVE_RUNS]))
+@Project.pre(lambda *jobs: util.gsd_step_greater_equal_function(
+    'nve_md_gpu_quantities.gsd', 800_000_000)(*jobs[0:NUM_NVE_RUNS]))
+@Project.pre(lambda *jobs: util.gsd_step_greater_equal_function(
+    'nve_md_cpu_quantities.gsd', 200_000_000)(*jobs[0:NUM_NVE_RUNS]))
 @Project.post(lambda *jobs: util.true_all(
     *jobs[0:NUM_NVE_RUNS], key='lj_fluid_conservation_analysis_complete'))
 @Project.operation(directives=dict(walltime=1, executable=CONFIG["executable"]),
