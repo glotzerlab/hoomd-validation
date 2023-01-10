@@ -4,6 +4,8 @@
 """Helper functions for grabbing data and plotting."""
 
 import numpy
+import io
+import gsd.fl
 
 
 def read_gsd_log_trajectory(traj):
@@ -38,6 +40,79 @@ def true_all(*jobs, key):
     return all(job.document.get(key, False) for job in jobs)
 
 
+def total_ranks_function(ranks_per_job):
+    """Make a function that computes the number of ranks for an aggregate."""
+    return lambda *jobs: ranks_per_job * len(jobs)
+
+
+def gsd_step_greater_equal_function(gsd_filename, step):
+    """Make a function that compares the timestep in the gsd to step.
+
+    Returns `True` when the final timestep in ``job.fn(gsd_filename)`` is
+    greater than or equal to ``step``.
+
+    The function returns `False` for files that do not exist and files that
+    have no frames.
+    """
+
+    def gsd_step_greater_equal(*jobs):
+        for job in jobs:
+            if not job.isfile(gsd_filename):
+                return False
+
+            try:
+                with gsd.fl.open(name=job.fn(gsd_filename), mode='rb') as f:
+                    if f.nframes == 0:
+                        return False
+
+                    last_frame = f.nframes - 1
+
+                    if f.chunk_exists(frame=last_frame,
+                                      name='configuration/step'):
+                        gsd_step = f.read_chunk(frame=last_frame,
+                                                name='configuration/step')[0]
+                        if gsd_step < step:
+                            return False
+                    else:
+                        return False
+            except RuntimeError:
+                # treat corrupt GSD files as not complete, as these are still
+                # being written.
+                return False
+
+        return True
+
+    return gsd_step_greater_equal
+
+
+def get_job_filename(sim_mode, device, name, type):
+    """Construct a job filename."""
+    import hoomd
+
+    suffix = 'cpu'
+    if isinstance(device, hoomd.device.GPU):
+        suffix = 'gpu'
+
+    return f"{sim_mode}_{suffix}_{name}.{type}"
+
+
+def run_up_to_walltime(sim, end_step, steps, walltime_stop):
+    """Run a simulation, stopping early if a walltime limit is reached.
+
+    Args:
+        sim (hoomd.Simulation): simulation object.
+        end_step (int): Timestep to stop at.
+        steps (int): Number of steps to run in each batch.
+        walltime_stop (int): Walltime (in seconds) to stop at.
+    """
+    while sim.timestep < end_step:
+        sim.run(min(steps, end_step - sim.timestep))
+
+        next_walltime = sim.device.communicator.walltime + sim.walltime
+        if (next_walltime >= walltime_stop):
+            break
+
+
 def make_simulation(
     job,
     device,
@@ -48,6 +123,7 @@ def make_simulation(
     table_write_period,
     trajectory_write_period,
     log_write_period,
+    log_start_step,
 ):
     """Make a simulation.
 
@@ -74,12 +150,10 @@ def make_simulation(
             trajectory writes.
 
         log_write_period (int): Number of timesteps between log file writes.
+
+        log_start_step (int): Timestep to start writing trajectories.
     """
     import hoomd
-
-    suffix = 'cpu'
-    if isinstance(device, hoomd.device.GPU):
-        suffix = 'gpu'
 
     sim = hoomd.Simulation(device)
     sim.seed = job.statepoint.replicate_idx
@@ -88,25 +162,41 @@ def make_simulation(
     sim.operations.integrator = integrator
 
     # write to terminal
+    if sim.device.communicator.rank == 0:
+        file = open(job.fn(get_job_filename(sim_mode, device, 'tps', 'log')),
+                    mode='w',
+                    newline='\n')
+    else:
+        file = io.StringIO("")
     logger_table = hoomd.logging.Logger(categories=['scalar'])
     logger_table.add(sim, quantities=['timestep', 'final_timestep', 'tps'])
+    logger_table[('walltime')] = (sim.device.communicator, 'walltime', 'scalar')
     table_writer = hoomd.write.Table(hoomd.trigger.Periodic(table_write_period),
-                                     logger_table)
+                                     logger_table,
+                                     output=file)
     sim.operations.add(table_writer)
 
     # write particle trajectory to gsd file
     trajectory_writer = hoomd.write.GSD(
-        filename=job.fn(f"{sim_mode}_{suffix}_trajectory.gsd"),
-        trigger=hoomd.trigger.Periodic(trajectory_write_period),
-        mode='wb')
+        filename=job.fn(get_job_filename(sim_mode, device, 'trajectory',
+                                         'gsd')),
+        trigger=hoomd.trigger.And([
+            hoomd.trigger.Periodic(trajectory_write_period),
+            hoomd.trigger.After(log_start_step)
+        ]),
+        mode='ab')
     sim.operations.add(trajectory_writer)
 
     # write logged quantities to gsd file
     quantity_writer = hoomd.write.GSD(
         filter=hoomd.filter.Null(),
-        filename=job.fn(f"{sim_mode}_{suffix}_quantities.gsd"),
-        trigger=hoomd.trigger.Periodic(log_write_period),
-        mode='wb',
+        filename=job.fn(get_job_filename(sim_mode, device, 'quantities',
+                                         'gsd')),
+        trigger=hoomd.trigger.And([
+            hoomd.trigger.Periodic(log_write_period),
+            hoomd.trigger.After(log_start_step)
+        ]),
+        mode='ab',
         log=logger)
     sim.operations.add(quantity_writer)
 

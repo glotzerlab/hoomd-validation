@@ -5,12 +5,16 @@
 
 import config
 from project_class import Project
+import flow
 
 # Define subproject flow operations
 import alj_2d
 import lj_fluid
 import hard_disk
 import hard_sphere
+
+# use srun on delta (mpiexec fails on multiple nodes)
+flow.environments.xsede.DeltaEnvironment.mpi_cmd = "srun"
 
 __all__ = [
     "alj_2d",

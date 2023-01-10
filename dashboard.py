@@ -20,7 +20,8 @@ class ValidationDashboard(Dashboard):
 
     def job_title(self, job):
         """Name jobs."""
-        if job.statepoint.subproject == 'lj_fluid':
+        if (job.statepoint.subproject == 'lj_fluid'
+                or job.statepoint.subproject == 'alj_2d'):
             return f"lj_fluid: kT={job.statepoint.kT}, " \
                    f"rho={job.statepoint.density}"
         elif (job.statepoint.subproject == 'hard_disk'

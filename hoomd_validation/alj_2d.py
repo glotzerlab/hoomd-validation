@@ -9,11 +9,14 @@ from flow import aggregator
 import util
 import os
 
-# Run parameters shared between simulations
-RANDOMIZE_STEPS = 5e4
-RUN_STEPS = 2e6
-WRITE_PERIOD = 4000
-LOG_PERIOD = {'trajectory': 50000, 'quantities': 2000}
+# Run parameters shared between simulations.
+# Step counts must be even and a multiple of the log quantity period.
+RANDOMIZE_STEPS = 20_000
+RUN_STEPS = 300_000_000
+TOTAL_STEPS = RANDOMIZE_STEPS + RUN_STEPS
+
+WRITE_PERIOD = 4_000
+LOG_PERIOD = {'trajectory': 50_000, 'quantities': 2_000}
 ALJ_PARAMS = {'epsilon': 1.0}
 
 # Unit area hexagon
@@ -25,12 +28,14 @@ PARTICLE_VERTICES = [[6.20403239e-01, 0.00000000e+00, 0],
                      [3.10201620e-01, -5.37284966e-01, 0]]
 CIRCUMCIRCLE_RADIUS = 0.6204032392788702
 INCIRCLE_RADIUS = 0.5372849659264116
+NUM_REPLICATES = min(4, CONFIG["replicates"])
+NUM_CPU_RANKS = min(8, CONFIG["max_cores_sim"])
 
 
 def job_statepoints():
     """list(dict): A list of statepoints for this subproject."""
     num_particles = 42**2
-    replicate_indices = range(4)
+    replicate_indices = range(NUM_REPLICATES)
     params_list = [(1.0, 0.4)]
     for kT, density in params_list:
         for idx in replicate_indices:
@@ -48,20 +53,40 @@ def is_alj_2d(job):
     return job.statepoint['subproject'] == 'alj_2d'
 
 
-@Project.operation(directives=dict(executable=CONFIG["executable"],
-                                   nranks=8,
-                                   walltime=1))
-@Project.pre(is_alj_2d)
+partition_jobs_cpu = aggregator.groupsof(num=min(
+    NUM_REPLICATES, CONFIG["max_cores_submission"] // NUM_CPU_RANKS),
+                                         sort_by='density',
+                                         select=is_alj_2d)
+
+partition_jobs_gpu = aggregator.groupsof(num=min(NUM_REPLICATES,
+                                                 CONFIG["max_gpus_submission"]),
+                                         sort_by='density',
+                                         select=is_alj_2d)
+
+
 @Project.post.isfile('alj_2d_initial_state.gsd')
-def alj_2d_create_initial_state(job):
+@Project.operation(directives=dict(
+    executable=CONFIG["executable"],
+    nranks=util.total_ranks_function(NUM_CPU_RANKS),
+    walltime=1),
+                   aggregator=partition_jobs_cpu)
+def alj_2d_create_initial_state(*jobs):
     """Create initial system configuration."""
     import hoomd
     import numpy
     import itertools
 
+    communicator = hoomd.communicator.Communicator(
+        ranks_per_partition=NUM_CPU_RANKS)
+    job = jobs[communicator.partition]
+
+    if communicator.rank == 0:
+        print('starting alj2_create_initial_state:', job)
+
     init_diameter = CIRCUMCIRCLE_RADIUS * 2 * 1.15
 
-    device = hoomd.device.CPU(msg_file=job.fn('create_initial_state.log'))
+    device = hoomd.device.CPU(communicator=communicator,
+                              msg_file=job.fn('create_initial_state.log'))
 
     num_particles = job.statepoint['num_particles']
     density = job.statepoint['density']
@@ -176,10 +201,17 @@ def make_md_simulation(job,
     logger.add(integrator, quantities=['linear_momentum'])
 
     # simulation
-    sim = util.make_simulation(job, device, initial_state, integrator, sim_mode,
-                               logger, WRITE_PERIOD,
-                               LOG_PERIOD['trajectory'] * period_multiplier,
-                               LOG_PERIOD['quantities'] * period_multiplier)
+    sim = util.make_simulation(
+        job=job,
+        device=device,
+        initial_state=initial_state,
+        integrator=integrator,
+        sim_mode=sim_mode,
+        logger=logger,
+        table_write_period=WRITE_PERIOD,
+        trajectory_write_period=LOG_PERIOD['trajectory'] * period_multiplier,
+        log_write_period=LOG_PERIOD['quantities'] * period_multiplier,
+        log_start_step=RANDOMIZE_STEPS)
     sim.operations.add(thermo)
 
     # thermalize momenta
@@ -188,71 +220,110 @@ def make_md_simulation(job,
     return sim
 
 
-def run_nve_md_sim(job, device, run_length):
+def run_nve_md_sim(job, device):
     """Run the MD simulation in NVE."""
     import hoomd
 
-    initial_state = job.fn('alj_2d_initial_state.gsd')
-    nvt = hoomd.md.methods.NVE(hoomd.filter.All())
     sim_mode = 'nve_md'
+    restart_filename = util.get_job_filename(sim_mode, device, 'restart', 'gsd')
+    if job.isfile(restart_filename):
+        initial_state = job.fn(restart_filename)
+    else:
+        initial_state = job.fn('alj_2d_initial_state.gsd')
+
+    nve = hoomd.md.methods.NVE(hoomd.filter.All())
 
     sim = make_md_simulation(job,
                              device,
                              initial_state,
-                             nvt,
+                             nve,
                              sim_mode,
                              period_multiplier=300)
 
     # Run for a long time to look for energy and momentum drift
     device.notice('Running...')
-    sim.run(run_length)
-    device.notice('Done.')
+
+    util.run_up_to_walltime(sim=sim,
+                            end_step=TOTAL_STEPS,
+                            steps=500_000,
+                            walltime_stop=CONFIG["max_walltime"] * 3600
+                            - 10 * 60)
+
+    hoomd.write.GSD.write(state=sim.state,
+                          filename=job.fn(restart_filename),
+                          mode='wb')
+
+    if sim.timestep == TOTAL_STEPS:
+        device.notice('Done.')
+    else:
+        device.notice('Ending run early due to walltime limits at:'
+                      f'{device.communicator.walltime}')
 
 
-@Project.operation(directives=dict(walltime=48,
-                                   executable=CONFIG["executable"],
-                                   nranks=8))
 @Project.pre.after(alj_2d_create_initial_state)
-@Project.post.true('alj_2d_nve_md_cpu_complete')
-def alj_2d_nve_md_cpu(job):
+@Project.post(
+    util.gsd_step_greater_equal_function('nve_md_cpu_quantities.gsd',
+                                         RUN_STEPS))
+@Project.operation(directives=dict(
+    walltime=CONFIG["max_walltime"],
+    executable=CONFIG["executable"],
+    nranks=util.total_ranks_function(NUM_CPU_RANKS)),
+                   aggregator=partition_jobs_cpu)
+def alj_2d_nve_md_cpu(*jobs):
     """Run NVE MD on the CPU."""
     import hoomd
-    device = hoomd.device.CPU(msg_file=job.fn('run_nve_md_cpu.log'))
-    run_nve_md_sim(job, device, run_length=600e6)
 
-    if device.communicator.rank == 0:
-        job.document['alj_2d_nve_md_cpu_complete'] = True
+    communicator = hoomd.communicator.Communicator(
+        ranks_per_partition=NUM_CPU_RANKS)
+    job = jobs[communicator.partition]
+
+    if communicator.rank == 0:
+        print('starting alj2_2d_nve_md_cpu:', job)
+
+    device = hoomd.device.CPU(communicator=communicator,
+                              msg_file=job.fn('run_nve_md_cpu.log'))
+    run_nve_md_sim(job, device)
 
 
-@Project.operation(directives=dict(walltime=48,
-                                   executable=CONFIG["executable"],
-                                   nranks=1,
-                                   ngpu=1))
 @Project.pre.after(alj_2d_create_initial_state)
-@Project.post.true('alj_2d_nve_md_gpu_complete')
-def alj_2d_nve_md_gpu(job):
+@Project.post(
+    util.gsd_step_greater_equal_function('nve_md_gpu_quantities.gsd',
+                                         RUN_STEPS))
+@Project.operation(directives=dict(walltime=CONFIG["max_walltime"],
+                                   executable=CONFIG["executable"],
+                                   nranks=util.total_ranks_function(1),
+                                   ngpu=util.total_ranks_function(1)),
+                   aggregator=partition_jobs_gpu)
+def alj_2d_nve_md_gpu(*jobs):
     """Run NVE MD on the GPU."""
     import hoomd
-    device = hoomd.device.GPU(msg_file=job.fn('run_nve_md_gpu.log'))
-    run_nve_md_sim(job, device, run_length=600e6)
 
-    if device.communicator.rank == 0:
-        job.document['alj_2d_nve_md_gpu_complete'] = True
+    communicator = hoomd.communicator.Communicator(ranks_per_partition=1)
+    job = jobs[communicator.partition]
+
+    if communicator.rank == 0:
+        print('starting alj2_2d_nve_md_gpu:', job)
+
+    device = hoomd.device.GPU(communicator=communicator,
+                              msg_file=job.fn('run_nve_md_gpu.log'))
+    run_nve_md_sim(job, device)
 
 
-agg = aggregator.groupby(key=['kT', 'density', 'num_particles'],
-                         sort_by='replicate_idx',
-                         select=is_alj_2d)
+analysis_aggregator = aggregator.groupby(key=['kT', 'density', 'num_particles'],
+                                         sort_by='replicate_idx',
+                                         select=is_alj_2d)
 
 
-@agg
-@Project.operation(directives=dict(walltime=1, executable=CONFIG["executable"]))
 @Project.pre(
-    lambda *jobs: util.true_all(*jobs, key='alj_2d_nve_md_cpu_complete'))
+    util.gsd_step_greater_equal_function('nve_md_cpu_quantities.gsd',
+                                         RUN_STEPS))
 @Project.pre(
-    lambda *jobs: util.true_all(*jobs, key='alj_2d_nve_md_gpu_complete'))
+    util.gsd_step_greater_equal_function('nve_md_gpu_quantities.gsd',
+                                         RUN_STEPS))
 @Project.post(lambda *jobs: util.true_all(
     *jobs, key='alj_2d_conservation_analysis_complete'))
+@Project.operation(directives=dict(walltime=1, executable=CONFIG["executable"]),
+                   aggregator=analysis_aggregator)
 def alj_2d_conservation_analyze(*jobs):
     """Analyze the output of NVE simulations and inspect conservation."""
     import gsd.hoomd
@@ -263,6 +334,8 @@ def alj_2d_conservation_analyze(*jobs):
     import matplotlib.figure
     matplotlib.style.use('ggplot')
     from util import read_gsd_log_trajectory, get_log_quantity
+
+    print('starting alj_2d_conservation_analyze:', jobs[0])
 
     sim_modes = ['nve_md_cpu', 'nve_md_gpu']
 
