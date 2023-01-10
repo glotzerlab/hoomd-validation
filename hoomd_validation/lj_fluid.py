@@ -668,7 +668,7 @@ if CONFIG['enable_llvm']:
 
 @Project.pre.after(*md_sampling_jobs)
 @Project.pre.after(*mc_sampling_jobs)
-# @Project.post.true('lj_fluid_analysis_complete')
+@Project.post.true('lj_fluid_analysis_complete')
 @Project.operation(directives=dict(walltime=1, executable=CONFIG["executable"]))
 def lj_fluid_analyze(job):
     """Analyze the output of all simulation modes."""
@@ -1004,10 +1004,16 @@ def lj_fluid_compare_modes(*jobs):
     util.gsd_step_greater_equal_function('nvt_mttk_md_gpu_quantities.gsd',
                                          TOTAL_STEPS))
 @Project.pre(
-    util.gsd_step_greater_equal_function('npt_mttk_md_cpu_quantities.gsd',
+    util.gsd_step_greater_equal_function('nvt_bussi_md_cpu_quantities.gsd',
                                          TOTAL_STEPS))
 @Project.pre(
-    util.gsd_step_greater_equal_function('npt_mttk_md_gpu_quantities.gsd',
+    util.gsd_step_greater_equal_function('nvt_bussi_md_gpu_quantities.gsd',
+                                         TOTAL_STEPS))
+@Project.pre(
+    util.gsd_step_greater_equal_function('npt_bussi_md_cpu_quantities.gsd',
+                                         TOTAL_STEPS))
+@Project.pre(
+    util.gsd_step_greater_equal_function('npt_bussi_md_gpu_quantities.gsd',
                                          TOTAL_STEPS))
 @Project.post(
     lambda *jobs: util.true_all(*jobs, key='lj_fluid_ke_analyze_complete'))
