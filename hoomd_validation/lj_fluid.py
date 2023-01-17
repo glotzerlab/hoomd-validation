@@ -241,7 +241,7 @@ def run_md_sim(job, device, ensemble, thermostat):
                                              S=[p, p, p, 0, 0, 0],
                                              tauS=3,
                                              couple='xyz',
-                                             gamma=2.0)
+                                             gamma=0.5)
         if thermostat == 'mttk':
             method.thermostat = hoomd.md.methods.thermostats.MTTK(
                 kT=job.statepoint.kT, tau=0.25)
