@@ -10,6 +10,7 @@ import flow
 # Define subproject flow operations
 import alj_2d
 import lj_fluid
+import lj_union
 import hard_disk
 import hard_sphere
 
@@ -19,6 +20,7 @@ flow.environments.xsede.DeltaEnvironment.mpi_cmd = "srun"
 __all__ = [
     "alj_2d",
     "lj_fluid",
+    "lj_union",
     "hard_disk",
     "hard_sphere",
 ]
