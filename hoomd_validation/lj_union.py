@@ -189,7 +189,7 @@ def make_md_simulation(job,
     from hoomd import md
 
     # pair force
-    nlist = md.nlist.Cell(buffer=0.4)
+    nlist = md.nlist.Cell(buffer=0.4, exclusions=('body',))
     lj = md.pair.LJ(default_r_cut=LJ_PARAMS['r_cut'],
                     default_r_on=LJ_PARAMS['r_on'],
                     nlist=nlist)
