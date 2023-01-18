@@ -813,7 +813,7 @@ def lj_union_analyze(job):
             energies[sim_mode] = numpy.array(
                 get_log_quantity(
                     traj,
-                    'hpmc/pair/user/CPPPotential/energy')) * job.statepoint.kT
+                    'hpmc/pair/user/CPPPotentialUnion/energy')) * job.statepoint.kT
 
         if constant[sim_mode] == 'density' and 'md' in sim_mode:
             pressures[sim_mode] = get_log_quantity(
