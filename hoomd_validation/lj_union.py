@@ -888,8 +888,7 @@ def lj_union_analyze(job):
     plot(ax=ax,
          data=kinetic_temperature,
          quantity_name='kinetic temperature',
-         base_line=job.sp.kT,
-         legend=True)
+         base_line=job.sp.kT)
 
     ax = fig.add_subplot(3, 2, 5)
     plot(ax=ax,
