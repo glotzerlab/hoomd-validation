@@ -666,6 +666,7 @@ if CONFIG['enable_llvm']:
         add_mc_sampling_job(**definition)
 
 
+@Project.pre(is_lj_fluid)
 @Project.pre.after(*md_sampling_jobs)
 @Project.pre.after(*mc_sampling_jobs)
 @Project.post.true('lj_fluid_analysis_complete')

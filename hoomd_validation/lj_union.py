@@ -749,6 +749,7 @@ if CONFIG['enable_llvm']:
         add_mc_sampling_job(**definition)
 
 
+@Project.pre(is_lj_union)
 @Project.pre.after(*md_sampling_jobs)
 @Project.pre.after(*mc_sampling_jobs)
 @Project.post.true('lj_union_analysis_complete')
