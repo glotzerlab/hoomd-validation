@@ -1205,7 +1205,7 @@ def run_nve_md_sim(job, device, run_length):
     if job.isfile(restart_filename):
         initial_state = job.fn(restart_filename)
     else:
-        initial_state = job.fn('lj_union_initial_state.gsd')
+        initial_state = job.fn('lj_union_initial_state_md.gsd')
 
     nve = hoomd.md.methods.ConstantVolume(hoomd.filter.All())
 
