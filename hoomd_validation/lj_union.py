@@ -304,7 +304,7 @@ def run_md_sim(job, device, ensemble, thermostat):
 
     sim_mode = f'{ensemble}_{thermostat}_md'
 
-    density_compute = ComputeDensity()
+    density_compute = ComputeDensity(job.statepoint['num_particles'])
     sim = make_md_simulation(job,
                              device,
                              initial_state,
@@ -599,7 +599,7 @@ def run_npt_mc_sim(job, device):
     sim_mode = 'npt_mc'
 
     # compute the density
-    compute_density = ComputeDensity()
+    compute_density = ComputeDensity(job.statepoint['num_particles'])
 
     # box updates
     boxmc = hpmc.update.BoxMC(betaP=job.statepoint.pressure / job.sp.kT,

@@ -10,12 +10,21 @@ class ComputeDensity(hoomd.custom.Action):
     """Compute the density of particles in the system.
 
     The density computed is a number density.
+
+    Args:
+        N: When not None, Use N instead of the number of particles when
+           computing the density.
     """
+    def __init__(self, N=None):
+        self.N = N
 
     @hoomd.logging.log
     def density(self):
         """float: The density of the system."""
-        return self._state.N_particles / self._state.box.volume
+        if self.N is None:
+            return self._state.N_particles / self._state.box.volume
+        else:
+            return self.N / self._state.box.volume
 
     def act(self, timestep):
         """Dummy act method."""
