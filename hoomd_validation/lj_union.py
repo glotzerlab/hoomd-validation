@@ -463,6 +463,7 @@ def make_mc_simulation(job,
     # integrator
     mc = hpmc.integrate.Sphere(nselect=1)
     mc.shape['A'] = dict(diameter=0.0)
+    mc.shape['R'] = dict(diameter=0.0, orientable=True)
 
     # pair potential
     epsilon = LJ_PARAMS['epsilon'] / job.sp.kT  # noqa F841
@@ -508,15 +509,34 @@ def make_mc_simulation(job,
                 return energy;
             """.format(epsilon=epsilon, sigma=sigma, r_on=r_on, r_cut=r_cut)
 
-    lj_jit_potential = hpmc.pair.user.CPPPotential(r_cut=r_cut,
-                                                   code=lj_str,
-                                                   param_array=[])
+    if isinstance(device, hoomd.device.CPU):
+        code_isotropic = 'return 0.0f;'
+    else:
+        code_isotropic = ''
+
+    lj_jit_potential = hpmc.pair.user.CPPPotentialUnion(r_cut_constituent=r_cut,
+                                                   code_constituent=lj_str,
+                                                   r_cut_isotropic=0,
+                                                   code_isotropic=code_isotropic,
+                                                   param_array_constituent=[],
+                                                   param_array_isotropic=[])
+    lj_jit_potential.positions['A'] = []
+    lj_jit_potential.diameters['A'] = []
+    lj_jit_potential.typeids['A'] = []
+    lj_jit_potential.orientations['A'] = []
+    lj_jit_potential.charges['A'] = []
+
+    lj_jit_potential.positions['R'] = CUBE_VERTS
+    lj_jit_potential.diameters['R'] = [0]*len(CUBE_VERTS)
+    lj_jit_potential.typeids['R'] = [0]*len(CUBE_VERTS)
+    lj_jit_potential.orientations['R'] = [(1, 0, 0, 0)]*len(CUBE_VERTS)
+    lj_jit_potential.charges['R'] = [0]*len(CUBE_VERTS)
     mc.pair_potential = lj_jit_potential
 
     # log to gsd
     logger_gsd = hoomd.logging.Logger(categories=['scalar', 'sequence'])
     logger_gsd.add(lj_jit_potential, quantities=['energy'])
-    logger_gsd.add(mc, quantities=['translate_moves'])
+    logger_gsd.add(mc, quantities=['translate_moves', 'rotate_moves'])
     for loggable in extra_loggables:
         logger_gsd.add(loggable)
 
@@ -540,9 +560,11 @@ def make_mc_simulation(job,
 
     # move size tuner
     mstuner = hpmc.tune.MoveSize.scale_solver(
-        moves=['d'],
+        moves=['a', 'd'],
+        types=['R'],
         target=0.2,
         max_translation_move=0.5,
+        max_rotation_move=1.0,
         trigger=hoomd.trigger.And([
             hoomd.trigger.Periodic(100),
             hoomd.trigger.Before(RANDOMIZE_STEPS | EQUILIBRATE_STEPS // 2)
@@ -576,7 +598,12 @@ def run_nvt_mc_sim(job, device):
     translate_moves = sim.operations.integrator.translate_moves
     translate_acceptance = translate_moves[0] / sum(translate_moves)
     device.notice(f'Translate move acceptance: {translate_acceptance}')
-    device.notice(f'Trial move size: {sim.operations.integrator.d["A"]}')
+    device.notice(f'Translate trial move size: {sim.operations.integrator.d["R"]}')
+
+    rotate_moves = sim.operations.integrator.rotate_moves
+    rotate_acceptance = rotate_moves[0] / sum(rotate_moves)
+    device.notice(f'Rotate move acceptance: {rotate_acceptance}')
+    device.notice(f'Rotate trial move size: {sim.operations.integrator.a["R"]}')
 
     # run
     device.notice('Running...')
@@ -636,7 +663,12 @@ def run_npt_mc_sim(job, device):
     translate_moves = sim.operations.integrator.translate_moves
     translate_acceptance = translate_moves[0] / sum(translate_moves)
     device.notice(f'Translate move acceptance: {translate_acceptance}')
-    device.notice(f'Trial move size: {sim.operations.integrator.d["A"]}')
+    device.notice(f'Translate trial move size: {sim.operations.integrator.d["R"]}')
+
+    rotate_moves = sim.operations.integrator.rotate_moves
+    rotate_acceptance = rotate_moves[0] / sum(rotate_moves)
+    device.notice(f'Rotate move acceptance: {rotate_acceptance}')
+    device.notice(f'Rotate trial move size: {sim.operations.integrator.a["R"]}')
 
     volume_moves = boxmc.volume_moves
     volume_acceptance = volume_moves[0] / sum(volume_moves)
