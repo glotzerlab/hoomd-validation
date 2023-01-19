@@ -75,7 +75,7 @@ partition_jobs_gpu = aggregator.groupsof(num=min(CONFIG["replicates"],
 @Project.operation(directives=dict(
     executable=CONFIG["executable"],
     nranks=util.total_ranks_function(NUM_CPU_RANKS),
-    walltime=1),
+    walltime=CONFIG['short_walltime']),
                    aggregator=partition_jobs_cpu_mpi)
 def lj_union_create_initial_state(*jobs):
     """Create initial system configuration."""
@@ -394,7 +394,7 @@ def add_md_sampling_job(ensemble, thermostat, device_name, ranks_per_partition,
     """Add a MD sampling job to the workflow."""
     sim_mode = f'{ensemble}_{thermostat}_md'
 
-    directives = dict(walltime=CONFIG["max_walltime"],
+    directives = dict(walltime=CONFIG["short_walltime"],
                       executable=CONFIG["executable"],
                       nranks=util.total_ranks_function(ranks_per_partition))
 
@@ -706,7 +706,7 @@ mc_job_definitions = [
 
 def add_mc_sampling_job(mode, device_name, ranks_per_partition, aggregator):
     """Add a MC sampling job to the workflow."""
-    directives = dict(walltime=CONFIG["max_walltime"],
+    directives = dict(walltime=CONFIG["short_walltime"],
                       executable=CONFIG["executable"],
                       nranks=util.total_ranks_function(ranks_per_partition))
 
@@ -753,7 +753,7 @@ if CONFIG['enable_llvm']:
 @Project.pre.after(*md_sampling_jobs)
 @Project.pre.after(*mc_sampling_jobs)
 @Project.post.true('lj_union_analysis_complete')
-@Project.operation(directives=dict(walltime=1, executable=CONFIG["executable"]))
+@Project.operation(directives=dict(walltime=CONFIG['short_walltime'], executable=CONFIG["executable"]))
 def lj_union_analyze(job):
     """Analyze the output of all simulation modes."""
     import gsd.hoomd
@@ -966,7 +966,7 @@ analysis_aggregator = aggregator.groupby(key=['kT', 'density', 'num_particles'],
     lambda *jobs: util.true_all(*jobs, key='lj_union_analysis_complete'))
 @Project.post(
     lambda *jobs: util.true_all(*jobs, key='lj_union_compare_modes_complete'))
-@Project.operation(directives=dict(walltime=1, executable=CONFIG["executable"]),
+@Project.operation(directives=dict(walltime=CONFIG['short_walltime'], executable=CONFIG["executable"]),
                    aggregator=analysis_aggregator)
 def lj_union_compare_modes(*jobs):
     """Compares the tested simulation modes."""
@@ -1100,7 +1100,7 @@ def lj_union_compare_modes(*jobs):
                                          TOTAL_STEPS))
 @Project.post(
     lambda *jobs: util.true_all(*jobs, key='lj_union_ke_analyze_complete'))
-@Project.operation(directives=dict(walltime=1, executable=CONFIG["executable"]),
+@Project.operation(directives=dict(walltime=CONFIG['short_walltime'], executable=CONFIG["executable"]),
                    aggregator=analysis_aggregator)
 def lj_union_ke_analyze(*jobs):
     """Checks that MD follows the correct KE distribution."""
@@ -1342,7 +1342,7 @@ def lj_union_nve_md_gpu(*jobs):
     'nve_md_cpu_quantities.gsd', 200_000_000)(*jobs[0:NUM_NVE_RUNS]))
 @Project.post(lambda *jobs: util.true_all(
     *jobs[0:NUM_NVE_RUNS], key='lj_union_conservation_analysis_complete'))
-@Project.operation(directives=dict(walltime=1, executable=CONFIG["executable"]),
+@Project.operation(directives=dict(walltime=CONFIG['short_walltime'], executable=CONFIG["executable"]),
                    aggregator=analysis_aggregator)
 def lj_union_conservation_analyze(*jobs):
     """Analyze the output of NVE simulations and inspect conservation."""
