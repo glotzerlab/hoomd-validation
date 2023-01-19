@@ -15,11 +15,11 @@ import collections
 # Step counts must be even and a multiple of the log quantity period.
 RANDOMIZE_STEPS = 20_000
 EQUILIBRATE_STEPS = 100_000
-RUN_STEPS = 1_000_000
+RUN_STEPS = 2_000_000
 TOTAL_STEPS = RANDOMIZE_STEPS + EQUILIBRATE_STEPS + RUN_STEPS
 
 WRITE_PERIOD = 4_000
-LOG_PERIOD = {'trajectory': 5_0000, 'quantities': 2_000}
+LOG_PERIOD = {'trajectory': 50_000, 'quantities': 4_000}
 LJ_PARAMS = {'epsilon': 0.25, 'sigma': 1.0, 'r_on': 2.0, 'r_cut': 2.5}
 NUM_CPU_RANKS = min(8, CONFIG["max_cores_sim"])
 CUBE_VERTS = [(-0.5, -0.5, -0.5),
@@ -207,7 +207,7 @@ def make_md_simulation(job,
     lj.mode = 'xplor'
 
     # integrator
-    integrator = md.Integrator(dt=0.001, methods=[method], forces=[lj], integrate_rotational_dof=True)
+    integrator = md.Integrator(dt=0.0005, methods=[method], forces=[lj], integrate_rotational_dof=True)
 
     # rigid bodies
     rigid = hoomd.md.constrain.Rigid()
