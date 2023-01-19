@@ -1133,9 +1133,17 @@ def lj_union_ke_analyze(*jobs):
     fig = matplotlib.figure.Figure(figsize=(10, 10 / 1.618 * 2), layout='tight')
     fig.suptitle(f"$kT={kT}$, $\\rho={set_density}$, $N={num_particles}$")
 
-    n_dof = num_particles * 3 - 3
-    ke_means = collections.defaultdict(list)
-    ke_sigmas = collections.defaultdict(list)
+    n_dof_translate = num_particles * 3 - 3
+    n_dof_rotate = num_particles * 3
+    n_dof_total = num_particles * 6 - 3
+
+    ke_translate_means = collections.defaultdict(list)
+    ke_translate_sigmas = collections.defaultdict(list)
+    ke_rotate_means = collections.defaultdict(list)
+    ke_rotate_sigmas = collections.defaultdict(list)
+    ke_total_means = collections.defaultdict(list)
+    ke_total_sigmas = collections.defaultdict(list)
+
 
     for job in jobs:
         for sim_mode in sim_modes:
@@ -1144,9 +1152,19 @@ def lj_union_ke_analyze(*jobs):
                 traj = util.read_gsd_log_trajectory(gsd_traj)
 
                 ke = util.get_log_quantity(
+                    traj, 'md/compute/ThermodynamicQuantities/translational_kinetic_energy')
+                ke_translate_means[sim_mode].append(numpy.mean(ke))
+                ke_translate_sigmas[sim_mode].append(numpy.std(ke))
+
+                ke = util.get_log_quantity(
+                    traj, 'md/compute/ThermodynamicQuantities/rotational_kinetic_energy')
+                ke_rotate_means[sim_mode].append(numpy.mean(ke))
+                ke_rotate_sigmas[sim_mode].append(numpy.std(ke))
+
+                ke = util.get_log_quantity(
                     traj, 'md/compute/ThermodynamicQuantities/kinetic_energy')
-                ke_means[sim_mode].append(numpy.mean(ke))
-                ke_sigmas[sim_mode].append(numpy.std(ke))
+                ke_total_means[sim_mode].append(numpy.mean(ke))
+                ke_total_sigmas[sim_mode].append(numpy.std(ke))
 
     def plot_vs_expected(ax, values, expected, name):
         # compute stats with data
@@ -1174,14 +1192,30 @@ def lj_union_ke_analyze(*jobs):
                   linestyles='dashed',
                   colors='k')
 
-    ax = fig.add_subplot(2, 1, 1)
-    plot_vs_expected(ax, ke_means, 1 / 2 * n_dof * kT,
-                     '$<KE> - 1/2 N_{dof} k T$')
+    ax = fig.add_subplot(3, 2, 1)
+    plot_vs_expected(ax, ke_translate_means, 1 / 2 * n_dof_translate * kT,
+                     r'$<KE_{\mathrm{translate}}> - 1/2 N_{dof} k T$')
 
-    ax = fig.add_subplot(2, 1, 2)
+    ax = fig.add_subplot(3, 2, 2)
     # https://doi.org/10.1371/journal.pone.0202764
-    plot_vs_expected(ax, ke_sigmas, 1 / math.sqrt(2) * math.sqrt(n_dof) * kT,
-                     r'$\Delta KE - 1/\sqrt{2} \sqrt{N_{dof}} k T$')
+    plot_vs_expected(ax, ke_translate_sigmas, 1 / math.sqrt(2) * math.sqrt(n_dof_translate) * kT,
+                     r'$\Delta KE_{\mathrm{translate}} - 1/\sqrt{2} \sqrt{N_{dof}} k T$')
+
+    ax = fig.add_subplot(3, 2, 3)
+    plot_vs_expected(ax, ke_rotate_means, 1 / 2 * n_dof_rotate * kT,
+                     r'$<KE_{\mathrm{rotate}}> - 1/2 N_{dof} k T$')
+
+    ax = fig.add_subplot(3, 2, 4)
+    plot_vs_expected(ax, ke_rotate_sigmas, 1 / math.sqrt(2) * math.sqrt(n_dof_rotate) * kT,
+                     r'$\Delta KE_{\mathrm{rotate}} - 1/\sqrt{2} \sqrt{N_{dof}} k T$')
+
+    ax = fig.add_subplot(3, 2, 5)
+    plot_vs_expected(ax, ke_total_means, 1 / 2 * n_dof_total * kT,
+                     r'$<KE_{\mathrm{total}}> - 1/2 N_{dof} k T$')
+
+    ax = fig.add_subplot(3, 2, 6)
+    plot_vs_expected(ax, ke_total_sigmas, 1 / math.sqrt(2) * math.sqrt(n_dof_total) * kT,
+                     r'$\Delta KE_{\mathrm{total}} - 1/\sqrt{2} \sqrt{N_{dof}} k T$')
 
     filename = f'lj_union_ke_analyze_kT{kT}_density{round(set_density, 2)}.svg'
     fig.savefig(os.path.join(jobs[0]._project.path, filename),
