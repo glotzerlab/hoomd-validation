@@ -15,7 +15,7 @@ import hard_disk
 import hard_sphere
 
 # subprojects = [alj_2d, lj_fluid, lj_union, hard_disk, hard_sphere]
-subprojects = [lj_union]
+subprojects = [lj_fluid, lj_union]
 
 project = signac.init_project(root=config.project_root)
 

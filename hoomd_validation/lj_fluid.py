@@ -262,9 +262,9 @@ def run_md_sim(job, device, ensemble, thermostat):
                              extra_loggables=[density_compute])
 
     # thermalize the thermostat (if applicable)
-    if hasattr(method, 'thermalize_thermostat_dof'):
+    if hasattr(method.thermostat, 'thermalize_dof'):
         sim.run(0)
-        method.thermalize_thermostat_dof()
+        method.thermalize_dof()
 
     # equilibrate
     device.notice('Equilibrating...')
