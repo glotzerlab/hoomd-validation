@@ -41,7 +41,7 @@ def job_statepoints():
     """list(dict): A list of statepoints for this subproject."""
     num_particles = 8**3
     replicate_indices = range(CONFIG["replicates"])
-    params_list = [(1.5, 0.04, 0.107)]
+    params_list = [(1.5, 0.04, 0.10676024636823918)]
     for kT, density, pressure in params_list:
         for idx in replicate_indices:
             yield ({
