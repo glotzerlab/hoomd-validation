@@ -257,7 +257,8 @@ def make_md_simulation(job,
             loggable.attach(sim)
 
     # thermalize momenta
-    sim.state.thermalize_particle_momenta(hoomd.filter.Rigid(flags=('center',)), job.sp.kT)
+    sim.state.thermalize_particle_momenta(hoomd.filter.Rigid(flags=('center',)),
+                                          job.sp.kT)
 
     return sim
 
@@ -1159,16 +1160,14 @@ def lj_union_ke_analyze(*jobs):
                 traj = util.read_gsd_log_trajectory(gsd_traj)
 
                 ke = util.get_log_quantity(
-                    traj,
-                    'md/compute/ThermodynamicQuantities/translational_kinetic_energy'
-                )
+                    traj, 'md/compute/ThermodynamicQuantities/'
+                    'translational_kinetic_energy')
                 ke_translate_means[sim_mode].append(numpy.mean(ke))
                 ke_translate_sigmas[sim_mode].append(numpy.std(ke))
 
                 ke = util.get_log_quantity(
-                    traj,
-                    'md/compute/ThermodynamicQuantities/rotational_kinetic_energy'
-                )
+                    traj, 'md/compute/ThermodynamicQuantities/'
+                    'rotational_kinetic_energy')
                 ke_rotate_means[sim_mode].append(numpy.mean(ke))
                 ke_rotate_sigmas[sim_mode].append(numpy.std(ke))
 
