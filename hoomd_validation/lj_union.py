@@ -22,16 +22,16 @@ WRITE_PERIOD = 4_000
 LOG_PERIOD = {'trajectory': 50_000, 'quantities': 4_000}
 LJ_PARAMS = {'epsilon': 0.25, 'sigma': 1.0, 'r_on': 2.0, 'r_cut': 2.5}
 NUM_CPU_RANKS = min(8, CONFIG["max_cores_sim"])
-CUBE_VERTS = [(-0.5, -0.5, -0.5),
-              (-0.5, -0.5, 0.5),
-              (-0.5, 0.5, -0.5),
-              (-0.5, 0.5, 0.5),
-              (0.5, -0.5, -0.5),
-              (0.5, -0.5, 0.5),
-              (0.5, 0.5, -0.5),
-              (0.5, 0.5, 0.5),
+CUBE_VERTS = [
+    (-0.5, -0.5, -0.5),
+    (-0.5, -0.5, 0.5),
+    (-0.5, 0.5, -0.5),
+    (-0.5, 0.5, 0.5),
+    (0.5, -0.5, -0.5),
+    (0.5, -0.5, 0.5),
+    (0.5, 0.5, -0.5),
+    (0.5, 0.5, 0.5),
 ]
-
 
 # Limit the number of long NVE runs to reduce the number of CPU hours needed.
 NUM_NVE_RUNS = 2
@@ -143,7 +143,7 @@ def lj_union_create_initial_state(*jobs):
         "constituent_types": ['A'] * 8,
         "positions": CUBE_VERTS,
         "orientations": [(1.0, 0.0, 0.0, 0.0)] * 8,
-        }
+    }
     sim.integrator.rigid = rigid
     rigid.create_bodies(sim.state)
 
@@ -196,18 +196,19 @@ def make_md_simulation(job,
     lj.params[('A', 'A')] = dict(sigma=LJ_PARAMS['sigma'],
                                  epsilon=LJ_PARAMS['epsilon'])
 
-    lj.params[('A', 'R')] = dict(sigma=0,
-                                 epsilon=0)
+    lj.params[('A', 'R')] = dict(sigma=0, epsilon=0)
     lj.r_cut[('A', 'R')] = 0
 
-    lj.params[('R', 'R')] = dict(sigma=0,
-                                 epsilon=0)
+    lj.params[('R', 'R')] = dict(sigma=0, epsilon=0)
     lj.r_cut[('R', 'R')] = 0
 
     lj.mode = 'xplor'
 
     # integrator
-    integrator = md.Integrator(dt=0.0005, methods=[method], forces=[lj], integrate_rotational_dof=True)
+    integrator = md.Integrator(dt=0.0005,
+                               methods=[method],
+                               forces=[lj],
+                               integrate_rotational_dof=True)
 
     # rigid bodies
     rigid = hoomd.md.constrain.Rigid()
@@ -215,7 +216,7 @@ def make_md_simulation(job,
         "constituent_types": ['A'] * 8,
         "positions": CUBE_VERTS,
         "orientations": [(1.0, 0.0, 0.0, 0.0)] * 8,
-        }
+    }
     integrator.rigid = rigid
 
     # compute thermo
@@ -313,7 +314,9 @@ def run_md_sim(job, device, ensemble, thermostat):
                              extra_loggables=[density_compute])
 
     # thermalize the thermostat (if applicable)
-    if hasattr(method.thermostat, 'thermalize_dof'):
+    if ((isinstance(method, md.methods.ConstantVolume)
+         or isinstance(method, md.methods.ConstantPressure))
+            and hasattr(method.thermostat, 'thermalize_dof')):
         sim.run(0)
         method.thermostat.thermalize_dof()
 
@@ -514,12 +517,13 @@ def make_mc_simulation(job,
     else:
         code_isotropic = ''
 
-    lj_jit_potential = hpmc.pair.user.CPPPotentialUnion(r_cut_constituent=r_cut,
-                                                   code_constituent=lj_str,
-                                                   r_cut_isotropic=0,
-                                                   code_isotropic=code_isotropic,
-                                                   param_array_constituent=[],
-                                                   param_array_isotropic=[])
+    lj_jit_potential = hpmc.pair.user.CPPPotentialUnion(
+        r_cut_constituent=r_cut,
+        code_constituent=lj_str,
+        r_cut_isotropic=0,
+        code_isotropic=code_isotropic,
+        param_array_constituent=[],
+        param_array_isotropic=[])
     lj_jit_potential.positions['A'] = []
     lj_jit_potential.diameters['A'] = []
     lj_jit_potential.typeids['A'] = []
@@ -527,10 +531,10 @@ def make_mc_simulation(job,
     lj_jit_potential.charges['A'] = []
 
     lj_jit_potential.positions['R'] = CUBE_VERTS
-    lj_jit_potential.diameters['R'] = [0]*len(CUBE_VERTS)
-    lj_jit_potential.typeids['R'] = [0]*len(CUBE_VERTS)
-    lj_jit_potential.orientations['R'] = [(1, 0, 0, 0)]*len(CUBE_VERTS)
-    lj_jit_potential.charges['R'] = [0]*len(CUBE_VERTS)
+    lj_jit_potential.diameters['R'] = [0] * len(CUBE_VERTS)
+    lj_jit_potential.typeids['R'] = [0] * len(CUBE_VERTS)
+    lj_jit_potential.orientations['R'] = [(1, 0, 0, 0)] * len(CUBE_VERTS)
+    lj_jit_potential.charges['R'] = [0] * len(CUBE_VERTS)
     mc.pair_potential = lj_jit_potential
 
     # log to gsd
@@ -598,7 +602,8 @@ def run_nvt_mc_sim(job, device):
     translate_moves = sim.operations.integrator.translate_moves
     translate_acceptance = translate_moves[0] / sum(translate_moves)
     device.notice(f'Translate move acceptance: {translate_acceptance}')
-    device.notice(f'Translate trial move size: {sim.operations.integrator.d["R"]}')
+    device.notice(
+        f'Translate trial move size: {sim.operations.integrator.d["R"]}')
 
     rotate_moves = sim.operations.integrator.rotate_moves
     rotate_acceptance = rotate_moves[0] / sum(rotate_moves)
@@ -663,7 +668,8 @@ def run_npt_mc_sim(job, device):
     translate_moves = sim.operations.integrator.translate_moves
     translate_acceptance = translate_moves[0] / sum(translate_moves)
     device.notice(f'Translate move acceptance: {translate_acceptance}')
-    device.notice(f'Translate trial move size: {sim.operations.integrator.d["R"]}')
+    device.notice(
+        f'Translate trial move size: {sim.operations.integrator.d["R"]}')
 
     rotate_moves = sim.operations.integrator.rotate_moves
     rotate_acceptance = rotate_moves[0] / sum(rotate_moves)
@@ -753,7 +759,8 @@ if CONFIG['enable_llvm']:
 @Project.pre.after(*md_sampling_jobs)
 @Project.pre.after(*mc_sampling_jobs)
 @Project.post.true('lj_union_analysis_complete')
-@Project.operation(directives=dict(walltime=CONFIG['short_walltime'], executable=CONFIG["executable"]))
+@Project.operation(directives=dict(walltime=CONFIG['short_walltime'],
+                                   executable=CONFIG["executable"]))
 def lj_union_analyze(job):
     """Analyze the output of all simulation modes."""
     import gsd.hoomd
@@ -811,9 +818,8 @@ def lj_union_analyze(job):
                 traj, 'md/compute/ThermodynamicQuantities/potential_energy')
         else:
             energies[sim_mode] = numpy.array(
-                get_log_quantity(
-                    traj,
-                    'hpmc/pair/user/CPPPotentialUnion/energy')) * job.statepoint.kT
+                get_log_quantity(traj, 'hpmc/pair/user/CPPPotentialUnion/energy'
+                                 )) * job.statepoint.kT
 
         if constant[sim_mode] == 'density' and 'md' in sim_mode:
             pressures[sim_mode] = get_log_quantity(
@@ -966,7 +972,8 @@ analysis_aggregator = aggregator.groupby(key=['kT', 'density', 'num_particles'],
     lambda *jobs: util.true_all(*jobs, key='lj_union_analysis_complete'))
 @Project.post(
     lambda *jobs: util.true_all(*jobs, key='lj_union_compare_modes_complete'))
-@Project.operation(directives=dict(walltime=CONFIG['short_walltime'], executable=CONFIG["executable"]),
+@Project.operation(directives=dict(walltime=CONFIG['short_walltime'],
+                                   executable=CONFIG["executable"]),
                    aggregator=analysis_aggregator)
 def lj_union_compare_modes(*jobs):
     """Compares the tested simulation modes."""
@@ -1100,7 +1107,8 @@ def lj_union_compare_modes(*jobs):
                                          TOTAL_STEPS))
 @Project.post(
     lambda *jobs: util.true_all(*jobs, key='lj_union_ke_analyze_complete'))
-@Project.operation(directives=dict(walltime=CONFIG['short_walltime'], executable=CONFIG["executable"]),
+@Project.operation(directives=dict(walltime=CONFIG['short_walltime'],
+                                   executable=CONFIG["executable"]),
                    aggregator=analysis_aggregator)
 def lj_union_ke_analyze(*jobs):
     """Checks that MD follows the correct KE distribution."""
@@ -1144,7 +1152,6 @@ def lj_union_ke_analyze(*jobs):
     ke_total_means = collections.defaultdict(list)
     ke_total_sigmas = collections.defaultdict(list)
 
-
     for job in jobs:
         for sim_mode in sim_modes:
             with gsd.hoomd.open(job.fn(sim_mode
@@ -1152,12 +1159,16 @@ def lj_union_ke_analyze(*jobs):
                 traj = util.read_gsd_log_trajectory(gsd_traj)
 
                 ke = util.get_log_quantity(
-                    traj, 'md/compute/ThermodynamicQuantities/translational_kinetic_energy')
+                    traj,
+                    'md/compute/ThermodynamicQuantities/translational_kinetic_energy'
+                )
                 ke_translate_means[sim_mode].append(numpy.mean(ke))
                 ke_translate_sigmas[sim_mode].append(numpy.std(ke))
 
                 ke = util.get_log_quantity(
-                    traj, 'md/compute/ThermodynamicQuantities/rotational_kinetic_energy')
+                    traj,
+                    'md/compute/ThermodynamicQuantities/rotational_kinetic_energy'
+                )
                 ke_rotate_means[sim_mode].append(numpy.mean(ke))
                 ke_rotate_sigmas[sim_mode].append(numpy.std(ke))
 
@@ -1198,24 +1209,28 @@ def lj_union_ke_analyze(*jobs):
 
     ax = fig.add_subplot(3, 2, 2)
     # https://doi.org/10.1371/journal.pone.0202764
-    plot_vs_expected(ax, ke_translate_sigmas, 1 / math.sqrt(2) * math.sqrt(n_dof_translate) * kT,
-                     r'$\Delta KE_{\mathrm{translate}} - 1/\sqrt{2} \sqrt{N_{dof}} k T$')
+    plot_vs_expected(
+        ax, ke_translate_sigmas,
+        1 / math.sqrt(2) * math.sqrt(n_dof_translate) * kT,
+        r'$\Delta KE_{\mathrm{translate}} - 1/\sqrt{2} \sqrt{N_{dof}} k T$')
 
     ax = fig.add_subplot(3, 2, 3)
     plot_vs_expected(ax, ke_rotate_means, 1 / 2 * n_dof_rotate * kT,
                      r'$<KE_{\mathrm{rotate}}> - 1/2 N_{dof} k T$')
 
     ax = fig.add_subplot(3, 2, 4)
-    plot_vs_expected(ax, ke_rotate_sigmas, 1 / math.sqrt(2) * math.sqrt(n_dof_rotate) * kT,
-                     r'$\Delta KE_{\mathrm{rotate}} - 1/\sqrt{2} \sqrt{N_{dof}} k T$')
+    plot_vs_expected(
+        ax, ke_rotate_sigmas, 1 / math.sqrt(2) * math.sqrt(n_dof_rotate) * kT,
+        r'$\Delta KE_{\mathrm{rotate}} - 1/\sqrt{2} \sqrt{N_{dof}} k T$')
 
     ax = fig.add_subplot(3, 2, 5)
     plot_vs_expected(ax, ke_total_means, 1 / 2 * n_dof_total * kT,
                      r'$<KE_{\mathrm{total}}> - 1/2 N_{dof} k T$')
 
     ax = fig.add_subplot(3, 2, 6)
-    plot_vs_expected(ax, ke_total_sigmas, 1 / math.sqrt(2) * math.sqrt(n_dof_total) * kT,
-                     r'$\Delta KE_{\mathrm{total}} - 1/\sqrt{2} \sqrt{N_{dof}} k T$')
+    plot_vs_expected(
+        ax, ke_total_sigmas, 1 / math.sqrt(2) * math.sqrt(n_dof_total) * kT,
+        r'$\Delta KE_{\mathrm{total}} - 1/\sqrt{2} \sqrt{N_{dof}} k T$')
 
     filename = f'lj_union_ke_analyze_kT{kT}_density{round(set_density, 2)}.svg'
     fig.savefig(os.path.join(jobs[0]._project.path, filename),
@@ -1342,7 +1357,8 @@ def lj_union_nve_md_gpu(*jobs):
     'nve_md_cpu_quantities.gsd', 200_000_000)(*jobs[0:NUM_NVE_RUNS]))
 @Project.post(lambda *jobs: util.true_all(
     *jobs[0:NUM_NVE_RUNS], key='lj_union_conservation_analysis_complete'))
-@Project.operation(directives=dict(walltime=CONFIG['short_walltime'], executable=CONFIG["executable"]),
+@Project.operation(directives=dict(walltime=CONFIG['short_walltime'],
+                                   executable=CONFIG["executable"]),
                    aggregator=analysis_aggregator)
 def lj_union_conservation_analyze(*jobs):
     """Analyze the output of NVE simulations and inspect conservation."""

@@ -15,6 +15,7 @@ class ComputeDensity(hoomd.custom.Action):
         N: When not None, Use N instead of the number of particles when
            computing the density.
     """
+
     def __init__(self, N=None):
         self.N = N
 

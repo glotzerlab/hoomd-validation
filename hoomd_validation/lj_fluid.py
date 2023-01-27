@@ -670,7 +670,8 @@ if CONFIG['enable_llvm']:
 @Project.pre.after(*md_sampling_jobs)
 @Project.pre.after(*mc_sampling_jobs)
 @Project.post.true('lj_fluid_analysis_complete')
-@Project.operation(directives=dict(walltime=CONFIG['short_walltime'], executable=CONFIG["executable"]))
+@Project.operation(directives=dict(walltime=CONFIG['short_walltime'],
+                                   executable=CONFIG["executable"]))
 def lj_fluid_analyze(job):
     """Analyze the output of all simulation modes."""
     import gsd.hoomd
@@ -883,7 +884,8 @@ analysis_aggregator = aggregator.groupby(key=['kT', 'density', 'num_particles'],
     lambda *jobs: util.true_all(*jobs, key='lj_fluid_analysis_complete'))
 @Project.post(
     lambda *jobs: util.true_all(*jobs, key='lj_fluid_compare_modes_complete'))
-@Project.operation(directives=dict(walltime=CONFIG['short_walltime'], executable=CONFIG["executable"]),
+@Project.operation(directives=dict(walltime=CONFIG['short_walltime'],
+                                   executable=CONFIG["executable"]),
                    aggregator=analysis_aggregator)
 def lj_fluid_compare_modes(*jobs):
     """Compares the tested simulation modes."""
@@ -1017,7 +1019,8 @@ def lj_fluid_compare_modes(*jobs):
                                          TOTAL_STEPS))
 @Project.post(
     lambda *jobs: util.true_all(*jobs, key='lj_fluid_ke_analyze_complete'))
-@Project.operation(directives=dict(walltime=CONFIG['short_walltime'], executable=CONFIG["executable"]),
+@Project.operation(directives=dict(walltime=CONFIG['short_walltime'],
+                                   executable=CONFIG["executable"]),
                    aggregator=analysis_aggregator)
 def lj_fluid_ke_analyze(*jobs):
     """Checks that MD follows the correct KE distribution."""
@@ -1225,7 +1228,8 @@ def lj_fluid_nve_md_gpu(*jobs):
     'nve_md_cpu_quantities.gsd', 200_000_000)(*jobs[0:NUM_NVE_RUNS]))
 @Project.post(lambda *jobs: util.true_all(
     *jobs[0:NUM_NVE_RUNS], key='lj_fluid_conservation_analysis_complete'))
-@Project.operation(directives=dict(walltime=CONFIG['short_walltime'], executable=CONFIG["executable"]),
+@Project.operation(directives=dict(walltime=CONFIG['short_walltime'],
+                                   executable=CONFIG["executable"]),
                    aggregator=analysis_aggregator)
 def lj_fluid_conservation_analyze(*jobs):
     """Analyze the output of NVE simulations and inspect conservation."""
