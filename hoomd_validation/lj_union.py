@@ -257,7 +257,7 @@ def make_md_simulation(job,
             loggable.attach(sim)
 
     # thermalize momenta
-    sim.state.thermalize_particle_momenta(hoomd.filter.All(), job.sp.kT)
+    sim.state.thermalize_particle_momenta(hoomd.filter.Rigid(flags=('center',)), job.sp.kT)
 
     return sim
 
