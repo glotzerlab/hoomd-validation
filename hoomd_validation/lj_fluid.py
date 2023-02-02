@@ -242,10 +242,7 @@ def run_md_sim(job, device, ensemble, thermostat):
                                              tauS=3,
                                              couple='xyz',
                                              gamma=0.5)
-        if thermostat == 'mttk':
-            method.thermostat = hoomd.md.methods.thermostats.MTTK(
-                kT=job.statepoint.kT, tau=0.25)
-        elif thermostat == 'bussi':
+        if thermostat == 'bussi':
             method.thermostat = hoomd.md.methods.thermostats.Bussi(
                 kT=job.statepoint.kT)
         else:
