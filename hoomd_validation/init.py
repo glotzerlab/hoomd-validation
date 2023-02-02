@@ -10,10 +10,11 @@ import config
 # import subprojects
 import alj_2d
 import lj_fluid
+import lj_union
 import hard_disk
 import hard_sphere
 
-subprojects = [alj_2d, lj_fluid, hard_disk, hard_sphere]
+subprojects = [alj_2d, lj_fluid, lj_union, hard_disk, hard_sphere]
 
 project = signac.init_project(root=config.project_root)
 

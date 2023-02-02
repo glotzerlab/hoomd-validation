@@ -12,7 +12,7 @@ max_gpus_submission: 8
 
 * When building with `ENABLE_LLVM=on`, built separate CPU and GPU builds in:
   * `/scratch/bbgw/${USER}/build/hoomd-cpu`
-  * and ``/scratch/bbgw/${USER}/build/hoomd-cpu`.
+  * and ``/scratch/bbgw/${USER}/build/hoomd-gpu`.
 * To link to `libcuda.so`, compile `hoomd-gpu` in an interactive job:
   `srun --account=bbgw-delta-gpu --partition=gpuA40x4 --nodes=1 --tasks=1 --tasks-per-node=1 --cpus-per-task=16 --mem=48g --gpus=1 --pty zsh`
 
@@ -23,7 +23,7 @@ hoomd build at submission time:
 
 CPU:
 ```
-SBATCH_ACCOUNT=bbgw-delta-cpu PYTHONPATH=/scratch/bbgw/${USER}build/hoomd-cpu SBATCH_EXPORT=PYTHONPATH python hoomd_validation/project.py submit -o '.*_cpu'
+SBATCH_ACCOUNT=bbgw-delta-cpu PYTHONPATH=/scratch/bbgw/${USER}/build/hoomd-cpu SBATCH_EXPORT=PYTHONPATH python hoomd_validation/project.py submit -o '.*_cpu'
 ```
 
 GPU:

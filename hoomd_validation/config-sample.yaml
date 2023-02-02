@@ -25,5 +25,8 @@
 ## Maximum wall time (in hours) that a submitted cluster job is allowed to run.
 # max_walltime: 24
 
+## Wall time (in hours) To use for short, non-restartable jobs
+# short_walltime: 2
+
 ## Whether the HOOMD build has ENABLE_LLVM on.
 # enable_llvm: true
