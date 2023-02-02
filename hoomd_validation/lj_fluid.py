@@ -263,8 +263,8 @@ def run_md_sim(job, device, ensemble, thermostat):
 
     # thermalize the thermostat (if applicable)
     if ((isinstance(method, md.methods.ConstantVolume)
-             or isinstance(method, md.methods.ConstantPressure))
-                         and hasattr(method.thermostat, 'thermalize_dof')):
+         or isinstance(method, md.methods.ConstantPressure))
+            and hasattr(method.thermostat, 'thermalize_dof')):
         sim.run(0)
         method.thermostat.thermalize_dof()
 
