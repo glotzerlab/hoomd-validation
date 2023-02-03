@@ -256,10 +256,6 @@ def make_md_simulation(job,
         if hasattr(loggable, 'attach'):
             loggable.attach(sim)
 
-    # thermalize momenta
-    sim.state.thermalize_particle_momenta(hoomd.filter.Rigid(flags=('center',)),
-                                          job.sp.kT)
-
     return sim
 
 
@@ -310,6 +306,10 @@ def run_md_sim(job, device, ensemble, thermostat):
                              method,
                              sim_mode,
                              extra_loggables=[density_compute])
+
+    # thermalize momenta
+    sim.state.thermalize_particle_momenta(hoomd.filter.Rigid(flags=('center',)),
+                                          job.sp.kT)
 
     # thermalize the thermostat (if applicable)
     if ((isinstance(method, md.methods.ConstantVolume)
