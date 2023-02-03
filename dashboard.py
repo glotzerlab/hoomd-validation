@@ -20,10 +20,14 @@ class ValidationDashboard(Dashboard):
 
     def job_title(self, job):
         """Name jobs."""
-        if (job.statepoint.subproject == 'lj_fluid'
-                or job.statepoint.subproject == 'alj_2d'
-                or job.statepoint.subproject == 'lj_union'):
+        if job.statepoint.subproject == 'lj_fluid':
             return f"lj_fluid: kT={job.statepoint.kT}, " \
+                   f"rho={job.statepoint.density}"
+        elif job.statepoint.subproject == 'lj_union':
+            return f"lj_union: kT={job.statepoint.kT}, " \
+                   f"rho={job.statepoint.density}"
+        elif job.statepoint.subproject == 'alj_2d':
+            return f"alj_2d: kT={job.statepoint.kT}, " \
                    f"rho={job.statepoint.density}"
         elif (job.statepoint.subproject == 'hard_disk'
               or job.statepoint.subproject == 'hard_sphere'):
