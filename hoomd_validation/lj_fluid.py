@@ -1121,7 +1121,9 @@ def run_nve_md_sim(job, device, run_length):
 
     sim_mode = 'nve_md'
     restart_filename = util.get_job_filename(sim_mode, device, 'restart', 'gsd')
-    if job.isfile(restart_filename):
+    is_restarting = job.isfile(restart_filename)
+
+    if is_restarting:
         initial_state = job.fn(restart_filename)
     else:
         initial_state = job.fn('lj_fluid_initial_state.gsd')
@@ -1134,6 +1136,9 @@ def run_nve_md_sim(job, device, run_length):
                              nve,
                              sim_mode,
                              period_multiplier=400)
+
+    if not is_restarting:
+        sim.state.thermalize_particle_momenta(hoomd.filter.All(), job.sp.kT)
 
     # Run for a long time to look for energy and momentum drift
     device.notice('Running...')

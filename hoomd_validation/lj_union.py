@@ -1,4 +1,4 @@
-# Copyright (c) 2022 The Regents of the University of Michigan.
+# Copyright (c) 2022-2023 The Regents of the University of Michigan.
 # Part of HOOMD-blue, released under the BSD 3-Clause License.
 
 """Lennard Jones phase behavior validation test (union particles)."""
@@ -1247,7 +1247,9 @@ def run_nve_md_sim(job, device, run_length):
 
     sim_mode = 'nve_md'
     restart_filename = util.get_job_filename(sim_mode, device, 'restart', 'gsd')
-    if job.isfile(restart_filename):
+    is_restarting = job.isfile(restart_filename)
+
+    if is_restarting:
         initial_state = job.fn(restart_filename)
     else:
         initial_state = job.fn('lj_union_initial_state_md.gsd')
@@ -1260,6 +1262,10 @@ def run_nve_md_sim(job, device, run_length):
                              nve,
                              sim_mode,
                              period_multiplier=400)
+
+    if not is_restarting:
+        sim.state.thermalize_particle_momenta(
+            hoomd.filter.Rigid(flags=('center',)), job.sp.kT)
 
     # Run for a long time to look for energy and momentum drift
     device.notice('Running...')
