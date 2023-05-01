@@ -7,3 +7,5 @@ hoomd_validation/config.json
 signac.rc
 signac_project_document.json
 .signac_sp_cache.json.gz
+__pycache__
+.signac
