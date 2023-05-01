@@ -93,8 +93,9 @@ def lj_union_create_initial_state(*jobs):
         print('starting lj_union_create_initial_state:', job)
 
     sp = job.sp
-    device = hoomd.device.CPU(communicator=communicator,
-                              message_file=job.fn('create_initial_state.log'))
+    device = hoomd.device.CPU(
+        communicator=communicator,
+        message_filename=job.fn('create_initial_state.log'))
 
     box_volume = sp["num_particles"] / sp["density"]
     L = box_volume**(1 / 3.)
@@ -427,7 +428,7 @@ def add_md_sampling_job(ensemble, thermostat, device_name, ranks_per_partition,
 
         device = device_cls(
             communicator=communicator,
-            message_file=job.fn(f'run_{sim_mode}_{device_name}.log'))
+            message_filename=job.fn(f'run_{sim_mode}_{device_name}.log'))
 
         run_md_sim(job, device, ensemble, thermostat)
 
@@ -742,7 +743,7 @@ def add_mc_sampling_job(mode, device_name, ranks_per_partition, aggregator):
 
         device = device_cls(
             communicator=communicator,
-            message_file=job.fn(f'run_{mode}_mc_{device_name}.log'))
+            message_filename=job.fn(f'run_{mode}_mc_{device_name}.log'))
 
         globals().get(f'run_{mode}_mc_sim')(job, device)
 
@@ -1326,7 +1327,7 @@ def lj_union_nve_md_cpu(*jobs):
         print('starting lj_union_nve_md_cpu:', job)
 
     device = hoomd.device.CPU(communicator=communicator,
-                              message_file=job.fn('run_nve_md_cpu.log'))
+                              message_filename=job.fn('run_nve_md_cpu.log'))
     run_nve_md_sim(job, device, run_length=200_000_000)
 
 
@@ -1350,7 +1351,7 @@ def lj_union_nve_md_gpu(*jobs):
         print('starting lj_union_nve_md_gpu:', job)
 
     device = hoomd.device.GPU(communicator=communicator,
-                              message_file=job.fn('run_nve_md_gpu.log'))
+                              message_filename=job.fn('run_nve_md_gpu.log'))
     run_nve_md_sim(job, device, run_length=800_000_000)
 
 
