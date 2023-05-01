@@ -86,7 +86,7 @@ def alj_2d_create_initial_state(*jobs):
     init_diameter = CIRCUMCIRCLE_RADIUS * 2 * 1.15
 
     device = hoomd.device.CPU(communicator=communicator,
-                              msg_file=job.fn('create_initial_state.log'))
+                              message_file=job.fn('create_initial_state.log'))
 
     num_particles = job.statepoint['num_particles']
     density = job.statepoint['density']
@@ -281,7 +281,7 @@ def alj_2d_nve_md_cpu(*jobs):
         print('starting alj2_2d_nve_md_cpu:', job)
 
     device = hoomd.device.CPU(communicator=communicator,
-                              msg_file=job.fn('run_nve_md_cpu.log'))
+                              message_file=job.fn('run_nve_md_cpu.log'))
     run_nve_md_sim(job, device)
 
 
@@ -305,7 +305,7 @@ def alj_2d_nve_md_gpu(*jobs):
         print('starting alj2_2d_nve_md_gpu:', job)
 
     device = hoomd.device.GPU(communicator=communicator,
-                              msg_file=job.fn('run_nve_md_gpu.log'))
+                              message_file=job.fn('run_nve_md_gpu.log'))
     run_nve_md_sim(job, device)
 
 

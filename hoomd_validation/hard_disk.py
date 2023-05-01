@@ -99,7 +99,7 @@ def hard_disk_create_initial_state(*jobs):
 
     # create snapshot
     device = hoomd.device.CPU(communicator=communicator,
-                              msg_file=job.fn('create_initial_state.log'))
+                              message_file=job.fn('create_initial_state.log'))
     snap = hoomd.Snapshot(communicator)
 
     if communicator.rank == 0:
@@ -549,8 +549,9 @@ def add_sampling_job(mode, device_name, ranks_per_partition, aggregator):
         elif device_name == 'cpu':
             device_cls = hoomd.device.CPU
 
-        device = device_cls(communicator=communicator,
-                            msg_file=job.fn(f'run_{mode}_{device_name}.log'))
+        device = device_cls(
+            communicator=communicator,
+            message_file=job.fn(f'run_{mode}_{device_name}.log'))
 
         globals().get(f'run_{mode}_sim')(job, device)
 
