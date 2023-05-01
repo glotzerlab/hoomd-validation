@@ -197,7 +197,7 @@ def make_simulation(
             hoomd.trigger.After(log_start_step)
         ]),
         mode='ab',
-        log=logger)
+        logger=logger)
     sim.operations.add(quantity_writer)
 
     return sim
