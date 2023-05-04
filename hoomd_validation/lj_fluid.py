@@ -343,7 +343,7 @@ def add_md_sampling_job(ensemble, thermostat, device_name, ranks_per_partition,
     """Add a MD sampling job to the workflow."""
     sim_mode = f'{ensemble}_{thermostat}_md'
 
-    directives = dict(walltime=CONFIG["short_walltime"],
+    directives = dict(walltime=CONFIG["max_walltime"],
                       executable=CONFIG["executable"],
                       nranks=util.total_ranks_function(ranks_per_partition))
 
@@ -623,7 +623,7 @@ mc_job_definitions = [
 
 def add_mc_sampling_job(mode, device_name, ranks_per_partition, aggregator):
     """Add a MC sampling job to the workflow."""
-    directives = dict(walltime=CONFIG["short_walltime"],
+    directives = dict(walltime=CONFIG["max_walltime"],
                       executable=CONFIG["executable"],
                       nranks=util.total_ranks_function(ranks_per_partition))
 
@@ -1054,22 +1054,27 @@ def lj_fluid_ke_analyze(*jobs):
     fig = matplotlib.figure.Figure(figsize=(10, 10 / 1.618 * 2), layout='tight')
     fig.suptitle(f"$kT={kT}$, $\\rho={set_density}$, $N={num_particles}$")
 
-    n_dof = num_particles * 3 - 3
-    ke_means = collections.defaultdict(list)
-    ke_sigmas = collections.defaultdict(list)
+    ke_means_expected = collections.defaultdict(list)
+    ke_sigmas_expected = collections.defaultdict(list)
 
     for job in jobs:
         for sim_mode in sim_modes:
+
+            if sim_mode.startswith('nvt_langevin'):
+                n_dof = num_particles * 3
+            else:
+                n_dof = num_particles * 3 - 3
+
             with gsd.hoomd.open(job.fn(sim_mode
                                        + '_quantities.gsd')) as gsd_traj:
                 traj = util.read_gsd_log_trajectory(gsd_traj)
 
                 ke = util.get_log_quantity(
                     traj, 'md/compute/ThermodynamicQuantities/kinetic_energy')
-                ke_means[sim_mode].append(numpy.mean(ke))
-                ke_sigmas[sim_mode].append(numpy.std(ke))
+                ke_means_expected[sim_mode].append(numpy.mean(ke) - 1 / 2 * n_dof * kT)
+                ke_sigmas_expected[sim_mode].append(numpy.std(ke) - 1 / math.sqrt(2) * math.sqrt(n_dof) * kT)
 
-    def plot_vs_expected(ax, values, expected, name):
+    def plot_vs_expected(ax, values, name):
         # compute stats with data
         avg_value = {mode: numpy.mean(values[mode]) for mode in sim_modes}
         stderr_value = {
@@ -1081,7 +1086,7 @@ def lj_fluid_ke_analyze(*jobs):
         value_list = [avg_value[mode] for mode in sim_modes]
         stderr_list = numpy.array([stderr_value[mode] for mode in sim_modes])
 
-        value_diff_list = numpy.array(value_list) - expected
+        value_diff_list = numpy.array(value_list)
 
         ax.errorbar(x=range(len(sim_modes)),
                     y=value_diff_list,
@@ -1096,13 +1101,11 @@ def lj_fluid_ke_analyze(*jobs):
                   colors='k')
 
     ax = fig.add_subplot(2, 1, 1)
-    plot_vs_expected(ax, ke_means, 1 / 2 * n_dof * kT,
-                     '$<KE> - 1/2 N_{dof} k T$')
+    plot_vs_expected(ax, ke_means_expected, '$<KE> - 1/2 N_{dof} k T$')
 
     ax = fig.add_subplot(2, 1, 2)
     # https://doi.org/10.1371/journal.pone.0202764
-    plot_vs_expected(ax, ke_sigmas, 1 / math.sqrt(2) * math.sqrt(n_dof) * kT,
-                     r'$\Delta KE - 1/\sqrt{2} \sqrt{N_{dof}} k T$')
+    plot_vs_expected(ax, ke_sigmas_expected, r'$\Delta KE - 1/\sqrt{2} \sqrt{N_{dof}} k T$')
 
     filename = f'lj_fluid_ke_analyze_kT{kT}_density{round(set_density, 2)}.svg'
     fig.savefig(os.path.join(jobs[0]._project.path, filename),
