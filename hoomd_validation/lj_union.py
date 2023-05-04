@@ -125,7 +125,7 @@ def lj_union_create_initial_state(*jobs):
     mc.shape['A'] = dict(diameter=0)
     mc.shape['R'] = dict(diameter=min_spacing, orientable=True)
 
-    sim = hoomd.Simulation(device=device, seed=job.statepoint.replicate_idx)
+    sim = hoomd.Simulation(device=device, seed=util.make_seed(job))
     sim.create_state_from_snapshot(snap)
     sim.operations.integrator = mc
 

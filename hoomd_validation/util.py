@@ -6,6 +6,7 @@
 import numpy
 import io
 import gsd.fl
+import signac
 
 
 def read_gsd_log_trajectory(traj):
@@ -156,7 +157,7 @@ def make_simulation(
     import hoomd
 
     sim = hoomd.Simulation(device)
-    sim.seed = job.statepoint.replicate_idx
+    sim.seed = make_seed(job, sim_mode)
     sim.create_state_from_gsd(initial_state)
 
     sim.operations.integrator = integrator
@@ -201,3 +202,16 @@ def make_simulation(
     sim.operations.add(quantity_writer)
 
     return sim
+
+
+def make_seed(job, sim_mode=None):
+    """Make a random number seed from a job.
+
+    Mix in the simulation mode to ensure that separate simulations in the same
+    state point run with different seeds.
+    """
+    # copy the job statepoint and mix in the simulation mode
+    statepoint = job.statepoint()
+    statepoint['sim_mode'] = sim_mode
+
+    return int(signac.job.calc_id(statepoint), 16) & 0xffff

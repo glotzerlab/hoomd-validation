@@ -118,7 +118,7 @@ def alj_2d_create_initial_state(*jobs):
     mc = hoomd.hpmc.integrate.Sphere()
     mc.shape['A'] = dict(diameter=init_diameter)
 
-    sim = hoomd.Simulation(device=device, seed=job.statepoint.replicate_idx)
+    sim = hoomd.Simulation(device=device, seed=util.make_seed(job))
     sim.create_state_from_snapshot(snap)
     sim.operations.integrator = mc
 
