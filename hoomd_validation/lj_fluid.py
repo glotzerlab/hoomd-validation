@@ -733,7 +733,20 @@ def lj_fluid_analyze(job):
             energies[sim_mode] = log_traj['log/hpmc/pair/user/CPPPotential/energy'] * job.statepoint.kT
 
         if constant[sim_mode] == 'density' and 'md' in sim_mode:
+            # pressure_sim = log_traj['log/md/compute/ThermodynamicQuantities/pressure']
+            # ke = log_traj['log/md/compute/ThermodynamicQuantities/kinetic_energy']
+            # V = job.statepoint.num_particles / log_traj['log/custom_actions/ComputeDensity/density']
+            # w = pressure_sim * 3 * V - 2 * ke
+            # pressure_corrected = (2 * ke * job.statepoint.num_particles / (job.statepoint.num_particles - 3) + w) / (3 * V)
+
+            # if 'langevin' not in sim_mode:
+            #     pressures[sim_mode] = pressure_corrected
+            #     print('pressure correction: ', numpy.mean(pressure_corrected) - numpy.mean(pressure_sim))
+            #     print('off_by: ', numpy.mean(pressure_corrected) - job.statepoint.pressure)
+            # else:
+            #     pressures[sim_mode] = pressure_sim
             pressures[sim_mode] = log_traj['log/md/compute/ThermodynamicQuantities/pressure']
+
         elif constant[sim_mode] == 'density' and 'mc' in sim_mode:
             pressures[sim_mode] = numpy.full(len(energies[sim_mode]), numpy.nan)
         else:
