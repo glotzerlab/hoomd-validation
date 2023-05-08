@@ -20,7 +20,7 @@ TOTAL_STEPS = RANDOMIZE_STEPS + EQUILIBRATE_STEPS + RUN_STEPS
 
 WRITE_PERIOD = 4_000
 LOG_PERIOD = {'trajectory': 50_000, 'quantities': 125}
-LJ_PARAMS = {'epsilon': 1.0, 'sigma': 1.0, 'r_on': 2.0, 'r_cut': 2.5}
+LJ_PARAMS = {'epsilon': 1.0, 'sigma': 1.0, 'r_on': 2.0}
 NUM_CPU_RANKS = min(8, CONFIG["max_cores_sim"])
 
 # Limit the number of long NVE runs to reduce the number of CPU hours needed.
@@ -29,20 +29,42 @@ NUM_NVE_RUNS = 2
 
 def job_statepoints():
     """list(dict): A list of statepoints for this subproject."""
-    num_particles = 12**3
     replicate_indices = range(CONFIG["replicates"])
-    params_list = [(1.5, 0.5998286671851658, 1.0270905797770546)] #,
-    #    (1.0, 0.7999550814681395, 1.4363805638963822),
-    #    (1.25, 0.049963649769543844, 0.05363574413661169)]
-    for kT, density, pressure in params_list:
+    params_list = [
+        dict(kT=1.5,
+             density=0.5998286671851658,
+             pressure=1.0270905797770546,
+             num_particles = 12**3,
+             r_cut=2.5),
+        # dict(kt=1.0,
+        #      density=0.7999550814681395,
+        #      pressure=1.4363805638963822,
+        #      num_particles = 12**3,
+        #      r_cut=2.5),
+        # dict(kT=1.25,
+        #      density=0.049963649769543844,
+        #      pressure=0.05363574413661169,
+        #      num_particles = 12**3,
+        #      r_cut=2.5),
+        dict(
+            kT=1.0,
+            density=0.91938,
+            pressure=11,
+            num_particles = 12**3,
+            r_cut=2**(1 / 6),
+        ),
+    ]
+
+    for param in params_list:
         for idx in replicate_indices:
             yield ({
                 "subproject": "lj_fluid",
-                "kT": kT,
-                "density": density,
-                "pressure": pressure,
-                "num_particles": num_particles,
-                "replicate_idx": idx
+                "kT": param['kT'],
+                "density": param['density'],
+                "pressure": param['pressure'],
+                "num_particles": param['num_particles'],
+                "replicate_idx": idx,
+                "r_cut": param['r_cut'],
             })
 
 
@@ -167,7 +189,7 @@ def make_md_simulation(job,
 
     # pair force
     nlist = md.nlist.Cell(buffer=0.4)
-    lj = md.pair.LJ(default_r_cut=LJ_PARAMS['r_cut'],
+    lj = md.pair.LJ(default_r_cut=job.statepoint.r_cut,
                     default_r_on=LJ_PARAMS['r_on'],
                     nlist=nlist)
     lj.params[('A', 'A')] = dict(sigma=LJ_PARAMS['sigma'],
@@ -426,7 +448,7 @@ def make_mc_simulation(job,
     epsilon = LJ_PARAMS['epsilon'] / job.sp.kT  # noqa F841
     sigma = LJ_PARAMS['sigma']
     r_on = LJ_PARAMS['r_on']
-    r_cut = LJ_PARAMS['r_cut']
+    r_cut = job.statepoint.r_cut
 
     # the potential will have xplor smoothing with r_on=2
     lj_str = """// standard lj energy with sigma set to 1
@@ -885,13 +907,14 @@ def lj_fluid_analyze(job):
 
     fig.suptitle(f"$kT={job.statepoint.kT}$, $\\rho={job.statepoint.density}$, "
                  f"$N={job.statepoint.num_particles}$, "
+                 f"$r_\\mathrm{{cut}}={job.statepoint.r_cut}$, "
                  f"replicate={job.statepoint.replicate_idx}")
     fig.savefig(job.fn('nvt_npt_plots.svg'), bbox_inches='tight')
 
     job.document['lj_fluid_analysis_complete'] = True
 
 
-analysis_aggregator = aggregator.groupby(key=['kT', 'density', 'num_particles'],
+analysis_aggregator = aggregator.groupby(key=['kT', 'density', 'num_particles', 'r_cut'],
                                          sort_by='replicate_idx',
                                          select=is_lj_fluid)
 
@@ -940,7 +963,7 @@ def lj_fluid_compare_modes(*jobs):
                               potential_energy=None)
 
     fig = matplotlib.figure.Figure(figsize=(8, 8 / 1.618 * 3), layout='tight')
-    fig.suptitle(f"$kT={kT}$, $\\rho={set_density}$, $N={num_particles}$")
+    fig.suptitle(f"$kT={kT}$, $\\rho={set_density}$, $r_\\mathrm{{cut}}={job.statepoint.r_cut}$, $N={num_particles}$")
 
     for i, quantity_name in enumerate(quantity_names):
         ax = fig.add_subplot(3, 1, i + 1)
@@ -1001,6 +1024,7 @@ def lj_fluid_compare_modes(*jobs):
         ax.set_title(label=result + f' ANOVA p-value: {p:0.3f}')
 
     filename = f'lj_fluid_compare_kT{kT}_density{round(set_density, 2)}' \
+               f'$r_\\mathrm{{cut}}={job[0].statepoint.r_cut}$, ' \
                f'_N{num_particles}.svg'
 
     fig.savefig(os.path.join(jobs[0]._project.path, filename),
@@ -1067,7 +1091,7 @@ def lj_fluid_ke_analyze(*jobs):
     num_particles = jobs[0].sp.num_particles
 
     fig = matplotlib.figure.Figure(figsize=(10, 10 / 1.618 * 2), layout='tight')
-    fig.suptitle(f"$kT={kT}$, $\\rho={set_density}$, $N={num_particles}$")
+    fig.suptitle(f"$kT={kT}$, $\\rho={set_density}$, $r_\\mathrm{{cut}}={job.statepoint.r_cut}$, $N={num_particles}$")
 
     ke_means_expected = collections.defaultdict(list)
     ke_sigmas_expected = collections.defaultdict(list)
@@ -1122,6 +1146,7 @@ def lj_fluid_ke_analyze(*jobs):
 
     filename = f'lj_fluid_ke_analyze_kT{kT}'\
                f'_density{round(set_density, 2)}.svg' \
+               f'$r_\\mathrm{{cut}}={job.statepoint.r_cut}$, ' \
                f'_N{num_particles}.svg'
     fig.savefig(os.path.join(jobs[0]._project.path, filename),
                 bbox_inches='tight')
@@ -1334,9 +1359,11 @@ def lj_fluid_conservation_analyze(*jobs):
 
     fig.suptitle("LJ conservation tests: "
                  f"$kT={job.statepoint.kT}$, $\\rho={job.statepoint.density}$, "
+                 f"$r_\\mathrm{{cut}}={job.statepoint.r_cut}$, "
                  f"$N={job.statepoint.num_particles}$")
     filename = f'lj_fluid_conservation_kT{job.statepoint.kT}_' \
                f'density{round(job.statepoint.density, 2)}_' \
+               f'$r_\\mathrm{{cut}}={job.statepoint.r_cut}$, ' \
                f'N{job.statepoint.num_particles}.svg'
 
     fig.savefig(os.path.join(jobs[0]._project.path, filename),
