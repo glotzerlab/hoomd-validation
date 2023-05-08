@@ -21,7 +21,7 @@ TOTAL_STEPS = RANDOMIZE_STEPS + EQUILIBRATE_STEPS + RUN_STEPS
 WRITE_PERIOD = 4_000
 LOG_PERIOD = {'trajectory': 50_000, 'quantities': 125}
 LJ_PARAMS = {'epsilon': 1.0, 'sigma': 1.0, 'r_on': 2.0, 'r_cut': 2.5}
-NUM_CPU_RANKS = min(1, CONFIG["max_cores_sim"])
+NUM_CPU_RANKS = min(8, CONFIG["max_cores_sim"])
 
 # Limit the number of long NVE runs to reduce the number of CPU hours needed.
 NUM_NVE_RUNS = 2
@@ -29,7 +29,7 @@ NUM_NVE_RUNS = 2
 
 def job_statepoints():
     """list(dict): A list of statepoints for this subproject."""
-    num_particles = 9**3
+    num_particles = 12**3
     replicate_indices = range(CONFIG["replicates"])
     params_list = [(1.5, 0.5998286671851658, 1.0270905797770546)] #,
     #    (1.0, 0.7999550814681395, 1.4363805638963822),
