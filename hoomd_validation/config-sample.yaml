@@ -30,3 +30,6 @@
 
 ## Whether the HOOMD build has ENABLE_LLVM on.
 # enable_llvm: true
+
+## Whether the HOOMD build has ENABLE_GPU on.
+# enable_gpu: true

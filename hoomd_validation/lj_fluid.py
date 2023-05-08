@@ -32,8 +32,8 @@ def job_statepoints():
     num_particles = 9**3
     replicate_indices = range(CONFIG["replicates"])
     params_list = [(1.5, 0.5998286671851658, 1.0270905797770546)] #,
-                #    (1.0, 0.7999550814681395, 1.4363805638963822),
-                #    (1.25, 0.049963649769543844, 0.05363574413661169)]
+    #    (1.0, 0.7999550814681395, 1.4363805638963822),
+    #    (1.25, 0.049963649769543844, 0.05363574413661169)]
     for kT, density, pressure in params_list:
         for idx in replicate_indices:
             yield ({
@@ -293,13 +293,6 @@ md_job_definitions = [
     },
     {
         'ensemble': 'nvt',
-        'thermostat': 'langevin',
-        'device_name': 'gpu',
-        'ranks_per_partition': 1,
-        'aggregator': partition_jobs_gpu
-    },
-    {
-        'ensemble': 'nvt',
         'thermostat': 'mttk',
         'device_name': 'cpu',
         'ranks_per_partition': NUM_CPU_RANKS,
@@ -307,27 +300,6 @@ md_job_definitions = [
     },
     {
         'ensemble': 'nvt',
-        'thermostat': 'mttk',
-        'device_name': 'gpu',
-        'ranks_per_partition': 1,
-        'aggregator': partition_jobs_gpu
-    },
-    {
-        'ensemble': 'nvt',
-        'thermostat': 'bussi',
-        'device_name': 'cpu',
-        'ranks_per_partition': NUM_CPU_RANKS,
-        'aggregator': partition_jobs_cpu_mpi
-    },
-    {
-        'ensemble': 'nvt',
-        'thermostat': 'bussi',
-        'device_name': 'gpu',
-        'ranks_per_partition': 1,
-        'aggregator': partition_jobs_gpu
-    },
-    {
-        'ensemble': 'npt',
         'thermostat': 'bussi',
         'device_name': 'cpu',
         'ranks_per_partition': NUM_CPU_RANKS,
@@ -336,11 +308,43 @@ md_job_definitions = [
     {
         'ensemble': 'npt',
         'thermostat': 'bussi',
-        'device_name': 'gpu',
-        'ranks_per_partition': 1,
-        'aggregator': partition_jobs_gpu
+        'device_name': 'cpu',
+        'ranks_per_partition': NUM_CPU_RANKS,
+        'aggregator': partition_jobs_cpu_mpi
     },
 ]
+
+if CONFIG["enable_gpu"]:
+    md_job_definitions.extend([
+        {
+            'ensemble': 'nvt',
+            'thermostat': 'langevin',
+            'device_name': 'gpu',
+            'ranks_per_partition': 1,
+            'aggregator': partition_jobs_gpu
+        },
+        {
+            'ensemble': 'nvt',
+            'thermostat': 'mttk',
+            'device_name': 'gpu',
+            'ranks_per_partition': 1,
+            'aggregator': partition_jobs_gpu
+        },
+        {
+            'ensemble': 'nvt',
+            'thermostat': 'bussi',
+            'device_name': 'gpu',
+            'ranks_per_partition': 1,
+            'aggregator': partition_jobs_gpu
+        },
+        {
+            'ensemble': 'npt',
+            'thermostat': 'bussi',
+            'device_name': 'gpu',
+            'ranks_per_partition': 1,
+            'aggregator': partition_jobs_gpu
+        },
+    ])
 
 
 def add_md_sampling_job(ensemble, thermostat, device_name, ranks_per_partition,
@@ -612,18 +616,22 @@ mc_job_definitions = [
         'aggregator': partition_jobs_cpu_mpi
     },
     {
-        'mode': 'nvt',
-        'device_name': 'gpu',
-        'ranks_per_partition': 1,
-        'aggregator': partition_jobs_gpu
-    },
-    {
         'mode': 'npt',
         'device_name': 'cpu',
         'ranks_per_partition': NUM_CPU_RANKS,
         'aggregator': partition_jobs_cpu_mpi
     },
 ]
+
+if CONFIG["enable_gpu"]:
+    mc_job_definitions.extend([
+        {
+            'mode': 'nvt',
+            'device_name': 'gpu',
+            'ranks_per_partition': 1,
+            'aggregator': partition_jobs_gpu
+        },
+    ])
 
 
 def add_mc_sampling_job(mode, device_name, ranks_per_partition, aggregator):
@@ -908,14 +916,13 @@ def lj_fluid_compare_modes(*jobs):
 
     sim_modes = [
         'nvt_langevin_md_cpu',
-        'nvt_langevin_md_gpu',
         'nvt_mttk_md_cpu',
-        'nvt_mttk_md_gpu',
         'nvt_bussi_md_cpu',
-        'nvt_bussi_md_gpu',
         'npt_bussi_md_cpu',
-        'npt_bussi_md_gpu',
     ]
+
+    if os.path.exists(jobs[0].fn('nvt_langevin_md_gpu_quantities.gsd')):
+        sim_modes.extend(['nvt_langevin_md_gpu', 'nvt_mttk_md_gpu', 'nvt_bussi_md_gpu', 'npt_bussi_md_gpu',])
 
     if os.path.exists(jobs[0].fn('nvt_mc_cpu_quantities.gsd')):
         sim_modes.extend(['nvt_mc_cpu', 'nvt_mc_gpu', 'npt_mc_cpu'])
@@ -1046,14 +1053,13 @@ def lj_fluid_ke_analyze(*jobs):
 
     sim_modes = [
         'nvt_langevin_md_cpu',
-        'nvt_langevin_md_gpu',
         'nvt_mttk_md_cpu',
-        'nvt_mttk_md_gpu',
         'nvt_bussi_md_cpu',
-        'nvt_bussi_md_gpu',
         'npt_bussi_md_cpu',
-        'npt_bussi_md_gpu',
     ]
+
+    if os.path.exists(jobs[0].fn('nvt_langevin_md_gpu_quantities.gsd')):
+        sim_modes.extend(['nvt_langevin_md_gpu', 'nvt_mttk_md_gpu', 'nvt_bussi_md_gpu', 'npt_bussi_md_gpu',])
 
     # grab the common statepoint parameters
     kT = jobs[0].sp.kT
@@ -1191,59 +1197,73 @@ partition_jobs_gpu_nve = aggregator.groupsof(num=min(
                                              select=is_lj_fluid_nve)
 
 
-@Project.pre.after(lj_fluid_create_initial_state)
-@Project.post(
-    util.gsd_step_greater_equal_function('nve_md_cpu_quantities.gsd',
-                                         200_000_000))
-@Project.operation(directives=dict(
-    walltime=CONFIG["max_walltime"],
-    executable=CONFIG["executable"],
-    nranks=util.total_ranks_function(NUM_CPU_RANKS)),
-                   aggregator=partition_jobs_cpu_mpi_nve)
-def lj_fluid_nve_md_cpu(*jobs):
-    """Run NVE MD on the CPU."""
-    import hoomd
+nve_md_sampling_jobs = []
+nve_md_job_definitions = [
+    {
+        'device_name': 'cpu',
+        'ranks_per_partition': NUM_CPU_RANKS,
+        'aggregator': partition_jobs_cpu_mpi,
+        'run_length': 200_000_000,
+    },
+]
 
-    communicator = hoomd.communicator.Communicator(
-        ranks_per_partition=NUM_CPU_RANKS)
-    job = jobs[communicator.partition]
-
-    if communicator.rank == 0:
-        print('starting lj_fluid_nve_md_cpu:', job)
-
-    device = hoomd.device.CPU(communicator=communicator,
-                              message_filename=job.fn('run_nve_md_cpu.log'))
-    run_nve_md_sim(job, device, run_length=200_000_000)
+if CONFIG["enable_gpu"]:
+    nve_md_job_definitions.extend([
+        {
+            'device_name': 'gpu',
+            'ranks_per_partition': 1,
+            'aggregator': partition_jobs_gpu,
+            'run_length': 800_000_000,
+        },
+    ])
 
 
-@Project.pre.after(lj_fluid_create_initial_state)
-@Project.post(
-    util.gsd_step_greater_equal_function('nve_md_gpu_quantities.gsd',
-                                         800_000_000))
-@Project.operation(directives=dict(walltime=CONFIG["max_walltime"],
-                                   executable=CONFIG["executable"],
-                                   nranks=util.total_ranks_function(1),
-                                   ngpu=util.total_ranks_function(1)),
-                   aggregator=partition_jobs_gpu_nve)
-def lj_fluid_nve_md_gpu(*jobs):
-    """Run NVE MD on the GPU."""
-    import hoomd
+def add_nve_md_job(device_name, ranks_per_partition, aggregator, run_length):
+    """Add a MD NVE conservation job to the workflow."""
+    sim_mode = 'nve_md'
 
-    communicator = hoomd.communicator.Communicator(ranks_per_partition=1)
-    job = jobs[communicator.partition]
+    directives = dict(walltime=CONFIG["max_walltime"],
+                      executable=CONFIG["executable"],
+                      nranks=util.total_ranks_function(ranks_per_partition))
 
-    if communicator.rank == 0:
-        print('starting lj_fluid_nve_md_gpu:', job)
+    if device_name == 'gpu':
+        directives['ngpu'] = util.total_ranks_function(ranks_per_partition)
 
-    device = hoomd.device.GPU(communicator=communicator,
-                              message_filename=job.fn('run_nve_md_gpu.log'))
-    run_nve_md_sim(job, device, run_length=800_000_000)
+    @Project.pre.after(lj_fluid_create_initial_state)
+    @Project.post(
+        util.gsd_step_greater_equal_function(
+            f'{sim_mode}_{device_name}_quantities.gsd', run_length))
+    @Project.operation(name=f'lj_fluid_{sim_mode}_{device_name}',
+                       directives=directives,
+                       aggregator=aggregator)
+    def lj_fluid_nve_md_job(*jobs):
+        """Run NVE MD."""
+        import hoomd
+
+        communicator = hoomd.communicator.Communicator(
+            ranks_per_partition=ranks_per_partition)
+        job = jobs[communicator.partition]
+
+        if communicator.rank == 0:
+            print(f'starting lj_fluid_{sim_mode}_{device_name}:', job)
+
+        if device_name == 'gpu':
+            device_cls = hoomd.device.GPU
+        elif device_name == 'cpu':
+            device_cls = hoomd.device.CPU
+
+        device = device_cls(communicator=communicator,
+                            message_filename=job.fn(f'run_{sim_mode}_{device_name}.log'))
+        run_nve_md_sim(job, device, run_length=run_length)
+
+    nve_md_sampling_jobs.append(lj_fluid_nve_md_job)
 
 
-@Project.pre(lambda *jobs: util.gsd_step_greater_equal_function(
-    'nve_md_gpu_quantities.gsd', 800_000_000)(*jobs[0:NUM_NVE_RUNS]))
-@Project.pre(lambda *jobs: util.gsd_step_greater_equal_function(
-    'nve_md_cpu_quantities.gsd', 200_000_000)(*jobs[0:NUM_NVE_RUNS]))
+for definition in nve_md_job_definitions:
+    add_nve_md_job(**definition)
+
+
+@Project.pre.after(*nve_md_sampling_jobs)
 @Project.post(lambda *jobs: util.true_all(
     *jobs[0:NUM_NVE_RUNS], key='lj_fluid_conservation_analysis_complete'))
 @Project.operation(directives=dict(walltime=CONFIG['short_walltime'],
@@ -1261,7 +1281,10 @@ def lj_fluid_conservation_analyze(*jobs):
 
     print('starting lj_fluid_conservation_analyze:', jobs[0])
 
-    sim_modes = ['nve_md_cpu', 'nve_md_gpu']
+    sim_modes = ['nve_md_cpu']
+    if os.path.exists(jobs[0].fn('nve_md_gpu_quantities.gsd')):
+        sim_modes.extend['nve_md_gpu']
+
     jobs = jobs[0:NUM_NVE_RUNS]
 
     energies = []

@@ -37,6 +37,7 @@ class ConfigFile(dict):
         self["short_walltime"] = int(config.get("short_walltime", 2))
         self["replicates"] = int(config.get("replicates", 16))
         self["enable_llvm"] = bool(config.get("enable_llvm", True))
+        self["enable_gpu"] = bool(config.get("enable_gpu", True))
 
     @staticmethod
     def _parse_executable_string(config_file):
