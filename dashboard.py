@@ -22,7 +22,8 @@ class ValidationDashboard(Dashboard):
         """Name jobs."""
         if job.statepoint.subproject == 'lj_fluid':
             return f"lj_fluid: kT={job.statepoint.kT}, " \
-                   f"rho={job.statepoint.density}"
+                   f"rho={job.statepoint.density}, " \
+                   f"N={job.statepoint.num_particles}"
         elif job.statepoint.subproject == 'lj_union':
             return f"lj_union: kT={job.statepoint.kT}, " \
                    f"rho={job.statepoint.density}"

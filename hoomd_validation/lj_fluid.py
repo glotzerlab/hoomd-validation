@@ -687,7 +687,6 @@ def lj_fluid_analyze(job):
     import matplotlib.style
     import matplotlib.figure
     matplotlib.style.use('ggplot')
-    from util import read_gsd_log_trajectory, get_log_quantity
 
     print('starting lj_fluid_analyze:', job)
 
@@ -726,22 +725,15 @@ def lj_fluid_analyze(job):
     kinetic_temperature = {}
 
     for sim_mode in sim_modes:
-        with gsd.hoomd.open(job.fn(sim_mode + '_quantities.gsd')) as gsd_traj:
-            # read GSD file once
-            traj = read_gsd_log_trajectory(gsd_traj)
+        log_traj = gsd.hoomd.read_log(job.fn(sim_mode + '_quantities.gsd'))
 
         if 'md' in sim_mode:
-            energies[sim_mode] = get_log_quantity(
-                traj, 'md/compute/ThermodynamicQuantities/potential_energy')
+            energies[sim_mode] = log_traj['log/md/compute/ThermodynamicQuantities/potential_energy']
         else:
-            energies[sim_mode] = numpy.array(
-                get_log_quantity(
-                    traj,
-                    'hpmc/pair/user/CPPPotential/energy')) * job.statepoint.kT
+            energies[sim_mode] = log_traj['log/hpmc/pair/user/CPPPotential/energy'] * job.statepoint.kT
 
         if constant[sim_mode] == 'density' and 'md' in sim_mode:
-            pressures[sim_mode] = get_log_quantity(
-                traj, 'md/compute/ThermodynamicQuantities/pressure')
+            pressures[sim_mode] = log_traj['log/md/compute/ThermodynamicQuantities/pressure']
         elif constant[sim_mode] == 'density' and 'mc' in sim_mode:
             pressures[sim_mode] = numpy.full(len(energies[sim_mode]), numpy.nan)
         else:
@@ -749,15 +741,13 @@ def lj_fluid_analyze(job):
                 energies[sim_mode])) * job.statepoint.pressure
 
         if constant[sim_mode] == 'pressure':
-            densities[sim_mode] = get_log_quantity(
-                traj, 'custom_actions/ComputeDensity/density')
+            densities[sim_mode] = log_traj['log/custom_actions/ComputeDensity/density']
         else:
             densities[sim_mode] = numpy.ones(len(
                 energies[sim_mode])) * job.statepoint.density
 
         if 'md' in sim_mode and 'langevin' not in sim_mode:
-            momentum_vector = get_log_quantity(traj,
-                                               'md/Integrator/linear_momentum')
+            momentum_vector = log_traj['log/md/Integrator/linear_momentum']
             linear_momentum[sim_mode] = [
                 math.sqrt(v[0]**2 + v[1]**2 + v[2]**2) for v in momentum_vector
             ]
@@ -765,8 +755,7 @@ def lj_fluid_analyze(job):
             linear_momentum[sim_mode] = numpy.zeros(len(energies[sim_mode]))
 
         if 'md' in sim_mode:
-            kinetic_temperature[sim_mode] = get_log_quantity(
-                traj, 'md/compute/ThermodynamicQuantities/kinetic_temperature')
+            kinetic_temperature[sim_mode] = log_traj['log/md/compute/ThermodynamicQuantities/kinetic_temperature']
         else:
             kinetic_temperature[sim_mode] = numpy.ones(len(
                 energies[sim_mode])) * job.statepoint.kT
@@ -1072,14 +1061,12 @@ def lj_fluid_ke_analyze(*jobs):
             else:
                 n_dof = num_particles * 3 - 3
 
-            with gsd.hoomd.open(job.fn(sim_mode
-                                       + '_quantities.gsd')) as gsd_traj:
-                traj = util.read_gsd_log_trajectory(gsd_traj)
+            print('Reading' + job.fn(sim_mode + '_quantities.gsd'))
+            log_traj = gsd.hoomd.read_log(job.fn(sim_mode + '_quantities.gsd'))
 
-                ke = util.get_log_quantity(
-                    traj, 'md/compute/ThermodynamicQuantities/kinetic_energy')
-                ke_means_expected[sim_mode].append(numpy.mean(ke) - 1 / 2 * n_dof * kT)
-                ke_sigmas_expected[sim_mode].append(numpy.std(ke) - 1 / math.sqrt(2) * math.sqrt(n_dof) * kT)
+            ke = log_traj['log/md/compute/ThermodynamicQuantities/kinetic_energy']
+            ke_means_expected[sim_mode].append(numpy.mean(ke) - 1 / 2 * n_dof * kT)
+            ke_sigmas_expected[sim_mode].append(numpy.std(ke) - 1 / math.sqrt(2) * math.sqrt(n_dof) * kT)
 
     def plot_vs_expected(ax, values, name):
         # compute stats with data
@@ -1258,7 +1245,6 @@ def lj_fluid_conservation_analyze(*jobs):
     import matplotlib.style
     import matplotlib.figure
     matplotlib.style.use('ggplot')
-    from util import read_gsd_log_trajectory, get_log_quantity
 
     print('starting lj_fluid_conservation_analyze:', jobs[0])
 
@@ -1273,22 +1259,16 @@ def lj_fluid_conservation_analyze(*jobs):
         job_linear_momentum = {}
 
         for sim_mode in sim_modes:
-            with gsd.hoomd.open(job.fn(sim_mode
-                                       + '_quantities.gsd')) as gsd_traj:
-                # read GSD file once
-                traj = read_gsd_log_trajectory(gsd_traj)
+            log_traj = gsd.hoomd.read_log(job.fn(sim_mode + '_quantities.gsd'))
 
             job_energies[sim_mode] = (
-                get_log_quantity(
-                    traj, 'md/compute/ThermodynamicQuantities/potential_energy')
-                + get_log_quantity(
-                    traj, 'md/compute/ThermodynamicQuantities/kinetic_energy'))
+                log_traj['log/md/compute/ThermodynamicQuantities/potential_energy']
+                + log_traj['log/md/compute/ThermodynamicQuantities/kinetic_energy'])
             job_energies[sim_mode] = (
                 job_energies[sim_mode]
                 - job_energies[sim_mode][0]) / job.statepoint["num_particles"]
 
-            momentum_vector = get_log_quantity(traj,
-                                               'md/Integrator/linear_momentum')
+            momentum_vector = log_traj['log/md/Integrator/linear_momentum']
             job_linear_momentum[sim_mode] = [
                 math.sqrt(v[0]**2 + v[1]**2 + v[2]**2) for v in momentum_vector
             ]
