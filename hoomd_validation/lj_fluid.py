@@ -51,14 +51,19 @@ def is_lj_fluid(job):
     return job.statepoint['subproject'] == 'lj_fluid'
 
 
+def sort_key(job):
+    """Aggregator sort key."""
+    return (job.statepoint.density, job.statepoint.num_particles)
+
+
 partition_jobs_cpu_mpi = aggregator.groupsof(num=min(
     CONFIG["replicates"], CONFIG["max_cores_submission"] // NUM_CPU_RANKS),
-                                             sort_by='density',
+                                             sort_by=sort_key,
                                              select=is_lj_fluid)
 
 partition_jobs_gpu = aggregator.groupsof(num=min(CONFIG["replicates"],
                                                  CONFIG["max_gpus_submission"]),
-                                         sort_by='density',
+                                         sort_by=sort_key,
                                          select=is_lj_fluid)
 
 
@@ -986,7 +991,9 @@ def lj_fluid_compare_modes(*jobs):
 
         ax.set_title(label=result + f' ANOVA p-value: {p:0.3f}')
 
-    filename = f'lj_fluid_compare_kT{kT}_density{round(set_density, 2)}.svg'
+    filename = f'lj_fluid_compare_kT{kT}_density{round(set_density, 2)}' \
+               f'_N{num_particles}.svg'
+
     fig.savefig(os.path.join(jobs[0]._project.path, filename),
                 bbox_inches='tight')
 
@@ -1107,7 +1114,9 @@ def lj_fluid_ke_analyze(*jobs):
     # https://doi.org/10.1371/journal.pone.0202764
     plot_vs_expected(ax, ke_sigmas_expected, r'$\Delta KE - 1/\sqrt{2} \sqrt{N_{dof}} k T$')
 
-    filename = f'lj_fluid_ke_analyze_kT{kT}_density{round(set_density, 2)}.svg'
+    filename = f'lj_fluid_ke_analyze_kT{kT}'\
+               f'_density{round(set_density, 2)}.svg' \
+               f'_N{num_particles}.svg'
     fig.savefig(os.path.join(jobs[0]._project.path, filename),
                 bbox_inches='tight')
 
@@ -1173,12 +1182,12 @@ def is_lj_fluid_nve(job):
 
 partition_jobs_cpu_mpi_nve = aggregator.groupsof(num=min(
     CONFIG["replicates"], CONFIG["max_cores_submission"] // NUM_CPU_RANKS),
-                                                 sort_by='density',
+                                                 sort_by=sort_key,
                                                  select=is_lj_fluid_nve)
 
 partition_jobs_gpu_nve = aggregator.groupsof(num=min(
     CONFIG["replicates"], CONFIG["max_gpus_submission"]),
-                                             sort_by='density',
+                                             sort_by=sort_key,
                                              select=is_lj_fluid_nve)
 
 
