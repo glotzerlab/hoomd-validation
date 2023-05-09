@@ -439,6 +439,7 @@ def make_mc_simulation(job,
     """
     import hoomd
     from hoomd import hpmc
+    import numpy
 
     # integrator
     mc = hpmc.integrate.Sphere(nselect=1)
@@ -466,9 +467,16 @@ def make_mc_simulation(job,
                 float r12inv = r6inv * r6inv;
                 float energy = 4 * {epsilon} * (r12inv - r6inv);
 
-                // apply xplor smoothing
                 float r_on = {r_on};
                 float r_onsq = r_on * r_on;
+
+                // energy shift for WCA
+                if (r_onsq > r_cutsq)
+                {{
+                    energy += {epsilon};
+                }}
+
+                // apply xplor smoothing
                 if (rsq > r_onsq)
                 {{
                     // computing denominator for the shifting factor
@@ -493,10 +501,20 @@ def make_mc_simulation(job,
                                                    param_array=[])
     mc.pair_potential = lj_jit_potential
 
+    # pair force to compute virial pressure
+    nlist = hoomd.md.nlist.Cell(buffer=0.4)
+    lj = hoomd.md.pair.LJ(default_r_cut=job.statepoint.r_cut,
+                    default_r_on=LJ_PARAMS['r_on'],
+                    nlist=nlist)
+    lj.params[('A', 'A')] = dict(sigma=LJ_PARAMS['sigma'],
+                                 epsilon=LJ_PARAMS['epsilon'])
+    lj.mode = 'xplor'
+
     # log to gsd
     logger_gsd = hoomd.logging.Logger(categories=['scalar', 'sequence'])
     logger_gsd.add(lj_jit_potential, quantities=['energy'])
     logger_gsd.add(mc, quantities=['translate_moves'])
+    logger_gsd[('custom', 'virial')] = (lambda: numpy.sum(lj.virials, 0), 'scalar')
     for loggable in extra_loggables:
         logger_gsd.add(loggable)
 
@@ -528,6 +546,7 @@ def make_mc_simulation(job,
             hoomd.trigger.Before(RANDOMIZE_STEPS | EQUILIBRATE_STEPS // 2)
         ]))
     sim.operations.add(mstuner)
+    sim.operations.computes.append(lj)
 
     return sim
 
@@ -778,7 +797,10 @@ def lj_fluid_analyze(job):
             pressures[sim_mode] = log_traj['log/md/compute/ThermodynamicQuantities/pressure']
 
         elif constant[sim_mode] == 'density' and 'mc' in sim_mode:
-            pressures[sim_mode] = numpy.full(len(energies[sim_mode]), numpy.nan)
+            virials = log_traj['log/custom/virial']
+            w = virials[:,0] + virials[:,3] + virials[:,5]
+            V = job.statepoint.num_particles / log_traj['log/custom_actions/ComputeDensity/density']
+            pressures[sim_mode] = job.statepoint.num_particles * job.statepoint.kT / V + w / (3 * V)
         else:
             pressures[sim_mode] = numpy.ones(len(
                 energies[sim_mode])) * job.statepoint.pressure
