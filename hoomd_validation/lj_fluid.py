@@ -1043,7 +1043,7 @@ def lj_fluid_compare_modes(*jobs):
             print("Average npt_mc_cpu density:", avg_quantity['npt_mc_cpu'], '+/-', stderr_quantity['npt_mc_cpu'])
 
     filename = f'lj_fluid_compare_kT{kT}_density{round(set_density, 2)}' \
-               f'r_cut={jobs[0].statepoint.r_cut}_' \
+               f'r_cut{jobs[0].statepoint.r_cut}_' \
                f'_N{num_particles}.svg'
 
     fig.savefig(os.path.join(jobs[0]._project.path, filename),
@@ -1142,7 +1142,7 @@ def lj_fluid_ke_analyze(*jobs):
 
     filename = f'lj_fluid_ke_analyze_kT{kT}'\
                f'_density{round(set_density, 2)}.svg' \
-               f'r_cut={job.statepoint.r_cut}_' \
+               f'r_cut{job.statepoint.r_cut}_' \
                f'_N{num_particles}.svg'
     fig.savefig(os.path.join(jobs[0]._project.path, filename),
                 bbox_inches='tight')
@@ -1359,7 +1359,7 @@ def lj_fluid_conservation_analyze(*jobs):
                  f"$N={job.statepoint.num_particles}$")
     filename = f'lj_fluid_conservation_kT{job.statepoint.kT}_' \
                f'density{round(job.statepoint.density, 2)}_' \
-               f'r_cut={job.statepoint.r_cut}_' \
+               f'r_cut{job.statepoint.r_cut}_' \
                f'N{job.statepoint.num_particles}.svg'
 
     fig.savefig(os.path.join(jobs[0]._project.path, filename),
