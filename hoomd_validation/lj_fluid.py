@@ -755,17 +755,23 @@ def lj_fluid_analyze(job):
     )
     sim_modes = [
         'nvt_langevin_md_cpu',
-        'nvt_langevin_md_gpu',
         'nvt_mttk_md_cpu',
-        'nvt_mttk_md_gpu',
         'nvt_bussi_md_cpu',
-        'nvt_bussi_md_gpu',
         'npt_bussi_md_cpu',
-        'npt_bussi_md_gpu',
     ]
 
+    if os.path.exists(job.fn('nvt_langevin_md_gpu_quantities.gsd')):
+        sim_modes.extend([        'nvt_langevin_md_gpu',
+                                  'nvt_mttk_md_gpu',
+                                'nvt_bussi_md_gpu',
+        'npt_bussi_md_gpu',
+        ])
+
     if os.path.exists(job.fn('nvt_mc_cpu_quantities.gsd')):
-        sim_modes.extend(['nvt_mc_cpu', 'nvt_mc_gpu', 'npt_mc_cpu'])
+        sim_modes.extend(['nvt_mc_cpu', 'npt_mc_cpu'])
+
+    if os.path.exists(job.fn('nvt_mc_gpu_quantities.gsd')):
+        sim_modes.extend(['nvt_mc_gpu'])
 
     energies = {}
     pressures = {}
@@ -799,7 +805,7 @@ def lj_fluid_analyze(job):
         elif constant[sim_mode] == 'density' and 'mc' in sim_mode:
             virials = log_traj['log/custom/virial']
             w = virials[:,0] + virials[:,3] + virials[:,5]
-            V = job.statepoint.num_particles / log_traj['log/custom_actions/ComputeDensity/density']
+            V = job.statepoint.num_particles / job.statepoint.density
             pressures[sim_mode] = job.statepoint.num_particles * job.statepoint.kT / V + w / (3 * V)
         else:
             pressures[sim_mode] = numpy.ones(len(
@@ -960,7 +966,7 @@ def lj_fluid_compare_modes(*jobs):
     print('starting lj_fluid_compare_modes:', jobs[0])
 
     sim_modes = [
-        'nvt_langevin_md_cpu',
+        # 'nvt_langevin_md_cpu',
         'nvt_mttk_md_cpu',
         'nvt_bussi_md_cpu',
         'npt_bussi_md_cpu',
@@ -970,7 +976,10 @@ def lj_fluid_compare_modes(*jobs):
         sim_modes.extend(['nvt_langevin_md_gpu', 'nvt_mttk_md_gpu', 'nvt_bussi_md_gpu', 'npt_bussi_md_gpu',])
 
     if os.path.exists(jobs[0].fn('nvt_mc_cpu_quantities.gsd')):
-        sim_modes.extend(['nvt_mc_cpu', 'nvt_mc_gpu', 'npt_mc_cpu'])
+        sim_modes.extend(['nvt_mc_cpu', 'npt_mc_cpu'])
+
+    if os.path.exists(jobs[0].fn('nvt_mc_gpu_quantities.gsd')):
+        sim_modes.extend(['nvt_mc_gpu'])
 
     quantity_names = ['density', 'pressure', 'potential_energy']
 
@@ -985,7 +994,7 @@ def lj_fluid_compare_modes(*jobs):
                               potential_energy=None)
 
     fig = matplotlib.figure.Figure(figsize=(8, 8 / 1.618 * 3), layout='tight')
-    fig.suptitle(f"$kT={kT}$, $\\rho={set_density}$, $r_\\mathrm{{cut}}={job.statepoint.r_cut}$, $N={num_particles}$")
+    fig.suptitle(f"$kT={kT}$, $\\rho={set_density}$, $r_\\mathrm{{cut}}={jobs[0].statepoint.r_cut}$, $N={num_particles}$")
 
     for i, quantity_name in enumerate(quantity_names):
         ax = fig.add_subplot(3, 1, i + 1)
@@ -1030,23 +1039,11 @@ def lj_fluid_compare_modes(*jobs):
                   linestyles='dashed',
                   colors='k')
 
-        # Remove nan values, then run ANOVA test
-        if quantity_name == 'pressure' and 'nvt_mc_cpu' in quantities:
-            del quantities['nvt_mc_cpu']
-        if quantity_name == 'pressure' and 'nvt_mc_gpu' in quantities:
-            del quantities['nvt_mc_gpu']
-        unpacked_quantities = list(quantities.values())
-        f, p = scipy.stats.f_oneway(*unpacked_quantities)
-
-        if p > 0.05:
-            result = r"$\checkmark$"
-        else:
-            result = "XX"
-
-        ax.set_title(label=result + f' ANOVA p-value: {p:0.3f}')
+        if quantity_name == "density":
+            print("Average npt_mc_cpu density:", avg_quantity['npt_mc_cpu'], '+/-', stderr_quantity['npt_mc_cpu'])
 
     filename = f'lj_fluid_compare_kT{kT}_density{round(set_density, 2)}' \
-               f'$r_\\mathrm{{cut}}={job[0].statepoint.r_cut}$, ' \
+               f'r_cut={jobs[0].statepoint.r_cut}_' \
                f'_N{num_particles}.svg'
 
     fig.savefig(os.path.join(jobs[0]._project.path, filename),
@@ -1056,30 +1053,7 @@ def lj_fluid_compare_modes(*jobs):
         job.document['lj_fluid_compare_modes_complete'] = True
 
 
-@Project.pre(
-    util.gsd_step_greater_equal_function('nvt_langevin_md_cpu_quantities.gsd',
-                                         TOTAL_STEPS))
-@Project.pre(
-    util.gsd_step_greater_equal_function('nvt_langevin_md_gpu_quantities.gsd',
-                                         TOTAL_STEPS))
-@Project.pre(
-    util.gsd_step_greater_equal_function('nvt_mttk_md_cpu_quantities.gsd',
-                                         TOTAL_STEPS))
-@Project.pre(
-    util.gsd_step_greater_equal_function('nvt_mttk_md_gpu_quantities.gsd',
-                                         TOTAL_STEPS))
-@Project.pre(
-    util.gsd_step_greater_equal_function('nvt_bussi_md_cpu_quantities.gsd',
-                                         TOTAL_STEPS))
-@Project.pre(
-    util.gsd_step_greater_equal_function('nvt_bussi_md_gpu_quantities.gsd',
-                                         TOTAL_STEPS))
-@Project.pre(
-    util.gsd_step_greater_equal_function('npt_bussi_md_cpu_quantities.gsd',
-                                         TOTAL_STEPS))
-@Project.pre(
-    util.gsd_step_greater_equal_function('npt_bussi_md_gpu_quantities.gsd',
-                                         TOTAL_STEPS))
+@Project.pre.after(*md_sampling_jobs)
 @Project.post(
     lambda *jobs: util.true_all(*jobs, key='lj_fluid_ke_analyze_complete'))
 @Project.operation(directives=dict(walltime=CONFIG['short_walltime'],
@@ -1113,7 +1087,7 @@ def lj_fluid_ke_analyze(*jobs):
     num_particles = jobs[0].sp.num_particles
 
     fig = matplotlib.figure.Figure(figsize=(10, 10 / 1.618 * 2), layout='tight')
-    fig.suptitle(f"$kT={kT}$, $\\rho={set_density}$, $r_\\mathrm{{cut}}={job.statepoint.r_cut}$, $N={num_particles}$")
+    fig.suptitle(f"$kT={kT}$, $\\rho={set_density}$, $r_\\mathrm{{cut}}={jobs[0].statepoint.r_cut}$, $N={num_particles}$")
 
     ke_means_expected = collections.defaultdict(list)
     ke_sigmas_expected = collections.defaultdict(list)
@@ -1168,7 +1142,7 @@ def lj_fluid_ke_analyze(*jobs):
 
     filename = f'lj_fluid_ke_analyze_kT{kT}'\
                f'_density{round(set_density, 2)}.svg' \
-               f'$r_\\mathrm{{cut}}={job.statepoint.r_cut}$, ' \
+               f'r_cut={job.statepoint.r_cut}_' \
                f'_N{num_particles}.svg'
     fig.savefig(os.path.join(jobs[0]._project.path, filename),
                 bbox_inches='tight')
@@ -1385,7 +1359,7 @@ def lj_fluid_conservation_analyze(*jobs):
                  f"$N={job.statepoint.num_particles}$")
     filename = f'lj_fluid_conservation_kT{job.statepoint.kT}_' \
                f'density{round(job.statepoint.density, 2)}_' \
-               f'$r_\\mathrm{{cut}}={job.statepoint.r_cut}$, ' \
+               f'r_cut={job.statepoint.r_cut}_' \
                f'N{job.statepoint.num_particles}.svg'
 
     fig.savefig(os.path.join(jobs[0]._project.path, filename),
