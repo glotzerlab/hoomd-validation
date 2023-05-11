@@ -31,11 +31,11 @@ def job_statepoints():
     """list(dict): A list of statepoints for this subproject."""
     replicate_indices = range(CONFIG["replicates"])
     params_list = [
-        dict(kT=1.5,
-             density=0.5998286671851658,
-             pressure=1.0270905797770546,
-             num_particles = 12**3,
-             r_cut=2.5),
+        # dict(kT=1.5,
+        #      density=0.5998286671851658,
+        #      pressure=1.0270905797770546,
+        #      num_particles = 12**3,
+        #      r_cut=2.5),
         # dict(kt=1.0,
         #      density=0.7999550814681395,
         #      pressure=1.4363805638963822,
