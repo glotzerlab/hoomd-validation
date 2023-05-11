@@ -15,11 +15,11 @@ import collections
 # Step counts must be even and a multiple of the log quantity period.
 RANDOMIZE_STEPS = 20_000
 EQUILIBRATE_STEPS = 100_000
-RUN_STEPS = 1_000_000
+RUN_STEPS = 4_000_000
 TOTAL_STEPS = RANDOMIZE_STEPS + EQUILIBRATE_STEPS + RUN_STEPS
 
 WRITE_PERIOD = 4_000
-LOG_PERIOD = {'trajectory': 50_000, 'quantities': 125}
+LOG_PERIOD = {'trajectory': 50_000, 'quantities': 1000}
 LJ_PARAMS = {'epsilon': 1.0, 'sigma': 1.0, 'r_on': 2.0}
 NUM_CPU_RANKS = min(8, CONFIG["max_cores_sim"])
 
@@ -36,11 +36,6 @@ def job_statepoints():
              pressure=1.0270905797770546,
              num_particles = 12**3,
              r_cut=2.5),
-        dict(kT=1.5,
-             density=0.5998286671851658,
-             pressure=1.0270905797770546,
-             num_particles = 24**3,
-             r_cut=2.5),
         # dict(kt=1.0,
         #      density=0.7999550814681395,
         #      pressure=1.4363805638963822,
@@ -56,13 +51,6 @@ def job_statepoints():
             density=0.91939,
             pressure=11,
             num_particles = 12**3,
-            r_cut=2**(1 / 6),
-        ),
-        dict(
-            kT=1.0,
-            density=0.91939,
-            pressure=11,
-            num_particles = 24**3,
             r_cut=2**(1 / 6),
         ),
     ]
@@ -452,6 +440,7 @@ def make_mc_simulation(job,
     import hoomd
     from hoomd import hpmc
     import numpy
+    from custom_actions import ComputeDensity
 
     # integrator
     mc = hpmc.integrate.Sphere(nselect=1)
@@ -522,11 +511,14 @@ def make_mc_simulation(job,
                                  epsilon=LJ_PARAMS['epsilon'])
     lj.mode = 'xplor'
 
+    # compute the density
+    compute_density = ComputeDensity()
+
     # log to gsd
     logger_gsd = hoomd.logging.Logger(categories=['scalar', 'sequence'])
     logger_gsd.add(lj_jit_potential, quantities=['energy'])
     logger_gsd.add(mc, quantities=['translate_moves'])
-    logger_gsd[('custom', 'virial')] = (lambda: numpy.sum(lj.virials, 0), 'scalar')
+    logger_gsd.add(compute_density)
     for loggable in extra_loggables:
         logger_gsd.add(loggable)
 
@@ -547,6 +539,16 @@ def make_mc_simulation(job,
         # computing the loggable quantity
         if hasattr(loggable, 'attach'):
             loggable.attach(sim)
+
+    compute_density.attach(sim)
+
+    def _compute_virial_pressure():
+        virials = numpy.sum(lj.virials, 0)
+        w = virials[:,0] + virials[:,3] + virials[:,5]
+        V = sim.state.box.volume
+        return job.statepoint.num_particles * job.statepoint.kT / V + w / (3 * V)
+
+    logger_gsd[('custom', 'virial_pressure')] = (_compute_virial_pressure, 'scalar')
 
     # move size tuner
     mstuner = hpmc.tune.MoveSize.scale_solver(
@@ -599,7 +601,6 @@ def run_npt_mc_sim(job, device):
     """Run MC sim in NPT."""
     import hoomd
     from hoomd import hpmc
-    from custom_actions import ComputeDensity
 
     if not hoomd.version.llvm_enabled:
         device.notice("LLVM disabled, skipping MC simulations.")
@@ -608,9 +609,6 @@ def run_npt_mc_sim(job, device):
     # device
     initial_state = job.fn('lj_fluid_initial_state.gsd')
     sim_mode = 'npt_mc'
-
-    # compute the density
-    compute_density = ComputeDensity()
 
     # box updates
     boxmc = hpmc.update.BoxMC(betaP=job.statepoint.pressure / job.sp.kT,
@@ -622,7 +620,7 @@ def run_npt_mc_sim(job, device):
                              device,
                              initial_state,
                              sim_mode,
-                             extra_loggables=[compute_density, boxmc])
+                             extra_loggables=[boxmc])
 
     sim.operations.add(boxmc)
 
@@ -799,35 +797,12 @@ def lj_fluid_analyze(job):
         else:
             energies[sim_mode] = log_traj['log/hpmc/pair/user/CPPPotential/energy'] * job.statepoint.kT
 
-        if constant[sim_mode] == 'density' and 'md' in sim_mode:
-            # pressure_sim = log_traj['log/md/compute/ThermodynamicQuantities/pressure']
-            # ke = log_traj['log/md/compute/ThermodynamicQuantities/kinetic_energy']
-            # V = job.statepoint.num_particles / log_traj['log/custom_actions/ComputeDensity/density']
-            # w = pressure_sim * 3 * V - 2 * ke
-            # pressure_corrected = (2 * ke * job.statepoint.num_particles / (job.statepoint.num_particles - 3) + w) / (3 * V)
-
-            # if 'langevin' not in sim_mode:
-            #     pressures[sim_mode] = pressure_corrected
-            #     print('pressure correction: ', numpy.mean(pressure_corrected) - numpy.mean(pressure_sim))
-            #     print('off_by: ', numpy.mean(pressure_corrected) - job.statepoint.pressure)
-            # else:
-            #     pressures[sim_mode] = pressure_sim
+        if 'md' in sim_mode:
             pressures[sim_mode] = log_traj['log/md/compute/ThermodynamicQuantities/pressure']
-
-        elif constant[sim_mode] == 'density' and 'mc' in sim_mode:
-            virials = log_traj['log/custom/virial']
-            w = virials[:,0] + virials[:,3] + virials[:,5]
-            V = job.statepoint.num_particles / job.statepoint.density
-            pressures[sim_mode] = job.statepoint.num_particles * job.statepoint.kT / V + w / (3 * V)
         else:
-            pressures[sim_mode] = numpy.ones(len(
-                energies[sim_mode])) * job.statepoint.pressure
+            pressures[sim_mode] = log_traj['log/custom/virial_pressure']
 
-        if constant[sim_mode] == 'pressure':
-            densities[sim_mode] = log_traj['log/custom_actions/ComputeDensity/density']
-        else:
-            densities[sim_mode] = numpy.ones(len(
-                energies[sim_mode])) * job.statepoint.density
+        densities[sim_mode] = log_traj['log/custom_actions/ComputeDensity/density']
 
         if 'md' in sim_mode and 'langevin' not in sim_mode:
             momentum_vector = log_traj['log/md/Integrator/linear_momentum']
@@ -978,7 +953,7 @@ def lj_fluid_compare_modes(*jobs):
     print('starting lj_fluid_compare_modes:', jobs[0])
 
     sim_modes = [
-        # 'nvt_langevin_md_cpu',
+        'nvt_langevin_md_cpu',
         'nvt_mttk_md_cpu',
         'nvt_bussi_md_cpu',
         'npt_bussi_md_cpu',
@@ -1052,7 +1027,12 @@ def lj_fluid_compare_modes(*jobs):
                   colors='k')
 
         if quantity_name == "density":
-            print("Average npt_mc_cpu density:", avg_quantity['npt_mc_cpu'], '+/-', stderr_quantity['npt_mc_cpu'])
+            print(f"Average npt_mc_cpu density {num_particles}:", avg_quantity['npt_mc_cpu'], '+/-', stderr_quantity['npt_mc_cpu'])
+        if quantity_name == "pressure":
+            print(f"Average nvt_mc_cpu pressure {num_particles}:", avg_quantity['nvt_mc_cpu'], '+/-', stderr_quantity['nvt_mc_cpu'])
+        if quantity_name == "pressure":
+            print(f"Average npt_mc_cpu pressure {num_particles}:", avg_quantity['npt_mc_cpu'], '+/-', stderr_quantity['npt_mc_cpu'])
+
 
     filename = f'lj_fluid_compare_kT{kT}_density{round(set_density, 2)}' \
                f'r_cut{jobs[0].statepoint.r_cut}_' \
