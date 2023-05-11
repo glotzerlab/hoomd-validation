@@ -544,7 +544,7 @@ def make_mc_simulation(job,
 
     def _compute_virial_pressure():
         virials = numpy.sum(lj.virials, 0)
-        w = virials[:,0] + virials[:,3] + virials[:,5]
+        w = virials[0] + virials[3] + virials[5]
         V = sim.state.box.volume
         return job.statepoint.num_particles * job.statepoint.kT / V + w / (3 * V)
 
