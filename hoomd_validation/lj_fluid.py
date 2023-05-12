@@ -32,24 +32,14 @@ def job_statepoints():
     replicate_indices = range(CONFIG["replicates"])
     params_list = [
         dict(kT=1.5,
-             density=0.5998286671851658,
-             pressure=1.0270905797770546,
+             density=0.6,
+             pressure=1.0,
              num_particles = 12**3,
              r_cut=2.5),
-        dict(kT=1.0,
-             density=0.7999550814681395,
-             pressure=1.4363805638963822,
-             num_particles = 12**3,
-             r_cut=2.5),
-        # dict(kT=1.25,
-        #      density=0.049963649769543844,
-        #      pressure=0.05363574413661169,
-        #      num_particles = 12**3,
-        #      r_cut=2.5),
         dict(
             kT=1.0,
-            density=0.91939,
-            pressure=11,
+            density=0.9193740949934834,
+            pressure=11.0,
             num_particles = 12**3,
             r_cut=2**(1 / 6),
         ),
@@ -265,8 +255,7 @@ def run_md_sim(job, device, ensemble, thermostat):
         method = md.methods.ConstantPressure(hoomd.filter.All(),
                                              S=[p, p, p, 0, 0, 0],
                                              tauS=3,
-                                             couple='xyz',
-                                             gamma=0.5)
+                                             couple='xyz')
         if thermostat == 'bussi':
             method.thermostat = hoomd.md.methods.thermostats.Bussi(
                 kT=job.statepoint.kT)
@@ -747,7 +736,7 @@ def lj_fluid_analyze(job):
     import matplotlib
     import matplotlib.style
     import matplotlib.figure
-    matplotlib.style.use('ggplot')
+    matplotlib.style.use('fivethirtyeight')
 
     print('starting lj_fluid_analyze:', job)
 
@@ -771,6 +760,7 @@ def lj_fluid_analyze(job):
     if os.path.exists(job.fn('nvt_mc_gpu_quantities.gsd')):
         sim_modes.extend(['nvt_mc_gpu'])
 
+    timesteps = {}
     energies = {}
     pressures = {}
     densities = {}
@@ -780,10 +770,14 @@ def lj_fluid_analyze(job):
     for sim_mode in sim_modes:
         log_traj = gsd.hoomd.read_log(job.fn(sim_mode + '_quantities.gsd'))
 
+        timesteps[sim_mode] = log_traj['configuration/step']
+
         if 'md' in sim_mode:
             energies[sim_mode] = log_traj['log/md/compute/ThermodynamicQuantities/potential_energy']
         else:
             energies[sim_mode] = log_traj['log/hpmc/pair/user/CPPPotential/energy'] * job.statepoint.kT
+
+        energies[sim_mode] /=  job.statepoint.num_particles
 
         if 'md' in sim_mode:
             pressures[sim_mode] = log_traj['log/md/compute/ThermodynamicQuantities/pressure']
@@ -800,12 +794,6 @@ def lj_fluid_analyze(job):
         else:
             linear_momentum[sim_mode] = numpy.zeros(len(energies[sim_mode]))
 
-        if 'md' in sim_mode:
-            kinetic_temperature[sim_mode] = log_traj['log/md/compute/ThermodynamicQuantities/kinetic_temperature']
-        else:
-            kinetic_temperature[sim_mode] = numpy.ones(len(
-                energies[sim_mode])) * job.statepoint.kT
-
     # save averages
     for mode in sim_modes:
         job.document[mode] = dict(pressure=float(numpy.mean(pressures[mode])),
@@ -814,15 +802,27 @@ def lj_fluid_analyze(job):
                                   density=float(numpy.mean(densities[mode])))
 
     # Plot results
-    def plot(*, ax, data, quantity_name, base_line=None, legend=False):
-        for mode in sim_modes:
-            ax.plot(numpy.asarray(data[mode]), label=mode)
-        ax.set_xlabel("frame")
+    def plot(*, ax, timesteps, data, quantity_name, base_line=None, legend=False, max_points=500):
+        provided_modes = list(data.keys())
+
+        for mode in provided_modes:
+            if len(data[mode]) > max_points:
+                skip = len(data[mode]) // max_points
+                plot_data = numpy.asarray(data[mode][::skip])
+                plot_timestep = numpy.asarray(timesteps[mode][::skip])
+            else:
+                plot_data = numpy.asarray(data[mode])
+                plot_timestep = numpy.asarray(timesteps[mode])
+
+            ax.plot(plot_timestep, plot_data, label=mode)
+
+        ax.set_xlabel("time step")
         ax.set_ylabel(quantity_name)
+
         if base_line is not None:
             ax.hlines(y=base_line,
                       xmin=0,
-                      xmax=len(data[sim_modes[0]]),
+                      xmax=timesteps[provided_modes[0]][-1],
                       linestyles='dashed',
                       colors='k')
 
@@ -830,83 +830,79 @@ def lj_fluid_analyze(job):
             ax.legend()
 
     fig = matplotlib.figure.Figure(figsize=(20, 20 / 3.24 * 2), layout='tight')
-    ax = fig.add_subplot(3, 2, 1)
+    ax = fig.add_subplot(2, 2, 1)
     plot(ax=ax,
+         timesteps=timesteps,
          data=densities,
          quantity_name=r"$\rho$",
          base_line=job.sp.density,
          legend=True)
 
-    ax = fig.add_subplot(3, 2, 2)
-    plot(ax=ax, data=pressures, quantity_name=r"$P$", base_line=job.sp.pressure)
+    ax = fig.add_subplot(2, 2, 2)
+    plot(ax=ax, timesteps=timesteps, data=pressures, quantity_name=r"$P$", base_line=job.sp.pressure)
 
-    ax = fig.add_subplot(3, 2, 3)
-    plot(ax=ax, data=energies, quantity_name="$U / N$")
+    ax = fig.add_subplot(2, 2, 3)
+    plot(ax=ax, timesteps=timesteps, data=energies, quantity_name="$U / N$")
 
-    ax = fig.add_subplot(3, 2, 4)
+    ax = fig.add_subplot(2, 2, 4)
     plot(ax=ax,
-         data=kinetic_temperature,
-         quantity_name='kinetic temperature',
-         base_line=job.sp.kT)
-
-    ax = fig.add_subplot(3, 2, 5)
-    plot(ax=ax,
+         timesteps=timesteps,
          data={
              mode: numpy.asarray(lm) / job.sp.num_particles
              for mode, lm in linear_momentum.items()
          },
          quantity_name=r'$|\vec{p}| / N$')
 
-    # determine range for density and pressure histograms
-    density_range = [
-        numpy.min(densities[sim_modes[0]]),
-        numpy.max(densities[sim_modes[0]])
-    ]
-    pressure_range = [
-        numpy.min(pressures[sim_modes[0]]),
-        numpy.max(pressures[sim_modes[0]])
-    ]
+    # # determine range for density and pressure histograms
+    # density_range = [
+    #     numpy.min(densities[sim_modes[0]]),
+    #     numpy.max(densities[sim_modes[0]])
+    # ]
+    # pressure_range = [
+    #     numpy.min(pressures[sim_modes[0]]),
+    #     numpy.max(pressures[sim_modes[0]])
+    # ]
 
-    for mode in sim_modes[1:]:
-        density_range[0] = min(density_range[0], numpy.min(densities[mode]))
-        density_range[1] = max(density_range[1], numpy.max(densities[mode]))
-        pressure_range[0] = min(pressure_range[0], numpy.min(pressures[mode]))
-        pressure_range[1] = max(pressure_range[1], numpy.max(pressures[mode]))
+    # for mode in sim_modes[1:]:
+    #     density_range[0] = min(density_range[0], numpy.min(densities[mode]))
+    #     density_range[1] = max(density_range[1], numpy.max(densities[mode]))
+    #     pressure_range[0] = min(pressure_range[0], numpy.min(pressures[mode]))
+    #     pressure_range[1] = max(pressure_range[1], numpy.max(pressures[mode]))
 
-    def plot_histo(*, ax, data, quantity_name, sp_name, range):
-        max_density_histogram = 0
-        for mode in sim_modes:
-            histogram, bin_edges = numpy.histogram(data[mode],
-                                                   bins=100,
-                                                   range=range)
-            if sp_name == "density" and 'nvt' in mode:
-                histogram[:] = 0
+    # def plot_histo(*, ax, data, quantity_name, sp_name, range):
+    #     max_density_histogram = 0
+    #     for mode in sim_modes:
+    #         histogram, bin_edges = numpy.histogram(data[mode],
+    #                                                bins=100,
+    #                                                range=range)
+    #         if sp_name == "density" and 'nvt' in mode:
+    #             histogram[:] = 0
 
-            max_density_histogram = max(max_density_histogram,
-                                        numpy.max(histogram))
+    #         max_density_histogram = max(max_density_histogram,
+    #                                     numpy.max(histogram))
 
-            ax.plot(bin_edges[:-1], histogram, label=mode)
-        ax.set_xlabel(quantity_name)
-        ax.set_ylabel('frequency')
-        ax.vlines(x=job.sp[sp_name],
-                  ymin=0,
-                  ymax=max_density_histogram,
-                  linestyles='dashed',
-                  colors='k')
+    #         ax.plot(bin_edges[:-1], histogram, label=mode)
+    #     ax.set_xlabel(quantity_name)
+    #     ax.set_ylabel('frequency')
+    #     ax.vlines(x=job.sp[sp_name],
+    #               ymin=0,
+    #               ymax=max_density_histogram,
+    #               linestyles='dashed',
+    #               colors='k')
 
-    ax = fig.add_subplot(3, 4, 11)
-    plot_histo(ax=ax,
-               data=densities,
-               quantity_name=r"$\rho$",
-               sp_name="density",
-               range=density_range)
+    # ax = fig.add_subplot(3, 4, 11)
+    # plot_histo(ax=ax,
+    #            data=densities,
+    #            quantity_name=r"$\rho$",
+    #            sp_name="density",
+    #            range=density_range)
 
-    ax = fig.add_subplot(3, 4, 12)
-    plot_histo(ax=ax,
-               data=pressures,
-               quantity_name="$P$",
-               sp_name="pressure",
-               range=pressure_range)
+    # ax = fig.add_subplot(3, 4, 12)
+    # plot_histo(ax=ax,
+    #            data=pressures,
+    #            quantity_name="$P$",
+    #            sp_name="pressure",
+    #            range=pressure_range)
 
     fig.suptitle(f"$kT={job.statepoint.kT}$, $\\rho={job.statepoint.density}$, "
                  f"$N={job.statepoint.num_particles}$, "
@@ -924,8 +920,8 @@ analysis_aggregator = aggregator.groupby(key=['kT', 'density', 'num_particles', 
 
 @Project.pre(
     lambda *jobs: util.true_all(*jobs, key='lj_fluid_analysis_complete'))
-@Project.post(
-    lambda *jobs: util.true_all(*jobs, key='lj_fluid_compare_modes_complete'))
+# @Project.post(
+#     lambda *jobs: util.true_all(*jobs, key='lj_fluid_compare_modes_complete'))
 @Project.operation(directives=dict(walltime=CONFIG['short_walltime'],
                                    executable=CONFIG["executable"]),
                    aggregator=analysis_aggregator)
@@ -936,7 +932,7 @@ def lj_fluid_compare_modes(*jobs):
     import matplotlib.style
     import matplotlib.figure
     import scipy.stats
-    matplotlib.style.use('ggplot')
+    matplotlib.style.use('fivethirtyeight')
 
     print('starting lj_fluid_compare_modes:', jobs[0])
 
@@ -1016,13 +1012,14 @@ def lj_fluid_compare_modes(*jobs):
 
         if quantity_name == "density":
             print(f"Average npt_mc_cpu density {num_particles}:", avg_quantity['npt_mc_cpu'], '+/-', stderr_quantity['npt_mc_cpu'])
+            print(f"Average npt_md_cpu density {num_particles}:", avg_quantity['npt_bussi_md_cpu'], '+/-', stderr_quantity['npt_bussi_md_cpu'])
         if quantity_name == "pressure":
             print(f"Average nvt_mc_cpu pressure {num_particles}:", avg_quantity['nvt_mc_cpu'], '+/-', stderr_quantity['nvt_mc_cpu'])
         if quantity_name == "pressure":
             print(f"Average npt_mc_cpu pressure {num_particles}:", avg_quantity['npt_mc_cpu'], '+/-', stderr_quantity['npt_mc_cpu'])
 
 
-    filename = f'lj_fluid_compare_kT{kT}_density{round(set_density, 2)}' \
+    filename = f'lj_fluid_compare_kT{kT}_density{round(set_density, 2)}_' \
                f'r_cut{jobs[0].statepoint.r_cut}_' \
                f'_N{num_particles}.svg'
 
@@ -1047,7 +1044,7 @@ def lj_fluid_ke_analyze(*jobs):
     import matplotlib.style
     import matplotlib.figure
     import util
-    matplotlib.style.use('ggplot')
+    matplotlib.style.use('fivethirtyeight')
 
     print('starting lj_fluid_ke_analyze:', jobs[0])
 
@@ -1121,7 +1118,7 @@ def lj_fluid_ke_analyze(*jobs):
     plot_vs_expected(ax, ke_sigmas_expected, r'$\Delta KE - 1/\sqrt{2} \sqrt{N_{dof}} k T$')
 
     filename = f'lj_fluid_ke_analyze_kT{kT}'\
-               f'_density{round(set_density, 2)}.svg' \
+               f'_density{round(set_density, 2)}_' \
                f'r_cut{job.statepoint.r_cut}_' \
                f'_N{num_particles}.svg'
     fig.savefig(os.path.join(jobs[0]._project.path, filename),
@@ -1260,8 +1257,8 @@ def add_nve_md_job(device_name, ranks_per_partition, aggregator, run_length):
     nve_md_sampling_jobs.append(lj_fluid_nve_md_job)
 
 
-for definition in nve_md_job_definitions:
-    add_nve_md_job(**definition)
+# for definition in nve_md_job_definitions:
+#     add_nve_md_job(**definition)
 
 
 @Project.pre.after(*nve_md_sampling_jobs)
@@ -1278,7 +1275,7 @@ def lj_fluid_conservation_analyze(*jobs):
     import matplotlib
     import matplotlib.style
     import matplotlib.figure
-    matplotlib.style.use('ggplot')
+    matplotlib.style.use('fivethirtyeight')
 
     print('starting lj_fluid_conservation_analyze:', jobs[0])
 
