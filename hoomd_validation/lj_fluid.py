@@ -1203,7 +1203,7 @@ nve_md_job_definitions = [
     {
         'device_name': 'cpu',
         'ranks_per_partition': NUM_CPU_RANKS,
-        'aggregator': partition_jobs_cpu_mpi,
+        'aggregator': partition_jobs_cpu_mpi_nve,
         'run_length': 200_000_000,
     },
 ]
@@ -1213,7 +1213,7 @@ if CONFIG["enable_gpu"]:
         {
             'device_name': 'gpu',
             'ranks_per_partition': 1,
-            'aggregator': partition_jobs_gpu,
+            'aggregator': partition_jobs_gpu_nve,
             'run_length': 800_000_000,
         },
     ])
@@ -1260,8 +1260,8 @@ def add_nve_md_job(device_name, ranks_per_partition, aggregator, run_length):
     nve_md_sampling_jobs.append(lj_fluid_nve_md_job)
 
 
-# for definition in nve_md_job_definitions:
-#     add_nve_md_job(**definition)
+for definition in nve_md_job_definitions:
+    add_nve_md_job(**definition)
 
 
 @Project.pre.after(*nve_md_sampling_jobs)
