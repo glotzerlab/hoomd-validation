@@ -31,16 +31,16 @@ def job_statepoints():
     """list(dict): A list of statepoints for this subproject."""
     replicate_indices = range(CONFIG["replicates"])
     params_list = [
-        # dict(kT=1.5,
-        #      density=0.5998286671851658,
-        #      pressure=1.0270905797770546,
-        #      num_particles = 12**3,
-        #      r_cut=2.5),
-        # dict(kt=1.0,
-        #      density=0.7999550814681395,
-        #      pressure=1.4363805638963822,
-        #      num_particles = 12**3,
-        #      r_cut=2.5),
+        dict(kT=1.5,
+             density=0.5998286671851658,
+             pressure=1.0270905797770546,
+             num_particles = 12**3,
+             r_cut=2.5),
+        dict(kt=1.0,
+             density=0.7999550814681395,
+             pressure=1.4363805638963822,
+             num_particles = 12**3,
+             r_cut=2.5),
         # dict(kT=1.25,
         #      density=0.049963649769543844,
         #      pressure=0.05363574413661169,
@@ -197,7 +197,7 @@ def make_md_simulation(job,
     lj.mode = 'xplor'
 
     # integrator
-    integrator = md.Integrator(dt=0.001, methods=[method], forces=[lj])
+    integrator = md.Integrator(dt=0.0001, methods=[method], forces=[lj])
 
     # compute thermo
     thermo = md.compute.ThermodynamicQuantities(hoomd.filter.All())
@@ -751,20 +751,6 @@ def lj_fluid_analyze(job):
 
     print('starting lj_fluid_analyze:', job)
 
-    constant = dict(
-        nvt_langevin_md_cpu='density',
-        nvt_langevin_md_gpu='density',
-        nvt_mttk_md_cpu='density',
-        nvt_mttk_md_gpu='density',
-        nvt_bussi_md_cpu='density',
-        nvt_bussi_md_gpu='density',
-        nvt_mc_cpu='density',
-        nvt_mc_gpu='density',
-        npt_bussi_md_cpu='pressure',
-        npt_bussi_md_gpu='pressure',
-        npt_mc_cpu='pressure',
-        npt_mc_gpu='pressure',
-    )
     sim_modes = [
         'nvt_langevin_md_cpu',
         'nvt_mttk_md_cpu',
@@ -891,9 +877,9 @@ def lj_fluid_analyze(job):
         max_density_histogram = 0
         for mode in sim_modes:
             histogram, bin_edges = numpy.histogram(data[mode],
-                                                   bins=50,
+                                                   bins=100,
                                                    range=range)
-            if constant[mode] == sp_name:
+            if sp_name == "density" and 'nvt' in mode:
                 histogram[:] = 0
 
             max_density_histogram = max(max_density_histogram,
