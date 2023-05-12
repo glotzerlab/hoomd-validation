@@ -36,7 +36,7 @@ def job_statepoints():
              pressure=1.0270905797770546,
              num_particles = 12**3,
              r_cut=2.5),
-        dict(kt=1.0,
+        dict(kT=1.0,
              density=0.7999550814681395,
              pressure=1.4363805638963822,
              num_particles = 12**3,
