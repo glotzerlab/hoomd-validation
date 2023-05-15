@@ -1071,6 +1071,7 @@ def lj_fluid_distribution_analyze(*jobs):
     import matplotlib.style
     import matplotlib.figure
     import util
+    import scipy
     matplotlib.style.use('fivethirtyeight')
 
     print('starting lj_fluid_distribution_analyze:', jobs[0])
@@ -1112,7 +1113,7 @@ def lj_fluid_distribution_analyze(*jobs):
     density_samples = collections.defaultdict(list)
     pressure_samples = collections.defaultdict(list)
 
-    for job in jobs[0:2]:
+    for job in jobs:
         for sim_mode in sim_modes:
 
             if sim_mode.startswith('nvt_langevin'):
@@ -1150,15 +1151,13 @@ def lj_fluid_distribution_analyze(*jobs):
     ax = fig.add_subplot(2, 2, 1)
     util.plot_vs_expected(ax, ke_means_expected, '$<K> - 1/2 N_{dof} k T$')
 
-    print(ke_means_expected)
-    print(ke_sigmas_expected)
-
     ax = fig.add_subplot(2, 2, 2)
     # https://doi.org/10.1371/journal.pone.0202764
     util.plot_vs_expected(ax, ke_sigmas_expected, r'$\Delta K - 1/\sqrt{2} \sqrt{N_{dof}} k T$')
 
     ax = fig.add_subplot(2,4,5)
-    util.plot_distribution(ax, ke_samples, 'K')
+    rv = scipy.stats.gamma(3 * job.statepoint.num_particles/2, scale=job.statepoint.kT)
+    util.plot_distribution(ax, ke_samples, 'K', expected=rv.pdf)
     ax.legend(loc='upper right', fontsize='xx-small')
 
     ax = fig.add_subplot(2,4,6)

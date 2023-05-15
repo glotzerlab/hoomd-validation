@@ -226,7 +226,6 @@ def plot_distribution(ax, data, xlabel, expected=None, bins=100):
 
     range_min = min([min(x) for x in data.values()])
     range_max = max([max(x) for x in data.values()])
-    print(range_min, range_max)
 
     for mode in sim_modes:
         histogram, bin_edges = numpy.histogram(data[mode],
@@ -245,7 +244,14 @@ def plot_distribution(ax, data, xlabel, expected=None, bins=100):
     ax.set_xlabel(xlabel)
     ax.set_ylabel('probability density')
 
-    if expected is not None:
+    if callable(expected):
+        ax.plot(bin_edges[:-1],
+                expected(bin_edges[:-1]),
+                   linestyle='dashed',
+                    color='k',
+                    label='expected')
+
+    elif expected is not None:
         ax.vlines(x=expected,
                     ymin=0,
                     ymax=max_density_histogram,
