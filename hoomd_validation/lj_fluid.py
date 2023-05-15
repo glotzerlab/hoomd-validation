@@ -730,7 +730,7 @@ if CONFIG['enable_llvm']:
 @Project.pre(is_lj_fluid)
 @Project.pre.after(*md_sampling_jobs)
 @Project.pre.after(*mc_sampling_jobs)
-# @Project.post.true('lj_fluid_analysis_complete')
+@Project.post.true('lj_fluid_analysis_complete')
 @Project.operation(directives=dict(walltime=CONFIG['short_walltime'],
                                    executable=CONFIG["executable"]))
 def lj_fluid_analyze(job):
@@ -849,8 +849,8 @@ analysis_aggregator = aggregator.groupby(key=['kT', 'density', 'num_particles', 
 
 @Project.pre(
     lambda *jobs: util.true_all(*jobs, key='lj_fluid_analysis_complete'))
-@Project.post(
-    lambda *jobs: util.true_all(*jobs, key='lj_fluid_compare_modes_complete'))
+# @Project.post(
+#     lambda *jobs: util.true_all(*jobs, key='lj_fluid_compare_modes_complete'))
 @Project.operation(directives=dict(walltime=CONFIG['short_walltime'],
                                    executable=CONFIG["executable"]),
                    aggregator=analysis_aggregator)
@@ -912,59 +912,24 @@ def lj_fluid_compare_modes(*jobs):
                 quantities[mode].append(
                     getattr(getattr(jb.doc, mode), quantity_name))
 
-        # compute stats with data
-        avg_quantity = {
-            mode: numpy.mean(quantities[mode]) for mode in sim_modes
-        }
-        stderr_quantity = {
-            mode:
-            2 * numpy.std(quantities[mode]) / numpy.sqrt(len(quantities[mode]))
-            for mode in sim_modes
-        }
-
-        # compute the energy differences
-        quantity_list = [avg_quantity[mode] for mode in sim_modes]
-        stderr_list = numpy.array([stderr_quantity[mode] for mode in sim_modes])
-
         if quantity_reference[quantity_name] is not None:
             reference = quantity_reference[quantity_name]
         else:
-            reference = numpy.mean(quantity_list)
+            avg_value = {mode: numpy.mean(quantities[mode]) for mode in sim_modes}
+            reference = numpy.mean([avg_value[mode] for mode in sim_modes])
 
-        quantity_diff_list = numpy.array(quantity_list) - reference
-
-        ax.errorbar(x=range(len(sim_modes)),
-                    y=quantity_diff_list / reference * 1000,
-                    yerr=numpy.fabs(stderr_list / reference * 1000),
-                    fmt='s')
-        ax.set_xticks(range(len(sim_modes)), sim_modes, rotation=45)
-        ax.set_ylabel(labels[quantity_name])
-
-        # Indicate average nvt and npt values separately.
-        npt_modes = list(filter(lambda x: 'npt' in x, sim_modes))
-        npt_mean = numpy.mean([avg_quantity[mode] for mode in npt_modes])
-        nvt_modes = list(filter(lambda x: 'nvt' in x, sim_modes))
-        nvt_mean = numpy.mean([avg_quantity[mode] for mode in nvt_modes])
-
-        # _sort_sim_modes places npt modes first
-        ax.hlines(y=(npt_mean - reference) / reference * 1000,
-                  xmin=0,
-                  xmax=len(npt_modes) - 1,
-                  linestyles='dashed',
-                  colors='k')
-
-        ax.hlines(y=(nvt_mean - reference) / reference * 1000,
-                  xmin=len(npt_modes),
-                  xmax=len(sim_modes) - 1,
-                  linestyles='dashed',
-                  colors='k')
+        avg_quantity, stderr_quantity = util.plot_vs_expected(ax=ax,
+        values=quantities,
+        ylabel=labels[quantity_name],
+        expected=reference,
+        relative_scale=1000,
+        separate_nvt_npt=True)
 
         if quantity_name == "density":
             print(f"Average npt_mc_cpu density {num_particles}:", avg_quantity['npt_mc_cpu'], '+/-', stderr_quantity['npt_mc_cpu'])
             print(f"Average npt_md_cpu density {num_particles}:", avg_quantity['npt_bussi_md_cpu'], '+/-', stderr_quantity['npt_bussi_md_cpu'])
         if quantity_name == "pressure":
             print(f"Average nvt_mc_cpu pressure {num_particles}:", avg_quantity['nvt_mc_cpu'], '+/-', stderr_quantity['nvt_mc_cpu'])
-        if quantity_name == "pressure":
             print(f"Average npt_mc_cpu pressure {num_particles}:", avg_quantity['npt_mc_cpu'], '+/-', stderr_quantity['npt_mc_cpu'])
 
 

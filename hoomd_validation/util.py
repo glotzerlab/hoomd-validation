@@ -259,7 +259,7 @@ def plot_distribution(ax, data, xlabel, expected=None, bins=100):
                     colors='k')
 
 
-def plot_vs_expected(ax, values, xlabel, expected=0):
+def plot_vs_expected(ax, values, ylabel, expected=0, relative_scale=None, separate_nvt_npt=False):
     """Plot values vs an expected value."""
     sim_modes = values.keys()
 
@@ -275,17 +275,48 @@ def plot_vs_expected(ax, values, xlabel, expected=0):
 
     value_diff_list = numpy.array(value_list)
 
+    if relative_scale is not None:
+        value_diff_list = (value_diff_list - expected) / expected * relative_scale
+        stderr_list = stderr_list / expected * relative_scale
+
     ax.errorbar(x=range(len(sim_modes)),
                 y=value_diff_list,
                 yerr=numpy.fabs(stderr_list),
                 fmt='s')
     ax.set_xticks(range(len(sim_modes)), sim_modes, rotation=45)
-    ax.set_ylabel(xlabel)
-    ax.hlines(y=expected,
-                xmin=0,
-                xmax=len(sim_modes) - 1,
-                linestyles='dashed',
-                colors='k')
+    ax.set_ylabel(ylabel)
+
+    if separate_nvt_npt:
+        # Indicate average nvt and npt values separately.
+        npt_modes = list(filter(lambda x: 'npt' in x, sim_modes))
+        npt_mean = numpy.mean([avg_value[mode] for mode in npt_modes])
+        nvt_modes = list(filter(lambda x: 'nvt' in x, sim_modes))
+        nvt_mean = numpy.mean([avg_value[mode] for mode in nvt_modes])
+
+        if relative_scale is not None:
+            npt_mean = (npt_mean - expected) / expected * relative_scale
+            nvt_mean = (nvt_mean - expected) / expected * relative_scale
+
+        # _sort_sim_modes places npt modes first
+        ax.hlines(y=npt_mean,
+                  xmin=0,
+                  xmax=len(npt_modes) - 1,
+                  linestyles='dashed',
+                  colors='k')
+
+        ax.hlines(y=nvt_mean,
+                  xmin=len(npt_modes),
+                  xmax=len(sim_modes) - 1,
+                  linestyles='dashed',
+                  colors='k')
+    else:
+        ax.hlines(y=expected,
+                    xmin=0,
+                    xmax=len(sim_modes) - 1,
+                    linestyles='dashed',
+                    colors='k')
+
+    return avg_value, stderr_value
 
 
 def plot_timeseries(ax, timesteps, data, ylabel, expected=None, max_points=None):
