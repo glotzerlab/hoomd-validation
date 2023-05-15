@@ -927,8 +927,8 @@ analysis_aggregator = aggregator.groupby(key=['kT', 'density', 'num_particles', 
 
 @Project.pre(
     lambda *jobs: util.true_all(*jobs, key='lj_fluid_analysis_complete'))
-# @Project.post(
-#     lambda *jobs: util.true_all(*jobs, key='lj_fluid_compare_modes_complete'))
+@Project.post(
+    lambda *jobs: util.true_all(*jobs, key='lj_fluid_compare_modes_complete'))
 @Project.operation(directives=dict(walltime=CONFIG['short_walltime'],
                                    executable=CONFIG["executable"]),
                    aggregator=analysis_aggregator)
@@ -1058,8 +1058,8 @@ def lj_fluid_compare_modes(*jobs):
 
 
 @Project.pre.after(*md_sampling_jobs)
-# @Project.post(
-#     lambda *jobs: util.true_all(*jobs, key='lj_fluid_distribution_analyze_complete'))
+@Project.post(
+    lambda *jobs: util.true_all(*jobs, key='lj_fluid_distribution_analyze_complete'))
 @Project.operation(directives=dict(walltime=CONFIG['short_walltime'],
                                    executable=CONFIG["executable"]),
                    aggregator=analysis_aggregator)
