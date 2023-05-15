@@ -730,7 +730,7 @@ if CONFIG['enable_llvm']:
 @Project.pre(is_lj_fluid)
 @Project.pre.after(*md_sampling_jobs)
 @Project.pre.after(*mc_sampling_jobs)
-@Project.post.true('lj_fluid_analysis_complete')
+# @Project.post.true('lj_fluid_analysis_complete')
 @Project.operation(directives=dict(walltime=CONFIG['short_walltime'],
                                    executable=CONFIG["executable"]))
 def lj_fluid_analyze(job):
@@ -809,107 +809,29 @@ def lj_fluid_analyze(job):
                                   density=float(numpy.mean(densities[mode])))
 
     # Plot results
-    def plot(*, ax, timesteps, data, quantity_name, base_line=None, legend=False, max_points=500):
-        provided_modes = list(data.keys())
-
-        for mode in provided_modes:
-            if len(data[mode]) > max_points:
-                skip = len(data[mode]) // max_points
-                plot_data = numpy.asarray(data[mode][::skip])
-                plot_timestep = numpy.asarray(timesteps[mode][::skip])
-            else:
-                plot_data = numpy.asarray(data[mode])
-                plot_timestep = numpy.asarray(timesteps[mode])
-
-            ax.plot(plot_timestep, plot_data, label=mode)
-
-        ax.set_xlabel("time step")
-        ax.set_ylabel(quantity_name)
-
-        if base_line is not None:
-            ax.hlines(y=base_line,
-                      xmin=0,
-                      xmax=timesteps[provided_modes[0]][-1],
-                      linestyles='dashed',
-                      colors='k')
-
-        if legend:
-            ax.legend()
-
     fig = matplotlib.figure.Figure(figsize=(20, 20 / 3.24 * 2), layout='tight')
     ax = fig.add_subplot(2, 2, 1)
-    plot(ax=ax,
+    util.plot_timeseries(ax=ax,
          timesteps=timesteps,
          data=densities,
-         quantity_name=r"$\rho$",
-         base_line=job.sp.density,
-         legend=True)
+         ylabel=r"$\rho$",
+         expected=job.sp.density, max_points=500)
+    ax.legend()
 
     ax = fig.add_subplot(2, 2, 2)
-    plot(ax=ax, timesteps=timesteps, data=pressures, quantity_name=r"$P$", base_line=job.sp.pressure)
+    util.plot_timeseries(ax=ax, timesteps=timesteps, data=pressures, ylabel=r"$P$", expected=job.sp.pressure, max_points=500)
 
     ax = fig.add_subplot(2, 2, 3)
-    plot(ax=ax, timesteps=timesteps, data=energies, quantity_name="$U / N$")
+    util.plot_timeseries(ax=ax, timesteps=timesteps, data=energies, ylabel="$U / N$", max_points=500)
 
     ax = fig.add_subplot(2, 2, 4)
-    plot(ax=ax,
+    util.plot_timeseries(ax=ax,
          timesteps=timesteps,
          data={
              mode: numpy.asarray(lm) / job.sp.num_particles
              for mode, lm in linear_momentum.items()
          },
-         quantity_name=r'$|\vec{p}| / N$')
-
-    # # determine range for density and pressure histograms
-    # density_range = [
-    #     numpy.min(densities[sim_modes[0]]),
-    #     numpy.max(densities[sim_modes[0]])
-    # ]
-    # pressure_range = [
-    #     numpy.min(pressures[sim_modes[0]]),
-    #     numpy.max(pressures[sim_modes[0]])
-    # ]
-
-    # for mode in sim_modes[1:]:
-    #     density_range[0] = min(density_range[0], numpy.min(densities[mode]))
-    #     density_range[1] = max(density_range[1], numpy.max(densities[mode]))
-    #     pressure_range[0] = min(pressure_range[0], numpy.min(pressures[mode]))
-    #     pressure_range[1] = max(pressure_range[1], numpy.max(pressures[mode]))
-
-    # def plot_histo(*, ax, data, quantity_name, sp_name, range):
-    #     max_density_histogram = 0
-    #     for mode in sim_modes:
-    #         histogram, bin_edges = numpy.histogram(data[mode],
-    #                                                bins=100,
-    #                                                range=range)
-    #         if sp_name == "density" and 'nvt' in mode:
-    #             histogram[:] = 0
-
-    #         max_density_histogram = max(max_density_histogram,
-    #                                     numpy.max(histogram))
-
-    #         ax.plot(bin_edges[:-1], histogram, label=mode)
-    #     ax.set_xlabel(quantity_name)
-    #     ax.set_ylabel('frequency')
-    #     ax.vlines(x=job.sp[sp_name],
-    #               ymin=0,
-    #               ymax=max_density_histogram,
-    #               linestyles='dashed',
-    #               colors='k')
-
-    # ax = fig.add_subplot(3, 4, 11)
-    # plot_histo(ax=ax,
-    #            data=densities,
-    #            quantity_name=r"$\rho$",
-    #            sp_name="density",
-    #            range=density_range)
-
-    # ax = fig.add_subplot(3, 4, 12)
-    # plot_histo(ax=ax,
-    #            data=pressures,
-    #            quantity_name="$P$",
-    #            sp_name="pressure",
-    #            range=pressure_range)
+         ylabel=r'$|\vec{p}| / N$', max_points=500)
 
     fig.suptitle(f"$kT={job.statepoint.kT}$, $\\rho={job.statepoint.density}$, "
                  f"$N={job.statepoint.num_particles}$, "
@@ -1070,7 +992,6 @@ def lj_fluid_distribution_analyze(*jobs):
     import matplotlib
     import matplotlib.style
     import matplotlib.figure
-    import util
     import scipy
     matplotlib.style.use('fivethirtyeight')
 

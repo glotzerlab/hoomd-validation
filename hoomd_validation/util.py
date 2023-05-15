@@ -286,3 +286,30 @@ def plot_vs_expected(ax, values, xlabel, expected=0):
                 xmax=len(sim_modes) - 1,
                 linestyles='dashed',
                 colors='k')
+
+
+def plot_timeseries(ax, timesteps, data, ylabel, expected=None, max_points=None):
+    """Plot data as a time series."""
+    provided_modes = list(data.keys())
+
+    for mode in provided_modes:
+        if max_points is not None and len(data[mode]) > max_points:
+            skip = len(data[mode]) // max_points
+            plot_data = numpy.asarray(data[mode][::skip])
+            plot_timestep = numpy.asarray(timesteps[mode][::skip])
+        else:
+            plot_data = numpy.asarray(data[mode])
+            plot_timestep = numpy.asarray(timesteps[mode])
+
+        ax.plot(plot_timestep, plot_data, label=mode)
+
+    ax.set_xlabel("time step")
+    ax.set_ylabel(ylabel)
+
+    if expected is not None:
+        ax.hlines(y=expected,
+                    xmin=0,
+                    xmax=timesteps[provided_modes[0]][-1],
+                    linestyles='dashed',
+                    colors='k')
+
