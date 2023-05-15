@@ -37,7 +37,7 @@ def job_statepoints():
     replicate_indices = range(CONFIG["replicates"])
     params_list = [
         dict(kT=1.5,
-             density=0.6,
+             density=0.5954153196609695,
              pressure=1.0,
              num_particles = 12**3,
              r_cut=2.5),
