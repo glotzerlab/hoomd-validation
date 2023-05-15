@@ -27,6 +27,11 @@ NUM_CPU_RANKS = min(8, CONFIG["max_cores_sim"])
 NUM_NVE_RUNS = 2
 
 
+def _sort_sim_modes(sim_modes):
+    """Sort simulation modes for comparison."""
+    sim_modes.sort(key=lambda x: ('nvt' in x, 'md' in x, x))
+
+
 def job_statepoints():
     """list(dict): A list of statepoints for this subproject."""
     replicate_indices = range(CONFIG["replicates"])
@@ -760,6 +765,8 @@ def lj_fluid_analyze(job):
     if os.path.exists(job.fn('nvt_mc_gpu_quantities.gsd')):
         sim_modes.extend(['nvt_mc_gpu'])
 
+    _sort_sim_modes(sim_modes)
+
     timesteps = {}
     energies = {}
     pressures = {}
@@ -952,7 +959,13 @@ def lj_fluid_compare_modes(*jobs):
     if os.path.exists(jobs[0].fn('nvt_mc_gpu_quantities.gsd')):
         sim_modes.extend(['nvt_mc_gpu'])
 
+    _sort_sim_modes(sim_modes)
+
     quantity_names = ['density', 'pressure', 'potential_energy']
+    labels = {'density': r'$\frac{\rho_\mathrm{sample} - \rho}{\rho} \cdot 1000$',
+              'pressure': r'$\frac{P_\mathrm{sample} - P}{P} \cdot 1000$',
+              'potential_energy': r'$\frac{U_\mathrm{sample} - <U>}{<U>} \cdot 1000$',
+        }
 
     # grab the common statepoint parameters
     kT = jobs[0].sp.kT
@@ -999,13 +1012,27 @@ def lj_fluid_compare_modes(*jobs):
         quantity_diff_list = numpy.array(quantity_list) - reference
 
         ax.errorbar(x=range(len(sim_modes)),
-                    y=quantity_diff_list / reference / 1e-3,
-                    yerr=numpy.fabs(stderr_list / reference / 1e-3),
+                    y=quantity_diff_list / reference * 1000,
+                    yerr=numpy.fabs(stderr_list / reference * 1000),
                     fmt='s')
         ax.set_xticks(range(len(sim_modes)), sim_modes, rotation=45)
-        ax.set_ylabel(quantity_name + ' relative error / 1e-3')
-        ax.hlines(y=0,
+        ax.set_ylabel(labels[quantity_name])
+
+        # Indicate average nvt and npt values separately.
+        npt_modes = list(filter(lambda x: 'npt' in x, sim_modes))
+        npt_mean = numpy.mean([avg_quantity[mode] for mode in npt_modes])
+        nvt_modes = list(filter(lambda x: 'nvt' in x, sim_modes))
+        nvt_mean = numpy.mean([avg_quantity[mode] for mode in nvt_modes])
+
+        # _sort_sim_modes places npt modes first
+        ax.hlines(y=(npt_mean - reference) / reference * 1000,
                   xmin=0,
+                  xmax=len(npt_modes) - 1,
+                  linestyles='dashed',
+                  colors='k')
+
+        ax.hlines(y=(nvt_mean - reference) / reference * 1000,
+                  xmin=len(npt_modes),
                   xmax=len(sim_modes) - 1,
                   linestyles='dashed',
                   colors='k')
@@ -1020,8 +1047,8 @@ def lj_fluid_compare_modes(*jobs):
 
 
     filename = f'lj_fluid_compare_kT{kT}_density{round(set_density, 2)}_' \
-               f'r_cut{jobs[0].statepoint.r_cut}_' \
-               f'_N{num_particles}.svg'
+               f'r_cut{round(jobs[0].statepoint.r_cut, 2)}_' \
+               f'N{num_particles}.svg'
 
     fig.savefig(os.path.join(jobs[0]._project.path, filename),
                 bbox_inches='tight')
@@ -1057,6 +1084,8 @@ def lj_fluid_ke_analyze(*jobs):
 
     if os.path.exists(jobs[0].fn('nvt_langevin_md_gpu_quantities.gsd')):
         sim_modes.extend(['nvt_langevin_md_gpu', 'nvt_mttk_md_gpu', 'nvt_bussi_md_gpu', 'npt_bussi_md_gpu',])
+
+    _sort_sim_modes(sim_modes)
 
     # grab the common statepoint parameters
     kT = jobs[0].sp.kT
@@ -1119,8 +1148,8 @@ def lj_fluid_ke_analyze(*jobs):
 
     filename = f'lj_fluid_ke_analyze_kT{kT}'\
                f'_density{round(set_density, 2)}_' \
-               f'r_cut{job.statepoint.r_cut}_' \
-               f'_N{num_particles}.svg'
+               f'r_cut{round(jobs[0].statepoint.r_cut, 2)}_' \
+               f'N{num_particles}.svg'
     fig.savefig(os.path.join(jobs[0]._project.path, filename),
                 bbox_inches='tight')
 
@@ -1336,7 +1365,7 @@ def lj_fluid_conservation_analyze(*jobs):
                  f"$N={job.statepoint.num_particles}$")
     filename = f'lj_fluid_conservation_kT{job.statepoint.kT}_' \
                f'density{round(job.statepoint.density, 2)}_' \
-               f'r_cut{job.statepoint.r_cut}_' \
+               f'r_cut{round(jobs[0].statepoint.r_cut, 2)}_' \
                f'N{job.statepoint.num_particles}.svg'
 
     fig.savefig(os.path.join(jobs[0]._project.path, filename),
