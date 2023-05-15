@@ -23,6 +23,8 @@ LOG_PERIOD = {'trajectory': 50_000, 'quantities': 1000}
 LJ_PARAMS = {'epsilon': 1.0, 'sigma': 1.0, 'r_on': 2.0}
 NUM_CPU_RANKS = min(8, CONFIG["max_cores_sim"])
 
+WALLTIME_STOP_SECONDS = CONFIG["max_walltime"] * 3600 - 10 * 60
+
 # Limit the number of long NVE runs to reduce the number of CPU hours needed.
 NUM_NVE_RUNS = 2
 
@@ -570,27 +572,63 @@ def run_nvt_mc_sim(job, device):
         return
 
     # simulation
-    initial_state = job.fn('lj_fluid_initial_state.gsd')
     sim_mode = 'nvt_mc'
+    restart_filename = util.get_job_filename(sim_mode, device, 'restart', 'gsd')
+    if job.isfile(restart_filename):
+        initial_state = job.fn(restart_filename)
+        restart = True
+    else:
+        initial_state = job.fn('lj_fluid_initial_state.gsd')
+        restart = False
+
     sim = make_mc_simulation(job, device, initial_state, sim_mode)
 
-    # equilibrate
-    device.notice('Equilibrating...')
-    sim.run(EQUILIBRATE_STEPS // 2)
-    sim.run(EQUILIBRATE_STEPS // 2)
-    device.notice('Done.')
+    if not restart:
+        # equilibrate
+        device.notice('Equilibrating...')
+        sim.run(EQUILIBRATE_STEPS // 2)
+        sim.run(EQUILIBRATE_STEPS // 2)
+        device.notice('Done.')
 
-    # Print acceptance ratio as measured during the 2nd half of the
-    # equilibration.
-    translate_moves = sim.operations.integrator.translate_moves
-    translate_acceptance = translate_moves[0] / sum(translate_moves)
-    device.notice(f'Translate move acceptance: {translate_acceptance}')
-    device.notice(f'Trial move size: {sim.operations.integrator.d["A"]}')
+        # Print acceptance ratio as measured during the 2nd half of the
+        # equilibration.
+        translate_moves = sim.operations.integrator.translate_moves
+        translate_acceptance = translate_moves[0] / sum(translate_moves)
+        device.notice(f'Translate move acceptance: {translate_acceptance}')
+        device.notice(f'Trial move size: {sim.operations.integrator.d["A"]}')
+
+        # save move size to a file
+        if device.communicator.rank == 0:
+            name = util.get_job_filename(sim_mode, device, 'move_size', 'json')
+            with open(job.fn(name), 'w') as f:
+                json.dump(dict(d_A=sim.operations.integrator.d["A"]), f)
+    else:
+        device.notice('Restarting...')
+        # read move size from the file
+        name = util.get_job_filename(sim_mode, device, 'move_size', 'json')
+        with open(job.fn(name), 'r') as f:
+            data = json.load(f)
+
+        sim.operations.integrator.d["A"] = data['d_A']
+        device.notice(
+            f'Restored trial move size: {sim.operations.integrator.d["A"]}')
 
     # run
     device.notice('Running...')
-    sim.run(RUN_STEPS)
-    device.notice('Done.')
+    util.run_up_to_walltime(sim=sim,
+                            end_step=TOTAL_STEPS,
+                            steps=200_000,
+                            walltime_stop=WALLTIME_STOP_SECONDS)
+
+    hoomd.write.GSD.write(state=sim.state,
+                          filename=job.fn(restart_filename),
+                          mode='wb')
+
+    if sim.timestep == TOTAL_STEPS:
+        device.notice('Done.')
+    else:
+        device.notice('Ending run early due to walltime limits at:'
+                      f'{device.communicator.walltime}')
 
 
 def run_npt_mc_sim(job, device):
@@ -603,8 +641,15 @@ def run_npt_mc_sim(job, device):
         return
 
     # device
-    initial_state = job.fn('lj_fluid_initial_state.gsd')
     sim_mode = 'npt_mc'
+    restart_filename = util.get_job_filename(sim_mode, device, 'restart', 'gsd')
+    if job.isfile(restart_filename):
+        initial_state = job.fn(restart_filename)
+        restart = True
+    else:
+        initial_state = job.fn('lj_fluid_initial_state.gsd')
+        restart = False
+
 
     # box updates
     boxmc = hpmc.update.BoxMC(betaP=job.statepoint.pressure / job.sp.kT,
@@ -630,28 +675,62 @@ def run_npt_mc_sim(job, device):
         target=0.5)
     sim.operations.add(boxmc_tuner)
 
-    # equilibrate
-    device.notice('Equilibrating...')
-    sim.run(EQUILIBRATE_STEPS // 2)
-    sim.run(EQUILIBRATE_STEPS // 2)
-    device.notice('Done.')
+    if not restart:
+        # equilibrate
+        device.notice('Equilibrating...')
+        sim.run(EQUILIBRATE_STEPS // 2)
+        sim.run(EQUILIBRATE_STEPS // 2)
+        device.notice('Done.')
 
-    # Print acceptance ratio as measured during the 2nd half of the
-    # equilibration.
-    translate_moves = sim.operations.integrator.translate_moves
-    translate_acceptance = translate_moves[0] / sum(translate_moves)
-    device.notice(f'Translate move acceptance: {translate_acceptance}')
-    device.notice(f'Trial move size: {sim.operations.integrator.d["A"]}')
+        # Print acceptance ratio as measured during the 2nd half of the
+        # equilibration.
+        translate_moves = sim.operations.integrator.translate_moves
+        translate_acceptance = translate_moves[0] / sum(translate_moves)
+        device.notice(f'Translate move acceptance: {translate_acceptance}')
+        device.notice(f'Trial move size: {sim.operations.integrator.d["A"]}')
 
-    volume_moves = boxmc.volume_moves
-    volume_acceptance = volume_moves[0] / sum(volume_moves)
-    device.notice(f'Volume move acceptance: {volume_acceptance}')
-    device.notice(f'Volume move size: {boxmc.volume["delta"]}')
+        volume_moves = boxmc.volume_moves
+        volume_acceptance = volume_moves[0] / sum(volume_moves)
+        device.notice(f'Volume move acceptance: {volume_acceptance}')
+        device.notice(f'Volume move size: {boxmc.volume["delta"]}')
+
+        # save move sizes to a file
+        if device.communicator.rank == 0:
+            name = util.get_job_filename(sim_mode, device, 'move_size', 'json')
+            with open(job.fn(name), 'w') as f:
+                json.dump(
+                    dict(d_A=sim.operations.integrator.d["A"],
+                         volume_delta=boxmc.volume['delta']), f)
+    else:
+        device.notice('Restarting...')
+        # read move size from the file
+        name = util.get_job_filename(sim_mode, device, 'move_size', 'json')
+        with open(job.fn(name), 'r') as f:
+            data = json.load(f)
+
+        sim.operations.integrator.d["A"] = data['d_A']
+        device.notice(
+            f'Restored trial move size: {sim.operations.integrator.d["A"]}')
+        boxmc.volume = dict(weight=1.0, mode='ln', delta=data['volume_delta'])
+        device.notice(f'Resotred volume move size: {boxmc.volume["delta"]}')
+
 
     # run
     device.notice('Running...')
-    sim.run(RUN_STEPS)
-    device.notice('Done.')
+    util.run_up_to_walltime(sim=sim,
+                            end_step=TOTAL_STEPS,
+                            steps=200_000,
+                            walltime_stop=WALLTIME_STOP_SECONDS)
+
+    hoomd.write.GSD.write(state=sim.state,
+                          filename=job.fn(restart_filename),
+                          mode='wb')
+
+    if sim.timestep == TOTAL_STEPS:
+        device.notice('Done.')
+    else:
+        device.notice('Ending run early due to walltime limits at:'
+                      f'{device.communicator.walltime}')
 
 
 mc_sampling_jobs = []
@@ -849,8 +928,8 @@ analysis_aggregator = aggregator.groupby(key=['kT', 'density', 'num_particles', 
 
 @Project.pre(
     lambda *jobs: util.true_all(*jobs, key='lj_fluid_analysis_complete'))
-# @Project.post(
-#     lambda *jobs: util.true_all(*jobs, key='lj_fluid_compare_modes_complete'))
+@Project.post(
+    lambda *jobs: util.true_all(*jobs, key='lj_fluid_compare_modes_complete'))
 @Project.operation(directives=dict(walltime=CONFIG['short_walltime'],
                                    executable=CONFIG["executable"]),
                    aggregator=analysis_aggregator)
@@ -1103,7 +1182,7 @@ def run_nve_md_sim(job, device, run_length):
         sim=sim,
         end_step=RANDOMIZE_STEPS + EQUILIBRATE_STEPS + run_length,
         steps=500_000,
-        walltime_stop=CONFIG["max_walltime"] * 3600 - 10 * 60)
+        walltime_stop=WALLTIME_STOP_SECONDS)
 
     if sim.timestep == RANDOMIZE_STEPS + EQUILIBRATE_STEPS + run_length:
         device.notice('Done.')
