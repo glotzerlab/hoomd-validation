@@ -215,3 +215,68 @@ def make_seed(job, sim_mode=None):
     statepoint['sim_mode'] = sim_mode
 
     return int(signac.job.calc_id(statepoint), 16) & 0xffff
+
+
+def plot_distribution(ax, data, xlabel, expected=None, bins=100):
+    """Plot distributions."""
+    import numpy
+
+    max_density_histogram = 0
+    sim_modes = data.keys()
+
+    range_min = min([min(x) for x in data.values()])
+    range_max = max([max(x) for x in data.values()])
+    print(range_min, range_max)
+
+    for mode in sim_modes:
+        histogram, bin_edges = numpy.histogram(data[mode],
+                                               bins=bins,
+                                               range=(range_min, range_max),
+                                               density=True)
+
+        if numpy.all(numpy.asarray(data[mode]) == data[mode][0]):
+            histogram[:] = 0
+
+        max_density_histogram = max(max_density_histogram,
+                                    numpy.max(histogram))
+
+        ax.plot(bin_edges[:-1], histogram, label=mode)
+
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel('probability density')
+
+    if expected is not None:
+        ax.vlines(x=expected,
+                    ymin=0,
+                    ymax=max_density_histogram,
+                    linestyles='dashed',
+                    colors='k')
+
+
+def plot_vs_expected(ax, values, xlabel, expected=0):
+    """Plot values vs an expected value."""
+    sim_modes = values.keys()
+
+    avg_value = {mode: numpy.mean(values[mode]) for mode in sim_modes}
+    stderr_value = {
+        mode: 2 * numpy.std(values[mode]) / numpy.sqrt(len(values[mode]))
+        for mode in sim_modes
+    }
+
+    # compute the energy differences
+    value_list = [avg_value[mode] for mode in sim_modes]
+    stderr_list = numpy.array([stderr_value[mode] for mode in sim_modes])
+
+    value_diff_list = numpy.array(value_list)
+
+    ax.errorbar(x=range(len(sim_modes)),
+                y=value_diff_list,
+                yerr=numpy.fabs(stderr_list),
+                fmt='s')
+    ax.set_xticks(range(len(sim_modes)), sim_modes, rotation=45)
+    ax.set_ylabel(xlabel)
+    ax.hlines(y=expected,
+                xmin=0,
+                xmax=len(sim_modes) - 1,
+                linestyles='dashed',
+                colors='k')
