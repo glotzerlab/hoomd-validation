@@ -1286,8 +1286,8 @@ def add_nve_md_job(device_name, ranks_per_partition, aggregator, run_length):
     nve_md_sampling_jobs.append(lj_fluid_nve_md_job)
 
 
-# for definition in nve_md_job_definitions:
-#     add_nve_md_job(**definition)
+for definition in nve_md_job_definitions:
+    add_nve_md_job(**definition)
 
 
 @Project.pre.after(*nve_md_sampling_jobs)
