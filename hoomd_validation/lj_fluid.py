@@ -1278,12 +1278,17 @@ for definition in nve_md_job_definitions:
     add_nve_md_job(**definition)
 
 
+nve_analysis_aggregator = aggregator.groupby(key=['kT', 'density', 'num_particles', 'r_cut'],
+                                         sort_by='replicate_idx',
+                                         select=is_lj_fluid_nve)
+
+
 @Project.pre.after(*nve_md_sampling_jobs)
 @Project.post(lambda *jobs: util.true_all(
-    *jobs[0:NUM_NVE_RUNS], key='lj_fluid_conservation_analysis_complete'))
+    *jobs, key='lj_fluid_conservation_analysis_complete'))
 @Project.operation(directives=dict(walltime=CONFIG['short_walltime'],
                                    executable=CONFIG["executable"]),
-                   aggregator=analysis_aggregator)
+                   aggregator=nve_analysis_aggregator)
 def lj_fluid_conservation_analyze(*jobs):
     """Analyze the output of NVE simulations and inspect conservation."""
     import gsd.hoomd
@@ -1298,19 +1303,21 @@ def lj_fluid_conservation_analyze(*jobs):
 
     sim_modes = ['nve_md_cpu']
     if os.path.exists(jobs[0].fn('nve_md_gpu_quantities.gsd')):
-        sim_modes.extend['nve_md_gpu']
+        sim_modes.extend(['nve_md_gpu'])
 
-    jobs = jobs[0:NUM_NVE_RUNS]
-
+    timesteps = []
     energies = []
     linear_momenta = []
 
     for job in jobs:
+        job_timesteps = {}
         job_energies = {}
         job_linear_momentum = {}
 
         for sim_mode in sim_modes:
             log_traj = gsd.hoomd.read_log(job.fn(sim_mode + '_quantities.gsd'))
+
+            job_timesteps[sim_mode] = log_traj['configuration/step']
 
             job_energies[sim_mode] = (
                 log_traj['log/md/compute/ThermodynamicQuantities/potential_energy']
@@ -1321,20 +1328,21 @@ def lj_fluid_conservation_analyze(*jobs):
 
             momentum_vector = log_traj['log/md/Integrator/linear_momentum']
             job_linear_momentum[sim_mode] = [
-                math.sqrt(v[0]**2 + v[1]**2 + v[2]**2) for v in momentum_vector
+                math.sqrt(v[0]**2 + v[1]**2 + v[2]**2) / job.statepoint["num_particles"] for v in momentum_vector
             ]
 
+        timesteps.append(job_timesteps)
         energies.append(job_energies)
-
         linear_momenta.append(job_linear_momentum)
 
     # Plot results
     def plot(*, ax, data, quantity_name, legend=False):
         for i, job in enumerate(jobs):
             for mode in sim_modes:
-                ax.plot(numpy.asarray(data[i][mode]),
+                ax.plot(timesteps[i][mode],
+                      numpy.asarray(data[i][mode]),
                         label=f'{mode}_{job.statepoint.replicate_idx}')
-        ax.set_xlabel("frame")
+        ax.set_xlabel("time step")
         ax.set_ylabel(quantity_name)
 
         if legend:
@@ -1345,7 +1353,7 @@ def lj_fluid_conservation_analyze(*jobs):
     plot(ax=ax, data=energies, quantity_name=r"$E / N$", legend=True)
 
     ax = fig.add_subplot(2, 1, 2)
-    plot(ax=ax, data=linear_momenta, quantity_name=r"$p$")
+    plot(ax=ax, data=linear_momenta, quantity_name=r"$\left| \vec{p} \right| / N$")
 
     fig.suptitle("LJ conservation tests: "
                  f"$kT={job.statepoint.kT}$, $\\rho={job.statepoint.density}$, "
