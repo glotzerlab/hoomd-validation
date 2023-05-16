@@ -236,8 +236,7 @@ def plot_distribution(ax, data, xlabel, expected=None, bins=100):
         if numpy.all(numpy.asarray(data[mode]) == data[mode][0]):
             histogram[:] = 0
 
-        max_density_histogram = max(max_density_histogram,
-                                    numpy.max(histogram))
+        max_density_histogram = max(max_density_histogram, numpy.max(histogram))
 
         ax.plot(bin_edges[:-1], histogram, label=mode)
 
@@ -247,19 +246,24 @@ def plot_distribution(ax, data, xlabel, expected=None, bins=100):
     if callable(expected):
         ax.plot(bin_edges[:-1],
                 expected(bin_edges[:-1]),
-                   linestyle='dashed',
-                    color='k',
-                    label='expected')
+                linestyle='dashed',
+                color='k',
+                label='expected')
 
     elif expected is not None:
         ax.vlines(x=expected,
-                    ymin=0,
-                    ymax=max_density_histogram,
-                    linestyles='dashed',
-                    colors='k')
+                  ymin=0,
+                  ymax=max_density_histogram,
+                  linestyles='dashed',
+                  colors='k')
 
 
-def plot_vs_expected(ax, values, ylabel, expected=0, relative_scale=None, separate_nvt_npt=False):
+def plot_vs_expected(ax,
+                     values,
+                     ylabel,
+                     expected=0,
+                     relative_scale=None,
+                     separate_nvt_npt=False):
     """Plot values vs an expected value."""
     sim_modes = values.keys()
 
@@ -276,7 +280,8 @@ def plot_vs_expected(ax, values, ylabel, expected=0, relative_scale=None, separa
     value_diff_list = numpy.array(value_list)
 
     if relative_scale is not None:
-        value_diff_list = (value_diff_list - expected) / expected * relative_scale
+        value_diff_list = (value_diff_list
+                           - expected) / expected * relative_scale
         stderr_list = stderr_list / expected * relative_scale
 
     ax.errorbar(x=range(len(sim_modes)),
@@ -311,15 +316,20 @@ def plot_vs_expected(ax, values, ylabel, expected=0, relative_scale=None, separa
                   colors='k')
     else:
         ax.hlines(y=expected,
-                    xmin=0,
-                    xmax=len(sim_modes) - 1,
-                    linestyles='dashed',
-                    colors='k')
+                  xmin=0,
+                  xmax=len(sim_modes) - 1,
+                  linestyles='dashed',
+                  colors='k')
 
     return avg_value, stderr_value
 
 
-def plot_timeseries(ax, timesteps, data, ylabel, expected=None, max_points=None):
+def plot_timeseries(ax,
+                    timesteps,
+                    data,
+                    ylabel,
+                    expected=None,
+                    max_points=None):
     """Plot data as a time series."""
     provided_modes = list(data.keys())
 
@@ -339,8 +349,7 @@ def plot_timeseries(ax, timesteps, data, ylabel, expected=None, max_points=None)
 
     if expected is not None:
         ax.hlines(y=expected,
-                    xmin=0,
-                    xmax=timesteps[provided_modes[0]][-1],
-                    linestyles='dashed',
-                    colors='k')
-
+                  xmin=0,
+                  xmax=timesteps[provided_modes[0]][-1],
+                  linestyles='dashed',
+                  colors='k')
