@@ -152,6 +152,10 @@ def lj_fluid_create_initial_state(*jobs):
                           filename=job.fn("lj_fluid_initial_state.gsd"),
                           mode='wb')
 
+    if communicator.rank == 0:
+        print(f'completed lj_fluid_create_initial_state: '
+              f'{job} in {communicator.walltime} s')
+
 
 #################################
 # MD ensemble simulations
@@ -398,7 +402,7 @@ def add_md_sampling_job(ensemble, thermostat, device_name, ranks_per_partition,
         job = jobs[communicator.partition]
 
         if communicator.rank == 0:
-            print(f'starting lj_fluid_{sim_mode}_{device_name}', job)
+            print(f'starting lj_fluid_{sim_mode}_{device_name}:', job)
 
         if device_name == 'gpu':
             device_cls = hoomd.device.GPU
@@ -410,6 +414,10 @@ def add_md_sampling_job(ensemble, thermostat, device_name, ranks_per_partition,
             message_filename=job.fn(f'run_{sim_mode}_{device_name}.log'))
 
         run_md_sim(job, device, ensemble, thermostat)
+
+        if communicator.rank == 0:
+            print(f'completed lj_fluid_{sim_mode}_{device_name}: '
+                  f'{job} in {communicator.walltime} s')
 
     md_sampling_jobs.append(md_sampling_operation)
 
@@ -790,7 +798,7 @@ def add_mc_sampling_job(mode, device_name, ranks_per_partition, aggregator):
         job = jobs[communicator.partition]
 
         if communicator.rank == 0:
-            print(f'starting lj_fluid_{mode}_mc_{device_name}', job)
+            print(f'starting lj_fluid_{mode}_mc_{device_name}:', job)
 
         if device_name == 'gpu':
             device_cls = hoomd.device.GPU
@@ -802,6 +810,11 @@ def add_mc_sampling_job(mode, device_name, ranks_per_partition, aggregator):
             message_filename=job.fn(f'run_{mode}_mc_{device_name}.log'))
 
         globals().get(f'run_{mode}_mc_sim')(job, device)
+
+        if communicator.rank == 0:
+            print(f'completed lj_fluid_{mode}_mc_{device_name} '
+                  f'{job} in {communicator.walltime} s')
+
 
     mc_sampling_jobs.append(sampling_operation)
 
@@ -1328,6 +1341,10 @@ def add_nve_md_job(device_name, ranks_per_partition, aggregator, run_length):
             communicator=communicator,
             message_filename=job.fn(f'run_{sim_mode}_{device_name}.log'))
         run_nve_md_sim(job, device, run_length=run_length)
+
+        if communicator.rank == 0:
+            print(f'completed lj_fluid_{sim_mode}_{device_name} '
+                  f'{job} in {communicator.walltime} s')
 
     nve_md_sampling_jobs.append(lj_fluid_nve_md_job)
 
