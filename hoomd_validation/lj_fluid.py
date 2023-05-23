@@ -391,9 +391,6 @@ def add_md_sampling_job(ensemble, thermostat, device_name, ranks_per_partition,
         directives['ngpu'] = util.total_ranks_function(ranks_per_partition)
 
     @Project.pre.after(lj_fluid_create_initial_state)
-    # @Project.post(
-    #     util.gsd_step_greater_equal_function(
-    #         f'{sim_mode}_{device_name}_quantities.gsd', TOTAL_STEPS))
     @Project.post.isfile(f'{sim_mode}_{device_name}_complete')
     @Project.operation(name=f'lj_fluid_{sim_mode}_{device_name}',
                        directives=directives,
@@ -794,9 +791,6 @@ def add_mc_sampling_job(mode, device_name, ranks_per_partition, aggregator):
         directives['ngpu'] = util.total_ranks_function(ranks_per_partition)
 
     @Project.pre.after(lj_fluid_create_initial_state)
-    # @Project.post(
-    #     util.gsd_step_greater_equal_function(
-    #         f'{mode}_mc_{device_name}_quantities.gsd', TOTAL_STEPS))
     @Project.post.isfile(f'{mode}_mc_{device_name}_complete')
     @Project.operation(name=f'lj_fluid_{mode}_mc_{device_name}',
                        directives=directives,
@@ -1328,9 +1322,6 @@ def add_nve_md_job(device_name, ranks_per_partition, aggregator, run_length):
         directives['ngpu'] = util.total_ranks_function(ranks_per_partition)
 
     @Project.pre.after(lj_fluid_create_initial_state)
-    # @Project.post(
-    #     util.gsd_step_greater_equal_function(
-    #         f'{sim_mode}_{device_name}_quantities.gsd', run_length))
     @Project.post.isfile(f'{sim_mode}_{device_name}_complete')
     @Project.operation(name=f'lj_fluid_{sim_mode}_{device_name}',
                        directives=directives,
