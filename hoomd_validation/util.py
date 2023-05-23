@@ -228,7 +228,7 @@ def plot_distribution(ax, data, xlabel, expected=None, bins=100):
     range_max = max(max(x) for x in data.values())
 
     for mode in sim_modes:
-        data_arr = np.asarray(data[mode])
+        data_arr = numpy.asarray(data[mode])
         histogram, bin_edges = numpy.histogram(data_arr,
                                                bins=bins,
                                                range=(range_min, range_max),

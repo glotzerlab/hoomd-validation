@@ -1134,7 +1134,7 @@ def lj_fluid_distribution_analyze(*jobs):
                 ke_sigmas_expected[sim_mode].append(
                     numpy.std(ke) - 1 / math.sqrt(2) * math.sqrt(n_dof) * kT)
 
-                ke_samples[sim_mode].extend(list(ke))
+                ke_samples[sim_mode].extend(ke)
             else:
                 ke_samples[sim_mode].extend(
                     [3 / 2 * job.statepoint.num_particles * job.statepoint.kT])
