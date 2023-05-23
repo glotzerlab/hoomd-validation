@@ -224,16 +224,17 @@ def plot_distribution(ax, data, xlabel, expected=None, bins=100):
     max_density_histogram = 0
     sim_modes = data.keys()
 
-    range_min = min([min(x) for x in data.values()])
-    range_max = max([max(x) for x in data.values()])
+    range_min = min(min(x) for x in data.values())
+    range_max = max(max(x) for x in data.values())
 
     for mode in sim_modes:
-        histogram, bin_edges = numpy.histogram(data[mode],
+        data_arr = np.asarray(data[mode])
+        histogram, bin_edges = numpy.histogram(data_arr,
                                                bins=bins,
                                                range=(range_min, range_max),
                                                density=True)
 
-        if numpy.all(numpy.asarray(data[mode]) == data[mode][0]):
+        if numpy.all(data_arr == data_arr[0]):
             histogram[:] = 0
 
         max_density_histogram = max(max_density_histogram, numpy.max(histogram))

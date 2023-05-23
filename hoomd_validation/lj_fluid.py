@@ -1156,12 +1156,8 @@ def lj_fluid_distribution_analyze(*jobs):
                 pressure_samples[sim_mode].extend(
                     list(log_traj['log/custom/virial_pressure']))
 
-            if 'nvt' in sim_mode:
-                density_samples[sim_mode].extend(
-                    list(log_traj['log/custom_actions/ComputeDensity/density']))
-            else:
-                density_samples[sim_mode].extend(
-                    list(log_traj['log/custom_actions/ComputeDensity/density']))
+            density_samples[sim_mode].extend(
+                list(log_traj['log/custom_actions/ComputeDensity/density']))
 
     ax = fig.add_subplot(2, 2, 1)
     util.plot_vs_expected(ax, ke_means_expected, '$<K> - 1/2 N_{dof} k T$')
