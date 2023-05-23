@@ -11,6 +11,7 @@ import os
 import math
 import collections
 import json
+import pathlib
 
 # Run parameters shared between simulations.
 # Step counts must be even and a multiple of the log quantity period.
@@ -244,7 +245,7 @@ def make_md_simulation(job,
     return sim
 
 
-def run_md_sim(job, device, ensemble, thermostat):
+def run_md_sim(job, device, ensemble, thermostat, complete_filename):
     """Run the MD simulation with the given ensemble and thermostat."""
     import hoomd
     from hoomd import md
@@ -307,6 +308,8 @@ def run_md_sim(job, device, ensemble, thermostat):
     # run
     device.notice('Running...')
     sim.run(RUN_STEPS)
+
+    pathlib.Path(job.fn(complete_filename)).touch()
     device.notice('Done.')
 
 
@@ -388,9 +391,10 @@ def add_md_sampling_job(ensemble, thermostat, device_name, ranks_per_partition,
         directives['ngpu'] = util.total_ranks_function(ranks_per_partition)
 
     @Project.pre.after(lj_fluid_create_initial_state)
-    @Project.post(
-        util.gsd_step_greater_equal_function(
-            f'{sim_mode}_{device_name}_quantities.gsd', TOTAL_STEPS))
+    # @Project.post(
+    #     util.gsd_step_greater_equal_function(
+    #         f'{sim_mode}_{device_name}_quantities.gsd', TOTAL_STEPS))
+    @Project.post.isfile(f'{sim_mode}_{device_name}_complete')
     @Project.operation(name=f'lj_fluid_{sim_mode}_{device_name}',
                        directives=directives,
                        aggregator=aggregator)
@@ -414,7 +418,11 @@ def add_md_sampling_job(ensemble, thermostat, device_name, ranks_per_partition,
             communicator=communicator,
             message_filename=job.fn(f'run_{sim_mode}_{device_name}.log'))
 
-        run_md_sim(job, device, ensemble, thermostat)
+        run_md_sim(job,
+                   device,
+                   ensemble,
+                   thermostat,
+                   complete_filename=f'{sim_mode}_{device_name}_complete')
 
         if communicator.rank == 0:
             print(f'completed lj_fluid_{sim_mode}_{device_name}: '
@@ -579,7 +587,7 @@ def make_mc_simulation(job,
     return sim
 
 
-def run_nvt_mc_sim(job, device):
+def run_nvt_mc_sim(job, device, complete_filename):
     """Run MC sim in NVT."""
     import hoomd
 
@@ -641,13 +649,14 @@ def run_nvt_mc_sim(job, device):
                           mode='wb')
 
     if sim.timestep == TOTAL_STEPS:
+        pathlib.Path(job.fn(complete_filename)).touch()
         device.notice('Done.')
     else:
         device.notice('Ending run early due to walltime limits at:'
                       f'{device.communicator.walltime}')
 
 
-def run_npt_mc_sim(job, device):
+def run_npt_mc_sim(job, device, complete_filename):
     """Run MC sim in NPT."""
     import hoomd
     from hoomd import hpmc
@@ -741,6 +750,7 @@ def run_npt_mc_sim(job, device):
                           mode='wb')
 
     if sim.timestep == TOTAL_STEPS:
+        pathlib.Path(job.fn(complete_filename)).touch()
         device.notice('Done.')
     else:
         device.notice('Ending run early due to walltime limits at:'
@@ -784,9 +794,10 @@ def add_mc_sampling_job(mode, device_name, ranks_per_partition, aggregator):
         directives['ngpu'] = util.total_ranks_function(ranks_per_partition)
 
     @Project.pre.after(lj_fluid_create_initial_state)
-    @Project.post(
-        util.gsd_step_greater_equal_function(
-            f'{mode}_mc_{device_name}_quantities.gsd', TOTAL_STEPS))
+    # @Project.post(
+    #     util.gsd_step_greater_equal_function(
+    #         f'{mode}_mc_{device_name}_quantities.gsd', TOTAL_STEPS))
+    @Project.post.isfile(f'{mode}_mc_{device_name}_complete')
     @Project.operation(name=f'lj_fluid_{mode}_mc_{device_name}',
                        directives=directives,
                        aggregator=aggregator)
@@ -810,7 +821,8 @@ def add_mc_sampling_job(mode, device_name, ranks_per_partition, aggregator):
             communicator=communicator,
             message_filename=job.fn(f'run_{mode}_mc_{device_name}.log'))
 
-        globals().get(f'run_{mode}_mc_sim')(job, device)
+        globals().get(f'run_{mode}_mc_sim')(
+            job, device, complete_filename=f'{mode}_mc_{device_name}_complete')
 
         if communicator.rank == 0:
             print(f'completed lj_fluid_{mode}_mc_{device_name} '
@@ -1221,7 +1233,7 @@ def lj_fluid_distribution_analyze(*jobs):
 #################################
 
 
-def run_nve_md_sim(job, device, run_length):
+def run_nve_md_sim(job, device, run_length, complete_filename):
     """Run the MD simulation in NVE."""
     import hoomd
 
@@ -1256,6 +1268,7 @@ def run_nve_md_sim(job, device, run_length):
                             walltime_stop=WALLTIME_STOP_SECONDS)
 
     if sim.timestep == RANDOMIZE_STEPS + EQUILIBRATE_STEPS + run_length:
+        pathlib.Path(job.fn(complete_filename)).touch()
         device.notice('Done.')
     else:
         device.notice('Ending run early due to walltime limits at:'
@@ -1315,9 +1328,10 @@ def add_nve_md_job(device_name, ranks_per_partition, aggregator, run_length):
         directives['ngpu'] = util.total_ranks_function(ranks_per_partition)
 
     @Project.pre.after(lj_fluid_create_initial_state)
-    @Project.post(
-        util.gsd_step_greater_equal_function(
-            f'{sim_mode}_{device_name}_quantities.gsd', run_length))
+    # @Project.post(
+    #     util.gsd_step_greater_equal_function(
+    #         f'{sim_mode}_{device_name}_quantities.gsd', run_length))
+    @Project.post.isfile(f'{sim_mode}_{device_name}_complete')
     @Project.operation(name=f'lj_fluid_{sim_mode}_{device_name}',
                        directives=directives,
                        aggregator=aggregator)
@@ -1340,7 +1354,10 @@ def add_nve_md_job(device_name, ranks_per_partition, aggregator, run_length):
         device = device_cls(
             communicator=communicator,
             message_filename=job.fn(f'run_{sim_mode}_{device_name}.log'))
-        run_nve_md_sim(job, device, run_length=run_length)
+        run_nve_md_sim(job,
+                       device,
+                       run_length=run_length,
+                       complete_filename=f'{sim_mode}_{device_name}_complete')
 
         if communicator.rank == 0:
             print(f'completed lj_fluid_{sim_mode}_{device_name} '
