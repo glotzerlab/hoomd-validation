@@ -39,13 +39,14 @@ def job_statepoints():
     """list(dict): A list of statepoints for this subproject."""
     replicate_indices = range(CONFIG["replicates"])
     params_list = [
-        dict(kT=1.5,
-             density=0.5954153196609695,
-             pressure=1.0,
-             num_particles=16**3,
-             r_cut=4.0,
-             r_on=3.2,
-             ),
+        dict(
+            kT=1.5,
+            density=0.5954153196609695,
+            pressure=1.0,
+            num_particles=16**3,
+            r_cut=4.0,
+            r_on=3.2,
+        ),
         dict(
             kT=1.0,
             density=0.9193740949934834,
@@ -814,7 +815,6 @@ def add_mc_sampling_job(mode, device_name, ranks_per_partition, aggregator):
         if communicator.rank == 0:
             print(f'completed lj_fluid_{mode}_mc_{device_name} '
                   f'{job} in {communicator.walltime} s')
-
 
     mc_sampling_jobs.append(sampling_operation)
 
