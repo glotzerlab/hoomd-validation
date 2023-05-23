@@ -16,12 +16,12 @@ import json
 # Step counts must be even and a multiple of the log quantity period.
 RANDOMIZE_STEPS = 20_000
 EQUILIBRATE_STEPS = 100_000
-RUN_STEPS = 4_000_000
+RUN_STEPS = 1_000_000
 TOTAL_STEPS = RANDOMIZE_STEPS + EQUILIBRATE_STEPS + RUN_STEPS
 
 WRITE_PERIOD = 4_000
-LOG_PERIOD = {'trajectory': 50_000, 'quantities': 1000}
-LJ_PARAMS = {'epsilon': 1.0, 'sigma': 1.0, 'r_on': 2.0}
+LOG_PERIOD = {'trajectory': 50_000, 'quantities': 500}
+LJ_PARAMS = {'epsilon': 1.0, 'sigma': 1.0}
 NUM_CPU_RANKS = min(8, CONFIG["max_cores_sim"])
 
 WALLTIME_STOP_SECONDS = CONFIG["max_walltime"] * 3600 - 10 * 60
@@ -42,14 +42,17 @@ def job_statepoints():
         dict(kT=1.5,
              density=0.5954153196609695,
              pressure=1.0,
-             num_particles=12**3,
-             r_cut=2.5),
+             num_particles=16**3,
+             r_cut=4.0,
+             r_on=3.2,
+             ),
         dict(
             kT=1.0,
             density=0.9193740949934834,
             pressure=11.0,
             num_particles=12**3,
             r_cut=2**(1 / 6),
+            r_on=2.0,
         ),
     ]
 
@@ -63,6 +66,7 @@ def job_statepoints():
                 "num_particles": param['num_particles'],
                 "replicate_idx": idx,
                 "r_cut": param['r_cut'],
+                "r_on": param['r_on'],
             })
 
 
@@ -188,14 +192,14 @@ def make_md_simulation(job,
     # pair force
     nlist = md.nlist.Cell(buffer=0.4)
     lj = md.pair.LJ(default_r_cut=job.statepoint.r_cut,
-                    default_r_on=LJ_PARAMS['r_on'],
+                    default_r_on=job.statepoint.r_on,
                     nlist=nlist)
     lj.params[('A', 'A')] = dict(sigma=LJ_PARAMS['sigma'],
                                  epsilon=LJ_PARAMS['epsilon'])
     lj.mode = 'xplor'
 
     # integrator
-    integrator = md.Integrator(dt=0.0001, methods=[method], forces=[lj])
+    integrator = md.Integrator(dt=0.001, methods=[method], forces=[lj])
 
     # compute thermo
     thermo = md.compute.ThermodynamicQuantities(hoomd.filter.All())
@@ -446,7 +450,7 @@ def make_mc_simulation(job,
     # pair potential
     epsilon = LJ_PARAMS['epsilon'] / job.sp.kT  # noqa F841
     sigma = LJ_PARAMS['sigma']
-    r_on = LJ_PARAMS['r_on']
+    r_on = job.statepoint.r_on
     r_cut = job.statepoint.r_cut
 
     # the potential will have xplor smoothing with r_on=2
@@ -502,7 +506,7 @@ def make_mc_simulation(job,
     # pair force to compute virial pressure
     nlist = hoomd.md.nlist.Cell(buffer=0.4)
     lj = hoomd.md.pair.LJ(default_r_cut=job.statepoint.r_cut,
-                          default_r_on=LJ_PARAMS['r_on'],
+                          default_r_on=job.statepoint.r_on,
                           nlist=nlist)
     lj.params[('A', 'A')] = dict(sigma=LJ_PARAMS['sigma'],
                                  epsilon=LJ_PARAMS['epsilon'])
