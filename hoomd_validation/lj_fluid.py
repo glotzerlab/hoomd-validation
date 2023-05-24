@@ -42,7 +42,7 @@ def job_statepoints():
     params_list = [
         dict(
             kT=1.5,
-            density=0.5954153196609695,
+            density=0.6269137133228043,
             pressure=1.0,
             num_particles=16**3,
             r_cut=4.0,
