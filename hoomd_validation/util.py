@@ -109,6 +109,10 @@ def run_up_to_walltime(sim, end_step, steps, walltime_stop):
     while sim.timestep < end_step:
         sim.run(min(steps, end_step - sim.timestep))
 
+        for writer in sim.operations.writers:
+            if hasattr(writer, 'flush'):
+                writer.flush()
+
         next_walltime = sim.device.communicator.walltime + sim.walltime
         if (next_walltime >= walltime_stop):
             break
