@@ -413,7 +413,7 @@ def add_md_sampling_job(ensemble, thermostat, device_name, ranks_per_partition,
 
         device = device_cls(
             communicator=communicator,
-            message_filename=job.fn(f'run_{sim_mode}_{device_name}.log'))
+            message_filename=job.fn(f'{sim_mode}_{device_name}.log'))
 
         run_md_sim(job,
                    device,
@@ -813,7 +813,7 @@ def add_mc_sampling_job(mode, device_name, ranks_per_partition, aggregator):
 
         device = device_cls(
             communicator=communicator,
-            message_filename=job.fn(f'run_{mode}_mc_{device_name}.log'))
+            message_filename=job.fn(f'{mode}_mc_{device_name}.log'))
 
         globals().get(f'run_{mode}_mc_sim')(
             job, device, complete_filename=f'{mode}_mc_{device_name}_complete')
@@ -1344,7 +1344,7 @@ def add_nve_md_job(device_name, ranks_per_partition, aggregator, run_length):
 
         device = device_cls(
             communicator=communicator,
-            message_filename=job.fn(f'run_{sim_mode}_{device_name}.log'))
+            message_filename=job.fn(f'{sim_mode}_{device_name}.log'))
         run_nve_md_sim(job,
                        device,
                        run_length=run_length,

@@ -166,13 +166,8 @@ def make_simulation(
 
     sim.operations.integrator = integrator
 
-    # write to terminal
-    if sim.device.communicator.rank == 0:
-        file = open(job.fn(get_job_filename(sim_mode, device, 'tps', 'log')),
-                    mode='w',
-                    newline='\n')
-    else:
-        file = io.StringIO("")
+    # write to notice file
+    file = hoomd.device.NoticeFile(device)
     logger_table = hoomd.logging.Logger(categories=['scalar'])
     logger_table.add(sim, quantities=['timestep', 'final_timestep', 'tps'])
     logger_table[('walltime')] = (sim.device.communicator, 'walltime', 'scalar')
