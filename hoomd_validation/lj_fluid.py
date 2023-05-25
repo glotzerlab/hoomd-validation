@@ -17,11 +17,11 @@ import pathlib
 # Step counts must be even and a multiple of the log quantity period.
 RANDOMIZE_STEPS = 20_000
 EQUILIBRATE_STEPS = 100_000
-RUN_STEPS = 1_000_000
+RUN_STEPS = 500_000
 TOTAL_STEPS = RANDOMIZE_STEPS + EQUILIBRATE_STEPS + RUN_STEPS
 
 WRITE_PERIOD = 4_000
-LOG_PERIOD = {'trajectory': 50_000, 'quantities': 500}
+LOG_PERIOD = {'trajectory': 50_000, 'quantities': 100}
 LJ_PARAMS = {'epsilon': 1.0, 'sigma': 1.0}
 NUM_CPU_RANKS = min(8, CONFIG["max_cores_sim"])
 
@@ -1247,7 +1247,7 @@ def run_nve_md_sim(job, device, run_length, complete_filename):
                              initial_state,
                              nve,
                              sim_mode,
-                             period_multiplier=400)
+                             period_multiplier=200)
 
     if not is_restarting:
         sim.state.thermalize_particle_momenta(hoomd.filter.All(), job.sp.kT)
@@ -1295,7 +1295,7 @@ nve_md_job_definitions = [
         'device_name': 'cpu',
         'ranks_per_partition': NUM_CPU_RANKS,
         'aggregator': partition_jobs_cpu_mpi_nve,
-        'run_length': 200_000_000,
+        'run_length': 10_000_000,
     },
 ]
 
@@ -1305,7 +1305,7 @@ if CONFIG["enable_gpu"]:
             'device_name': 'gpu',
             'ranks_per_partition': 1,
             'aggregator': partition_jobs_gpu_nve,
-            'run_length': 800_000_000,
+            'run_length': 100_000_000,
         },
     ])
 
