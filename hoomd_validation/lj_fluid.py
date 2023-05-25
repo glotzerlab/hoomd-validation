@@ -151,7 +151,6 @@ def lj_fluid_create_initial_state(*jobs):
     device.notice(f'Move counts: {mc.translate_moves}')
     device.notice('Done.')
 
-
     hoomd.write.GSD.write(state=sim.state,
                           filename=job.fn("lj_fluid_initial_state.gsd"),
                           mode='wb')
