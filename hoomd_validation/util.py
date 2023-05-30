@@ -266,11 +266,15 @@ def plot_vs_expected(ax,
     """Plot values vs an expected value."""
     sim_modes = values.keys()
 
-    avg_value = {mode: numpy.mean(values[mode]) for mode in sim_modes}
-    stderr_value = {
-        mode: 2 * numpy.std(values[mode]) / numpy.sqrt(len(values[mode]))
-        for mode in sim_modes
-    }
+    avg_value = {}
+    stderr_value = {}
+    for mode in sim_modes:
+        if numpy.all(numpy.isnan(values[mode])):
+           avg_value[mode] = numpy.nan
+           stderr_value[mode] = numpy.nan
+        else:
+            avg_value[mode] = numpy.mean(values[mode])
+            stderr_value[mode] = 2 * numpy.std(values[mode]) / numpy.sqrt(len(values[mode]))
 
     # compute the energy differences
     value_list = [avg_value[mode] for mode in sim_modes]
@@ -293,9 +297,9 @@ def plot_vs_expected(ax,
     if separate_nvt_npt:
         # Indicate average nvt and npt values separately.
         npt_modes = list(filter(lambda x: 'npt' in x, sim_modes))
-        npt_mean = numpy.mean([avg_value[mode] for mode in npt_modes])
+        npt_mean = numpy.nanmean([avg_value[mode] for mode in npt_modes])
         nvt_modes = list(filter(lambda x: 'nvt' in x, sim_modes))
-        nvt_mean = numpy.mean([avg_value[mode] for mode in nvt_modes])
+        nvt_mean = numpy.nanmean([avg_value[mode] for mode in nvt_modes])
 
         if relative_scale is not None:
             npt_mean = (npt_mean - expected) / expected * relative_scale
@@ -352,3 +356,8 @@ def plot_timeseries(ax,
                   xmax=timesteps[provided_modes[0]][-1],
                   linestyles='dashed',
                   colors='k')
+
+
+def _sort_sim_modes(sim_modes):
+    """Sort simulation modes for comparison."""
+    sim_modes.sort(key=lambda x: ('nvt' in x, 'md' in x, x))
