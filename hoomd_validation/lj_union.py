@@ -125,13 +125,14 @@ def lj_union_create_initial_state(*jobs):
     mc.shape['A'] = dict(diameter=0)
     mc.shape['R'] = dict(diameter=min_spacing, orientable=True)
 
-    sim = hoomd.Simulation(device=device, seed=job.statepoint.replicate_idx)
+    sim = hoomd.Simulation(device=device, seed=util.make_seed(job))
     sim.create_state_from_snapshot(snap)
     sim.operations.integrator = mc
 
     device.notice('Randomizing initial state...')
     sim.run(RANDOMIZE_STEPS)
-    device.notice(f'Done. Move counts: {mc.translate_moves}')
+    device.notice(f'Move counts: {mc.translate_moves}')
+    device.notice('Done.')
 
     hoomd.write.GSD.write(state=sim.state,
                           filename=job.fn("lj_union_initial_state.gsd"),

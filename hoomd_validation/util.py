@@ -4,8 +4,8 @@
 """Helper functions for grabbing data and plotting."""
 
 import numpy
-import io
 import gsd.fl
+import signac
 
 
 def read_gsd_log_trajectory(traj):
@@ -108,6 +108,10 @@ def run_up_to_walltime(sim, end_step, steps, walltime_stop):
     while sim.timestep < end_step:
         sim.run(min(steps, end_step - sim.timestep))
 
+        for writer in sim.operations.writers:
+            if hasattr(writer, 'flush'):
+                writer.flush()
+
         next_walltime = sim.device.communicator.walltime + sim.walltime
         if (next_walltime >= walltime_stop):
             break
@@ -156,18 +160,13 @@ def make_simulation(
     import hoomd
 
     sim = hoomd.Simulation(device)
-    sim.seed = job.statepoint.replicate_idx
+    sim.seed = make_seed(job, sim_mode)
     sim.create_state_from_gsd(initial_state)
 
     sim.operations.integrator = integrator
 
-    # write to terminal
-    if sim.device.communicator.rank == 0:
-        file = open(job.fn(get_job_filename(sim_mode, device, 'tps', 'log')),
-                    mode='w',
-                    newline='\n')
-    else:
-        file = io.StringIO("")
+    # write to notice file
+    file = hoomd.device.NoticeFile(device)
     logger_table = hoomd.logging.Logger(categories=['scalar'])
     logger_table.add(sim, quantities=['timestep', 'final_timestep', 'tps'])
     logger_table[('walltime')] = (sim.device.communicator, 'walltime', 'scalar')
@@ -201,3 +200,155 @@ def make_simulation(
     sim.operations.add(quantity_writer)
 
     return sim
+
+
+def make_seed(job, sim_mode=None):
+    """Make a random number seed from a job.
+
+    Mix in the simulation mode to ensure that separate simulations in the same
+    state point run with different seeds.
+    """
+    # copy the job statepoint and mix in the simulation mode
+    statepoint = job.statepoint()
+    statepoint['sim_mode'] = sim_mode
+
+    return int(signac.job.calc_id(statepoint), 16) & 0xffff
+
+
+def plot_distribution(ax, data, xlabel, expected=None, bins=100):
+    """Plot distributions."""
+    import numpy
+
+    max_density_histogram = 0
+    sim_modes = data.keys()
+
+    range_min = min(min(x) for x in data.values())
+    range_max = max(max(x) for x in data.values())
+
+    for mode in sim_modes:
+        data_arr = numpy.asarray(data[mode])
+        histogram, bin_edges = numpy.histogram(data_arr,
+                                               bins=bins,
+                                               range=(range_min, range_max),
+                                               density=True)
+
+        if numpy.all(data_arr == data_arr[0]):
+            histogram[:] = 0
+
+        max_density_histogram = max(max_density_histogram, numpy.max(histogram))
+
+        ax.plot(bin_edges[:-1], histogram, label=mode)
+
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel('probability density')
+
+    if callable(expected):
+        ax.plot(bin_edges[:-1],
+                expected(bin_edges[:-1]),
+                linestyle='dashed',
+                color='k',
+                label='expected')
+
+    elif expected is not None:
+        ax.vlines(x=expected,
+                  ymin=0,
+                  ymax=max_density_histogram,
+                  linestyles='dashed',
+                  colors='k')
+
+
+def plot_vs_expected(ax,
+                     values,
+                     ylabel,
+                     expected=0,
+                     relative_scale=None,
+                     separate_nvt_npt=False):
+    """Plot values vs an expected value."""
+    sim_modes = values.keys()
+
+    avg_value = {mode: numpy.mean(values[mode]) for mode in sim_modes}
+    stderr_value = {
+        mode: 2 * numpy.std(values[mode]) / numpy.sqrt(len(values[mode]))
+        for mode in sim_modes
+    }
+
+    # compute the energy differences
+    value_list = [avg_value[mode] for mode in sim_modes]
+    stderr_list = numpy.array([stderr_value[mode] for mode in sim_modes])
+
+    value_diff_list = numpy.array(value_list)
+
+    if relative_scale is not None:
+        value_diff_list = (value_diff_list
+                           - expected) / expected * relative_scale
+        stderr_list = stderr_list / expected * relative_scale
+
+    ax.errorbar(x=range(len(sim_modes)),
+                y=value_diff_list,
+                yerr=numpy.fabs(stderr_list),
+                fmt='s')
+    ax.set_xticks(range(len(sim_modes)), sim_modes, rotation=45)
+    ax.set_ylabel(ylabel)
+
+    if separate_nvt_npt:
+        # Indicate average nvt and npt values separately.
+        npt_modes = list(filter(lambda x: 'npt' in x, sim_modes))
+        npt_mean = numpy.mean([avg_value[mode] for mode in npt_modes])
+        nvt_modes = list(filter(lambda x: 'nvt' in x, sim_modes))
+        nvt_mean = numpy.mean([avg_value[mode] for mode in nvt_modes])
+
+        if relative_scale is not None:
+            npt_mean = (npt_mean - expected) / expected * relative_scale
+            nvt_mean = (nvt_mean - expected) / expected * relative_scale
+
+        # _sort_sim_modes places npt modes first
+        ax.hlines(y=npt_mean,
+                  xmin=0,
+                  xmax=len(npt_modes) - 1,
+                  linestyles='dashed',
+                  colors='k')
+
+        ax.hlines(y=nvt_mean,
+                  xmin=len(npt_modes),
+                  xmax=len(sim_modes) - 1,
+                  linestyles='dashed',
+                  colors='k')
+    else:
+        ax.hlines(y=expected,
+                  xmin=0,
+                  xmax=len(sim_modes) - 1,
+                  linestyles='dashed',
+                  colors='k')
+
+    return avg_value, stderr_value
+
+
+def plot_timeseries(ax,
+                    timesteps,
+                    data,
+                    ylabel,
+                    expected=None,
+                    max_points=None):
+    """Plot data as a time series."""
+    provided_modes = list(data.keys())
+
+    for mode in provided_modes:
+        if max_points is not None and len(data[mode]) > max_points:
+            skip = len(data[mode]) // max_points
+            plot_data = numpy.asarray(data[mode][::skip])
+            plot_timestep = numpy.asarray(timesteps[mode][::skip])
+        else:
+            plot_data = numpy.asarray(data[mode])
+            plot_timestep = numpy.asarray(timesteps[mode])
+
+        ax.plot(plot_timestep, plot_data, label=mode)
+
+    ax.set_xlabel("time step")
+    ax.set_ylabel(ylabel)
+
+    if expected is not None:
+        ax.hlines(y=expected,
+                  xmin=0,
+                  xmax=timesteps[provided_modes[0]][-1],
+                  linestyles='dashed',
+                  colors='k')
