@@ -1452,8 +1452,8 @@ def lj_union_conservation_analyze(*jobs):
             job_timesteps[sim_mode] = log_traj['configuration/step']
 
             job_energies[sim_mode] = (
-                log_traj['md/compute/ThermodynamicQuantities/potential_energy']
-                + log_traj['md/compute/ThermodynamicQuantities/kinetic_energy'])
+                log_traj['log/md/compute/ThermodynamicQuantities/potential_energy']
+                + log_traj['log/md/compute/ThermodynamicQuantities/kinetic_energy'])
             job_energies[sim_mode] = (
                 job_energies[sim_mode]
                 - job_energies[sim_mode][0]) / job.statepoint["num_particles"]
