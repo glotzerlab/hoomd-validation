@@ -1020,7 +1020,7 @@ def lj_fluid_compare_modes(*jobs):
                               pressure=set_pressure,
                               potential_energy=None)
 
-    fig = matplotlib.figure.Figure(figsize=(8, 8 / 1.618 * 3), layout='tight')
+    fig = matplotlib.figure.Figure(figsize=(10, 10 / 1.618 * 3), layout='tight')
     fig.suptitle(f"$kT={kT}$, $\\rho={set_density}$, "
                  f"$r_\\mathrm{{cut}}={jobs[0].statepoint.r_cut}$, "
                  f"$N={num_particles}$")
