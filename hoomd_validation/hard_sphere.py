@@ -8,17 +8,17 @@ from project_class import Project
 from flow import aggregator
 import util
 import os
-import math
+import pathlib
 
 # Run parameters shared between simulations.
 # Step counts must be even and a multiple of the log quantity period.
 RANDOMIZE_STEPS = 20_000
 EQUILIBRATE_STEPS = 100_000
-RUN_STEPS = 1_000_000
+RUN_STEPS = 500_000
 TOTAL_STEPS = RANDOMIZE_STEPS + EQUILIBRATE_STEPS + RUN_STEPS
 
 WRITE_PERIOD = 1_000
-LOG_PERIOD = {'trajectory': 50_000, 'quantities': 1_000}
+LOG_PERIOD = {'trajectory': 50_000, 'quantities': 100}
 NUM_CPU_RANKS = min(8, CONFIG["max_cores_sim"])
 
 
@@ -123,6 +123,10 @@ def hard_sphere_create_initial_state(*jobs):
                           filename=job.fn("hard_sphere_initial_state.gsd"),
                           mode='wb')
 
+    if communicator.rank == 0:
+        print(f'completed hard_sphere_create_initial_state: '
+              f'{job} in {communicator.walltime} s')
+
 
 def make_mc_simulation(job,
                        device,
@@ -146,14 +150,21 @@ def make_mc_simulation(job,
             quantity name.
     """
     import hoomd
+    from custom_actions import ComputeDensity
 
     # integrator
     mc = hoomd.hpmc.integrate.Sphere(nselect=4)
     mc.shape['A'] = dict(diameter=1.0)
 
+    # compute the density and pressure
+    compute_density = ComputeDensity()
+    sdf = hoomd.hpmc.compute.SDF(xmax=0.02, dx=1e-4)
+
     # log to gsd
     logger_gsd = hoomd.logging.Logger(categories=['scalar', 'sequence'])
     logger_gsd.add(mc, quantities=['translate_moves'])
+    logger_gsd.add(sdf, quantities=['betaP'])
+    logger_gsd.add(compute_density, quantities=['density'])
     for loggable, quantity in extra_loggables:
         logger_gsd.add(loggable, quantities=[quantity])
 
@@ -169,6 +180,9 @@ def make_mc_simulation(job,
                                log_write_period=LOG_PERIOD['quantities'],
                                log_start_step=RANDOMIZE_STEPS
                                + EQUILIBRATE_STEPS)
+
+    sim.operations.computes.append(sdf)
+    compute_density.attach(sim)
 
     for loggable, _ in extra_loggables:
         # call attach method explicitly so we can access simulation state when
@@ -190,21 +204,16 @@ def make_mc_simulation(job,
     return sim
 
 
-def run_nvt_sim(job, device):
+def run_nvt_sim(job, device, complete_filename):
     """Run MC sim in NVT."""
-    import hoomd
     initial_state = job.fn('hard_sphere_initial_state.gsd')
     sim_mode = 'nvt'
-
-    sdf = hoomd.hpmc.compute.SDF(xmax=0.02, dx=1e-4)
 
     sim = make_mc_simulation(job,
                              device,
                              initial_state,
                              sim_mode,
-                             extra_loggables=[(sdf, 'betaP')])
-
-    sim.operations.computes.append(sdf)
+                             extra_loggables=[])
 
     # equilibrate
     device.notice('Equilibrating...')
@@ -224,18 +233,16 @@ def run_nvt_sim(job, device):
     sim.run(RUN_STEPS)
     device.notice('Done.')
 
+    pathlib.Path(job.fn(complete_filename)).touch()
 
-def run_npt_sim(job, device):
+
+def run_npt_sim(job, device, complete_filename):
     """Run MC sim in NPT."""
     import hoomd
-    from custom_actions import ComputeDensity
 
     # device
     initial_state = job.fn('hard_sphere_initial_state.gsd')
     sim_mode = 'npt'
-
-    # compute the density
-    compute_density = ComputeDensity()
 
     # box updates
     boxmc = hoomd.hpmc.update.BoxMC(betaP=job.statepoint.pressure,
@@ -247,10 +254,7 @@ def run_npt_sim(job, device):
                              device,
                              initial_state,
                              sim_mode,
-                             extra_loggables=[
-                                 (compute_density, 'density'),
-                                 (boxmc, 'volume_moves'),
-                             ])
+                             extra_loggables=[(boxmc, 'volume_moves')])
 
     sim.operations.add(boxmc)
 
@@ -287,10 +291,14 @@ def run_npt_sim(job, device):
     sim.run(RUN_STEPS)
     device.notice('Done.')
 
+    pathlib.Path(job.fn(complete_filename)).touch()
 
-def run_nec_sim(job, device):
+
+def run_nec_sim(job, device, complete_filename):
     """Run MC sim in NVT with NEC."""
     import hoomd
+    from custom_actions import ComputeDensity
+
     initial_state = job.fn('hard_sphere_initial_state.gsd')
     sim_mode = 'nec'
 
@@ -300,7 +308,8 @@ def run_nec_sim(job, device):
     mc.shape['A'] = dict(diameter=1)
     mc.chain_time = 0.05
 
-    sdf = hoomd.hpmc.compute.SDF(xmax=0.02, dx=1e-4)
+    # compute the density
+    compute_density = ComputeDensity()
 
     # log to gsd
     logger_gsd = hoomd.logging.Logger(categories=['scalar', 'sequence'])
@@ -309,7 +318,7 @@ def run_nec_sim(job, device):
                        'translate_moves', 'particles_per_chain',
                        'virial_pressure'
                    ])
-    logger_gsd.add(sdf, quantities=['betaP'])
+    logger_gsd.add(compute_density, quantities=['density'])
 
     # make simulation
     sim = util.make_simulation(job=job,
@@ -324,7 +333,7 @@ def run_nec_sim(job, device):
                                log_start_step=RANDOMIZE_STEPS
                                + EQUILIBRATE_STEPS)
 
-    sim.operations.computes.append(sdf)
+    compute_density.attach(sim)
 
     trigger_tune = hoomd.trigger.And([
         hoomd.trigger.Periodic(5),
@@ -369,6 +378,8 @@ def run_nec_sim(job, device):
     sim.run(RUN_STEPS)
     device.notice('Done.')
 
+    pathlib.Path(job.fn(complete_filename)).touch()
+
 
 sampling_jobs = []
 job_definitions = [
@@ -377,12 +388,6 @@ job_definitions = [
         'device_name': 'cpu',
         'ranks_per_partition': NUM_CPU_RANKS,
         'aggregator': partition_jobs_cpu_mpi
-    },
-    {
-        'mode': 'nvt',
-        'device_name': 'gpu',
-        'ranks_per_partition': 1,
-        'aggregator': partition_jobs_gpu
     },
     {
         'mode': 'npt',
@@ -398,6 +403,16 @@ job_definitions = [
     },
 ]
 
+if CONFIG["enable_gpu"]:
+    job_definitions.extend([
+        {
+            'mode': 'nvt',
+            'device_name': 'gpu',
+            'ranks_per_partition': 1,
+            'aggregator': partition_jobs_gpu
+        },
+    ])
+
 
 def add_sampling_job(mode, device_name, ranks_per_partition, aggregator):
     """Add a sampling job to the workflow."""
@@ -409,9 +424,7 @@ def add_sampling_job(mode, device_name, ranks_per_partition, aggregator):
         directives['ngpu'] = directives['nranks']
 
     @Project.pre.after(hard_sphere_create_initial_state)
-    @Project.post(
-        util.gsd_step_greater_equal_function(
-            f'{mode}_{device_name}_quantities.gsd', TOTAL_STEPS))
+    @Project.post.isfile(f'{mode}_{device_name}_complete')
     @Project.operation(name=f'hard_sphere_{mode}_{device_name}',
                        directives=directives,
                        aggregator=aggregator)
@@ -435,7 +448,12 @@ def add_sampling_job(mode, device_name, ranks_per_partition, aggregator):
             communicator=communicator,
             message_filename=job.fn(f'run_{mode}_{device_name}.log'))
 
-        globals().get(f'run_{mode}_sim')(job, device)
+        globals().get(f'run_{mode}_sim')(
+            job, device, complete_filename=f'{mode}_{device_name}_complete')
+
+        if communicator.rank == 0:
+            print(f'completed hard_sphere_{mode}_{device_name} '
+                  f'{job} in {communicator.walltime} s')
 
     sampling_jobs.append(sampling_operation)
 
@@ -444,9 +462,11 @@ for definition in job_definitions:
     add_sampling_job(**definition)
 
 
+@Project.pre(is_hard_sphere)
 @Project.pre.after(*sampling_jobs)
 @Project.post.true('hard_sphere_analysis_complete')
-@Project.operation(directives=dict(walltime=1, executable=CONFIG["executable"]))
+@Project.operation(directives=dict(walltime=CONFIG['short_walltime'],
+                                   executable=CONFIG["executable"]))
 def hard_sphere_analyze(job):
     """Analyze the output of all simulation modes."""
     import gsd.hoomd
@@ -454,131 +474,60 @@ def hard_sphere_analyze(job):
     import matplotlib
     import matplotlib.style
     import matplotlib.figure
-    matplotlib.style.use('ggplot')
-    from util import read_gsd_log_trajectory, get_log_quantity
+    matplotlib.style.use('fivethirtyeight')
 
     print('starting hard_sphere_analyze:', job)
 
-    constant = dict(nvt_cpu='density',
-                    nvt_gpu='density',
-                    nec_cpu='density',
-                    npt_cpu='pressure')
-    sim_modes = list(constant.keys())
+    sim_modes = [
+        'nvt_cpu',
+        'nec_cpu',
+        'npt_cpu',
+    ]
 
+    if os.path.exists(job.fn('nvt_gpu_quantities.gsd')):
+        sim_modes.extend(['nvt_gpu'])
+
+    util._sort_sim_modes(sim_modes)
+
+    timesteps = {}
     pressures = {}
     densities = {}
 
     for sim_mode in sim_modes:
-        with gsd.hoomd.open(job.fn(sim_mode + '_quantities.gsd')) as gsd_traj:
-            # read GSD file once
-            traj = read_gsd_log_trajectory(gsd_traj)
+        log_traj = gsd.hoomd.read_log(job.fn(sim_mode + '_quantities.gsd'))
+        timesteps[sim_mode] = log_traj['configuration/step']
 
-        n_frames = len(traj)
-
-        # NEC generates inf virial pressures for 2D simulations in HOOMD-blue
-        # v3.6.0, fall back on SDF
-        if constant[sim_mode] == 'density' and (
-                'nvt' in sim_mode
-                or traj[0]['hpmc/nec/integrate/Sphere/virial_pressure'][0]
-                == math.inf):
-            pressures[sim_mode] = get_log_quantity(traj,
-                                                   'hpmc/compute/SDF/betaP')
-        elif constant[sim_mode] == 'density' and 'nec' in sim_mode:
-            pressures[sim_mode] = get_log_quantity(
-                traj, 'hpmc/nec/integrate/Sphere/virial_pressure')
+        if 'nec' in sim_mode:
+            pressures[sim_mode] = log_traj[
+                'log/hpmc/nec/integrate/Sphere/virial_pressure']
         else:
-            pressures[sim_mode] = numpy.ones(n_frames) * job.statepoint.pressure
+            pressures[sim_mode] = log_traj['log/hpmc/compute/SDF/betaP']
 
-        if constant[sim_mode] == 'pressure':
-            densities[sim_mode] = get_log_quantity(
-                traj, 'custom_actions/ComputeDensity/density')
-        else:
-            densities[sim_mode] = numpy.ones(n_frames) * job.statepoint.density
+        densities[sim_mode] = log_traj[
+            'log/custom_actions/ComputeDensity/density']
 
     # save averages
     for mode in sim_modes:
         job.document[mode] = dict(pressure=float(numpy.mean(pressures[mode])),
                                   density=float(numpy.mean(densities[mode])))
 
-    # Plot results
-    def plot(*, ax, data, quantity_name, base_line=None, legend=False):
-        # subsample the values for time series plots
-        for mode in sim_modes:
-            ax.plot(data[mode], label=mode)
-        ax.set_xlabel('frame')
-        ax.set_ylabel(quantity_name)
+    fig = matplotlib.figure.Figure(figsize=(10, 10 / 1.618 * 2), layout='tight')
+    ax = fig.add_subplot(2, 1, 1)
+    util.plot_timeseries(ax=ax,
+                         timesteps=timesteps,
+                         data=densities,
+                         ylabel=r"$\rho$",
+                         expected=job.sp.density,
+                         max_points=500)
+    ax.legend()
 
-        if legend:
-            ax.legend()
-
-        if base_line is not None:
-            ax.hlines(y=base_line,
-                      xmin=0,
-                      xmax=len(data[sim_modes[0]]),
-                      linestyles='dashed',
-                      colors='k')
-
-    fig = matplotlib.figure.Figure(figsize=(10, 10 / 1.618 * 3), layout='tight')
-    ax = fig.add_subplot(3, 1, 1)
-
-    plot(ax=ax,
-         data=densities,
-         quantity_name=r"$\rho",
-         base_line=job.sp.density,
-         legend=True)
-
-    ax = fig.add_subplot(3, 1, 2)
-    plot(ax=ax, data=pressures, quantity_name=r"$P", base_line=job.sp.pressure)
-
-    # determine range for density and pressure histograms
-    density_range = [
-        numpy.min(densities[sim_modes[0]]),
-        numpy.max(densities[sim_modes[0]])
-    ]
-    pressure_range = [
-        numpy.min(pressures[sim_modes[0]]),
-        numpy.max(pressures[sim_modes[0]])
-    ]
-
-    for mode in sim_modes[1:]:
-        density_range[0] = min(density_range[0], numpy.min(densities[mode]))
-        density_range[1] = max(density_range[1], numpy.max(densities[mode]))
-        pressure_range[0] = min(pressure_range[0], numpy.min(pressures[mode]))
-        pressure_range[1] = max(pressure_range[1], numpy.max(pressures[mode]))
-
-    def plot_histogram(*, ax, data, quantity_name, sp_name, range):
-        max_histogram = 0
-        for mode in sim_modes:
-            histogram, bin_edges = numpy.histogram(data[mode],
-                                                   bins=50,
-                                                   range=range)
-            if constant[mode] == sp_name:
-                histogram[:] = 0
-
-            max_histogram = max(max_histogram, numpy.max(histogram))
-
-            ax.plot(bin_edges[:-1], histogram, label=mode)
-        ax.set_xlabel(quantity_name)
-        ax.set_ylabel('frequency')
-        ax.vlines(x=job.sp[sp_name],
-                  ymin=0,
-                  ymax=max_histogram,
-                  linestyles='dashed',
-                  colors='k')
-
-    ax = fig.add_subplot(3, 2, 5)
-    plot_histogram(ax=ax,
-                   data=densities,
-                   quantity_name=r"$\rho$",
-                   sp_name="density",
-                   range=density_range)
-
-    ax = fig.add_subplot(3, 2, 6)
-    plot_histogram(ax=ax,
-                   data=pressures,
-                   quantity_name="$P$",
-                   sp_name="pressure",
-                   range=pressure_range)
+    ax = fig.add_subplot(2, 1, 2)
+    util.plot_timeseries(ax=ax,
+                         timesteps=timesteps,
+                         data=pressures,
+                         ylabel=r"$\beta P$",
+                         expected=job.sp.pressure,
+                         max_points=500)
 
     fig.suptitle(f"$\\rho={job.statepoint.density}$, "
                  f"$N={job.statepoint.num_particles}$, "
@@ -604,27 +553,34 @@ def hard_sphere_compare_modes(*jobs):
     import matplotlib
     import matplotlib.style
     import matplotlib.figure
-    import scipy.stats
-    matplotlib.style.use('ggplot')
+    matplotlib.style.use('fivethirtyeight')
 
     print('starting hard_sphere_compare_modes:', jobs[0])
 
     sim_modes = [
         'nvt_cpu',
-        'nvt_gpu',
         'nec_cpu',
         'npt_cpu',
     ]
+
+    if os.path.exists(jobs[0].fn('nvt_gpu_quantities.gsd')):
+        sim_modes.extend(['nvt_gpu'])
+
+    util._sort_sim_modes(sim_modes)
+
     quantity_names = ['density', 'pressure']
+
+    labels = {
+        'density': r'$\frac{\rho_\mathrm{sample} - \rho}{\rho} \cdot 1000$',
+        'pressure': r'$\frac{P_\mathrm{sample} - P}{P} \cdot 1000$',
+    }
 
     # grab the common statepoint parameters
     set_density = jobs[0].sp.density
     set_pressure = jobs[0].sp.pressure
     num_particles = jobs[0].sp.num_particles
 
-    quantity_reference = dict(density=set_density,
-                              pressure=set_pressure,
-                              potential_energy=None)
+    quantity_reference = dict(density=set_density, pressure=set_pressure)
 
     fig = matplotlib.figure.Figure(figsize=(10, 10 / 1.618 * 2), layout='tight')
     fig.suptitle(f"$\\rho={set_density}$, $N={num_particles}$")
@@ -639,48 +595,21 @@ def hard_sphere_compare_modes(*jobs):
                 quantities[mode].append(
                     getattr(getattr(jb.doc, mode), quantity_name))
 
-        # compute stats with data
-        avg_quantity = {
-            mode: numpy.mean(quantities[mode]) for mode in sim_modes
-        }
-        stderr_quantity = {
-            mode:
-            2 * numpy.std(quantities[mode]) / numpy.sqrt(len(quantities[mode]))
-            for mode in sim_modes
-        }
-
-        # compute the quantity differences
-        quantity_list = [avg_quantity[mode] for mode in sim_modes]
-        stderr_list = numpy.array([stderr_quantity[mode] for mode in sim_modes])
-
         if quantity_reference[quantity_name] is not None:
             reference = quantity_reference[quantity_name]
         else:
-            reference = numpy.mean(quantity_list)
+            avg_value = {
+                mode: numpy.mean(quantities[mode]) for mode in sim_modes
+            }
+            reference = numpy.mean([avg_value[mode] for mode in sim_modes])
 
-        quantity_diff_list = numpy.array(quantity_list) - reference
-
-        ax.errorbar(x=range(len(sim_modes)),
-                    y=quantity_diff_list / reference / 1e-3,
-                    yerr=numpy.fabs(stderr_list / reference / 1e-3),
-                    fmt='s')
-        ax.set_xticks(range(len(sim_modes)), sim_modes, rotation=45)
-        ax.set_ylabel(quantity_name + ' relative error / 1e-3')
-        ax.hlines(y=0,
-                  xmin=0,
-                  xmax=len(sim_modes) - 1,
-                  linestyles='dashed',
-                  colors='k')
-
-        unpacked_quantities = list(quantities.values())
-        f, p = scipy.stats.f_oneway(*unpacked_quantities)
-
-        if p > 0.05:
-            result = "$\\checkmark$"
-        else:
-            result = "XX"
-
-        ax.set_title(label=result + f' ANOVA p-value: {p:0.3f}')
+        avg_quantity, stderr_quantity = util.plot_vs_expected(
+            ax=ax,
+            values=quantities,
+            ylabel=labels[quantity_name],
+            expected=reference,
+            relative_scale=1000,
+            separate_nvt_npt=True)
 
     filename = f'hard_sphere_compare_density{round(set_density, 2)}.svg'
     fig.savefig(os.path.join(jobs[0]._project.path, filename),

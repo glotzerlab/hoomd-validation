@@ -583,6 +583,7 @@ for definition in job_definitions:
     add_sampling_job(**definition)
 
 
+@Project.pre(is_hard_disk)
 @Project.pre.after(*sampling_jobs)
 @Project.post.true('hard_disk_analysis_complete')
 @Project.operation(directives=dict(walltime=CONFIG['short_walltime'],
