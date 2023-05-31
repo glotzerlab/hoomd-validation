@@ -730,7 +730,7 @@ def run_npt_mc_sim(job, device, complete_filename):
         device.notice(
             f'Restored trial move size: {sim.operations.integrator.d["A"]}')
         boxmc.volume = dict(weight=1.0, mode='ln', delta=data['volume_delta'])
-        device.notice(f'Resotred volume move size: {boxmc.volume["delta"]}')
+        device.notice(f'Restored volume move size: {boxmc.volume["delta"]}')
 
     # run
     device.notice('Running...')

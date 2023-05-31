@@ -299,7 +299,7 @@ def plot_vs_expected(ax,
         # Indicate average nvt and npt values separately.
         npt_modes = list(filter(lambda x: 'npt' in x, sim_modes))
         npt_mean = numpy.nanmean([avg_value[mode] for mode in npt_modes])
-        nvt_modes = list(filter(lambda x: 'nvt' in x, sim_modes))
+        nvt_modes = list(filter(lambda x: 'nvt' in x or 'nec' in x, sim_modes))
         nvt_mean = numpy.nanmean([avg_value[mode] for mode in nvt_modes])
 
         if relative_scale is not None:
@@ -361,4 +361,4 @@ def plot_timeseries(ax,
 
 def _sort_sim_modes(sim_modes):
     """Sort simulation modes for comparison."""
-    sim_modes.sort(key=lambda x: ('nvt' in x, 'md' in x, x))
+    sim_modes.sort(key=lambda x: ('nvt' in x or 'nec' in x, 'md' in x, x))
