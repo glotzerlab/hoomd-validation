@@ -374,35 +374,37 @@ md_job_definitions = [
 ]
 
 if CONFIG["enable_gpu"]:
-    md_job_definitions.extend([    {
-        'ensemble': 'nvt',
-        'thermostat': 'langevin',
-        'device_name': 'gpu',
-        'ranks_per_partition': 1,
-        'aggregator': partition_jobs_gpu
-    },
-    {
-        'ensemble': 'nvt',
-        'thermostat': 'mttk',
-        'device_name': 'gpu',
-        'ranks_per_partition': 1,
-        'aggregator': partition_jobs_gpu
-    },
-    {
-        'ensemble': 'nvt',
-        'thermostat': 'bussi',
-        'device_name': 'gpu',
-        'ranks_per_partition': 1,
-        'aggregator': partition_jobs_gpu
-    },
-    {
-        'ensemble': 'npt',
-        'thermostat': 'bussi',
-        'device_name': 'gpu',
-        'ranks_per_partition': 1,
-        'aggregator': partition_jobs_gpu
-    },
+    md_job_definitions.extend([
+        {
+            'ensemble': 'nvt',
+            'thermostat': 'langevin',
+            'device_name': 'gpu',
+            'ranks_per_partition': 1,
+            'aggregator': partition_jobs_gpu
+        },
+        {
+            'ensemble': 'nvt',
+            'thermostat': 'mttk',
+            'device_name': 'gpu',
+            'ranks_per_partition': 1,
+            'aggregator': partition_jobs_gpu
+        },
+        {
+            'ensemble': 'nvt',
+            'thermostat': 'bussi',
+            'device_name': 'gpu',
+            'ranks_per_partition': 1,
+            'aggregator': partition_jobs_gpu
+        },
+        {
+            'ensemble': 'npt',
+            'thermostat': 'bussi',
+            'device_name': 'gpu',
+            'ranks_per_partition': 1,
+            'aggregator': partition_jobs_gpu
+        },
     ])
+
 
 def add_md_sampling_job(ensemble, thermostat, device_name, ranks_per_partition,
                         aggregator):
@@ -441,7 +443,11 @@ def add_md_sampling_job(ensemble, thermostat, device_name, ranks_per_partition,
             communicator=communicator,
             message_filename=job.fn(f'{sim_mode}_{device_name}.log'))
 
-        run_md_sim(job, device, ensemble, thermostat, complete_filename=f'{sim_mode}_{device_name}_complete')
+        run_md_sim(job,
+                   device,
+                   ensemble,
+                   thermostat,
+                   complete_filename=f'{sim_mode}_{device_name}_complete')
 
         if communicator.rank == 0:
             print(f'completed lj_union_{sim_mode}_{device_name}: '
@@ -476,7 +482,6 @@ def make_mc_simulation(job,
     """
     import hoomd
     from hoomd import hpmc
-    import numpy
     from custom_actions import ComputeDensity
 
     # integrator
@@ -648,13 +653,18 @@ def run_nvt_mc_sim(job, device, complete_filename):
         rotate_moves = sim.operations.integrator.rotate_moves
         rotate_acceptance = rotate_moves[0] / sum(rotate_moves)
         device.notice(f'Rotate move acceptance: {rotate_acceptance}')
-        device.notice(f'Rotate trial move size: {sim.operations.integrator.a["R"]}')
+        device.notice(
+            f'Rotate trial move size: {sim.operations.integrator.a["R"]}')
 
         # save move size to a file
         if device.communicator.rank == 0:
             name = util.get_job_filename(sim_mode, device, 'move_size', 'json')
             with open(job.fn(name), 'w') as f:
-                json.dump(dict(d_R=sim.operations.integrator.d["R"], a_R=sim.operations.integrator.a["R"],), f)
+                json.dump(
+                    dict(
+                        d_R=sim.operations.integrator.d["R"],
+                        a_R=sim.operations.integrator.a["R"],
+                    ), f)
     else:
         device.notice('Restarting...')
         # read move size from the file
@@ -749,7 +759,8 @@ def run_npt_mc_sim(job, device, complete_filename):
         rotate_moves = sim.operations.integrator.rotate_moves
         rotate_acceptance = rotate_moves[0] / sum(rotate_moves)
         device.notice(f'Rotate move acceptance: {rotate_acceptance}')
-        device.notice(f'Rotate trial move size: {sim.operations.integrator.a["R"]}')
+        device.notice(
+            f'Rotate trial move size: {sim.operations.integrator.a["R"]}')
 
         volume_moves = boxmc.volume_moves
         volume_acceptance = volume_moves[0] / sum(volume_moves)
@@ -816,12 +827,13 @@ mc_job_definitions = [
 ]
 
 if CONFIG["enable_gpu"]:
-    mc_job_definitions.extend([    {
-        'mode': 'nvt',
-        'device_name': 'gpu',
-        'ranks_per_partition': 1,
-        'aggregator': partition_jobs_gpu
-    },
+    mc_job_definitions.extend([
+        {
+            'mode': 'nvt',
+            'device_name': 'gpu',
+            'ranks_per_partition': 1,
+            'aggregator': partition_jobs_gpu
+        },
     ])
 
 
@@ -859,7 +871,8 @@ def add_mc_sampling_job(mode, device_name, ranks_per_partition, aggregator):
             communicator=communicator,
             message_filename=job.fn(f'{mode}_mc_{device_name}.log'))
 
-        globals().get(f'run_{mode}_mc_sim')(job, device, complete_filename=f'{mode}_mc_{device_name}_complete')
+        globals().get(f'run_{mode}_mc_sim')(
+            job, device, complete_filename=f'{mode}_mc_{device_name}_complete')
 
         if communicator.rank == 0:
             print(f'completed lj_union_{mode}_mc_{device_name} '
@@ -926,18 +939,23 @@ def lj_union_analyze(job):
         timesteps[sim_mode] = log_traj['configuration/step']
 
         if 'md' in sim_mode:
-            energies[sim_mode] = log_traj['log/md/compute/ThermodynamicQuantities/potential_energy']
+            energies[sim_mode] = log_traj[
+                'log/md/compute/ThermodynamicQuantities/potential_energy']
         else:
-            energies[sim_mode] = log_traj['log/hpmc/pair/user/CPPPotentialUnion/energy'] * job.statepoint.kT
+            energies[sim_mode] = (
+                log_traj['log/hpmc/pair/user/CPPPotentialUnion/energy']
+                * job.statepoint.kT)
 
         energies[sim_mode] /= job.statepoint.num_particles
 
         if 'md' in sim_mode:
-            pressures[sim_mode] = log_traj['log/md/compute/ThermodynamicQuantities/pressure']
+            pressures[sim_mode] = log_traj[
+                'log/md/compute/ThermodynamicQuantities/pressure']
         else:
             pressures[sim_mode] = numpy.full(len(energies[sim_mode]), numpy.nan)
 
-        densities[sim_mode] = log_traj['log/custom_actions/ComputeDensity/density']
+        densities[sim_mode] = log_traj[
+            'log/custom_actions/ComputeDensity/density']
 
         if 'md' in sim_mode and 'langevin' not in sim_mode:
             momentum_vector = log_traj['log/md/Integrator/linear_momentum']
@@ -1106,8 +1124,8 @@ def lj_union_compare_modes(*jobs):
 
 
 @Project.pre.after(*md_sampling_jobs)
-@Project.post(
-    lambda *jobs: util.true_all(*jobs, key='lj_union_distribution_analyze_complete'))
+@Project.post(lambda *jobs: util.true_all(
+    *jobs, key='lj_union_distribution_analyze_complete'))
 @Project.operation(directives=dict(walltime=CONFIG['short_walltime'],
                                    executable=CONFIG["executable"]),
                    aggregator=analysis_aggregator)
@@ -1185,19 +1203,22 @@ def lj_union_distribution_analyze(*jobs):
             if 'md' in sim_mode:
                 # https://doi.org/10.1371/journal.pone.0202764
                 ke_translate = log_traj[
-                    'log/md/compute/ThermodynamicQuantities/translational_kinetic_energy']
+                    'log/md/compute/ThermodynamicQuantities/'
+                    'translational_kinetic_energy']
                 ke_translate_means_expected[sim_mode].append(
                     numpy.mean(ke_translate) - 1 / 2 * n_translate_dof * kT)
                 ke_translate_sigmas_expected[sim_mode].append(
-                    numpy.std(ke_translate) - 1 / math.sqrt(2) * math.sqrt(n_translate_dof) * kT)
+                    numpy.std(ke_translate)
+                    - 1 / math.sqrt(2) * math.sqrt(n_translate_dof) * kT)
                 ke_translate_samples[sim_mode].extend(ke_translate)
 
-                ke_rotate = log_traj[
-                    'log/md/compute/ThermodynamicQuantities/rotational_kinetic_energy']
+                ke_rotate = log_traj['log/md/compute/ThermodynamicQuantities/'
+                                     'rotational_kinetic_energy']
                 ke_rotate_means_expected[sim_mode].append(
                     numpy.mean(ke_rotate) - 1 / 2 * n_rotate_dof * kT)
                 ke_rotate_sigmas_expected[sim_mode].append(
-                    numpy.std(ke_rotate) - 1 / math.sqrt(2) * math.sqrt(n_rotate_dof) * kT)
+                    numpy.std(ke_rotate)
+                    - 1 / math.sqrt(2) * math.sqrt(n_rotate_dof) * kT)
                 ke_rotate_samples[sim_mode].extend(ke_rotate)
             else:
                 ke_translate_samples[sim_mode].extend(
@@ -1208,45 +1229,53 @@ def lj_union_distribution_analyze(*jobs):
             if 'md' in sim_mode:
                 potential_energy_samples[sim_mode].extend(
                     log_traj['log/md/compute/ThermodynamicQuantities'
-                                  '/potential_energy'])
+                             '/potential_energy'])
             else:
                 potential_energy_samples[sim_mode].extend(
                     log_traj['log/hpmc/pair/user/CPPPotentialUnion/energy']
-                         * job.statepoint.kT)
+                    * job.statepoint.kT)
 
             if 'md' in sim_mode:
                 pressure_samples[sim_mode].extend(
-                    log_traj[
-                        'log/md/compute/ThermodynamicQuantities/pressure'])
+                    log_traj['log/md/compute/ThermodynamicQuantities/pressure'])
             else:
-                pressure_samples[sim_mode].extend(
-                    [job.statepoint.pressure])
+                pressure_samples[sim_mode].extend([job.statepoint.pressure])
 
             density_samples[sim_mode].extend(
                 log_traj['log/custom_actions/ComputeDensity/density'])
 
     ax = fig.add_subplot(4, 2, 1)
-    util.plot_vs_expected(ax, ke_translate_means_expected, r'$<K_\mathrm{translate}> - 1/2 N_{dof} k T$')
+    util.plot_vs_expected(ax, ke_translate_means_expected,
+                          r'$<K_\mathrm{translate}> - 1/2 N_{dof} k T$')
 
     ax = fig.add_subplot(4, 2, 2)
-    util.plot_vs_expected(ax, ke_translate_sigmas_expected,
-                          r'$\Delta K_\mathrm{translate} - 1/\sqrt{2} \sqrt{N_{dof}} k T$')
+    util.plot_vs_expected(
+        ax, ke_translate_sigmas_expected,
+        r'$\Delta K_\mathrm{translate} - 1/\sqrt{2} \sqrt{N_{dof}} k T$')
 
     ax = fig.add_subplot(4, 2, 3)
-    util.plot_vs_expected(ax, ke_rotate_means_expected, r'$<K_\mathrm{rotate}> - 1/2 N_{dof} k T$')
+    util.plot_vs_expected(ax, ke_rotate_means_expected,
+                          r'$<K_\mathrm{rotate}> - 1/2 N_{dof} k T$')
 
     ax = fig.add_subplot(4, 2, 4)
-    util.plot_vs_expected(ax, ke_rotate_sigmas_expected,
-                          r'$\Delta K_\mathrm{rotate} - 1/\sqrt{2} \sqrt{N_{dof}} k T$')
+    util.plot_vs_expected(
+        ax, ke_rotate_sigmas_expected,
+        r'$\Delta K_\mathrm{rotate} - 1/\sqrt{2} \sqrt{N_{dof}} k T$')
 
     ax = fig.add_subplot(4, 2, 5)
     rv = scipy.stats.gamma(3 * job.statepoint.num_particles / 2,
                            scale=job.statepoint.kT)
-    util.plot_distribution(ax, ke_translate_samples, r'$K_\mathrm{translate}$', expected=rv.pdf)
+    util.plot_distribution(ax,
+                           ke_translate_samples,
+                           r'$K_\mathrm{translate}$',
+                           expected=rv.pdf)
     ax.legend(loc='upper right', fontsize='xx-small')
 
     ax = fig.add_subplot(4, 2, 6)
-    util.plot_distribution(ax, ke_rotate_samples, r'$K_\mathrm{rotate}$', expected=rv.pdf)
+    util.plot_distribution(ax,
+                           ke_rotate_samples,
+                           r'$K_\mathrm{rotate}$',
+                           expected=rv.pdf)
 
     ax = fig.add_subplot(4, 4, 13)
     util.plot_distribution(ax, potential_energy_samples, 'U')
@@ -1263,7 +1292,8 @@ def lj_union_distribution_analyze(*jobs):
                            'P',
                            expected=job.statepoint.pressure)
 
-    filename = f'lj_union_distribution_analyze_kT{kT}_density{round(set_density, 2)}.svg'
+    filename = f'lj_union_distribution_analyze_kT{kT}_' \
+               f'density{round(set_density, 2)}.svg'
     fig.savefig(os.path.join(jobs[0]._project.path, filename),
                 bbox_inches='tight')
 
@@ -1305,11 +1335,11 @@ def run_nve_md_sim(job, device, run_length, complete_filename):
     # Run for a long time to look for energy and momentum drift
     device.notice('Running...')
 
-    util.run_up_to_walltime(
-        sim=sim,
-        end_step=RANDOMIZE_STEPS + EQUILIBRATE_STEPS + run_length,
-        steps=500_000,
-        walltime_stop=WALLTIME_STOP_SECONDS)
+    util.run_up_to_walltime(sim=sim,
+                            end_step=RANDOMIZE_STEPS + EQUILIBRATE_STEPS
+                            + run_length,
+                            steps=500_000,
+                            walltime_stop=WALLTIME_STOP_SECONDS)
 
     if sim.timestep == RANDOMIZE_STEPS + EQUILIBRATE_STEPS + run_length:
         pathlib.Path(job.fn(complete_filename)).touch()
@@ -1406,6 +1436,7 @@ def add_nve_md_job(device_name, ranks_per_partition, aggregator, run_length):
 
     nve_md_sampling_jobs.append(lj_union_nve_md_job)
 
+
 for definition in nve_md_job_definitions:
     add_nve_md_job(**definition)
 
@@ -1424,7 +1455,6 @@ nve_analysis_aggregator = aggregator.groupby(
 def lj_union_conservation_analyze(*jobs):
     """Analyze the output of NVE simulations and inspect conservation."""
     import gsd.hoomd
-    import numpy
     import math
     import matplotlib
     import matplotlib.style
@@ -1452,8 +1482,10 @@ def lj_union_conservation_analyze(*jobs):
             job_timesteps[sim_mode] = log_traj['configuration/step']
 
             job_energies[sim_mode] = (
-                log_traj['log/md/compute/ThermodynamicQuantities/potential_energy']
-                + log_traj['log/md/compute/ThermodynamicQuantities/kinetic_energy'])
+                log_traj[
+                    'log/md/compute/ThermodynamicQuantities/potential_energy']
+                + log_traj[
+                    'log/md/compute/ThermodynamicQuantities/kinetic_energy'])
             job_energies[sim_mode] = (
                 job_energies[sim_mode]
                 - job_energies[sim_mode][0]) / job.statepoint["num_particles"]

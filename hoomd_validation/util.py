@@ -270,11 +270,12 @@ def plot_vs_expected(ax,
     stderr_value = {}
     for mode in sim_modes:
         if numpy.all(numpy.isnan(values[mode])):
-           avg_value[mode] = numpy.nan
-           stderr_value[mode] = numpy.nan
+            avg_value[mode] = numpy.nan
+            stderr_value[mode] = numpy.nan
         else:
             avg_value[mode] = numpy.mean(values[mode])
-            stderr_value[mode] = 2 * numpy.std(values[mode]) / numpy.sqrt(len(values[mode]))
+            stderr_value[mode] = 2 * numpy.std(values[mode]) / numpy.sqrt(
+                len(values[mode]))
 
     # compute the energy differences
     value_list = [avg_value[mode] for mode in sim_modes]
