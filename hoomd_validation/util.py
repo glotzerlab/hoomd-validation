@@ -18,46 +18,6 @@ def total_ranks_function(ranks_per_job):
     return lambda *jobs: ranks_per_job * len(jobs)
 
 
-def gsd_step_greater_equal_function(gsd_filename, step):
-    """Make a function that compares the timestep in the gsd to step.
-
-    Returns `True` when the final timestep in ``job.fn(gsd_filename)`` is
-    greater than or equal to ``step``.
-
-    The function returns `False` for files that do not exist and files that
-    have no frames.
-    """
-
-    def gsd_step_greater_equal(*jobs):
-        for job in jobs:
-            if not job.isfile(gsd_filename):
-                return False
-
-            try:
-                with gsd.fl.open(name=job.fn(gsd_filename), mode='rb') as f:
-                    if f.nframes == 0:
-                        return False
-
-                    last_frame = f.nframes - 1
-
-                    if f.chunk_exists(frame=last_frame,
-                                      name='configuration/step'):
-                        gsd_step = f.read_chunk(frame=last_frame,
-                                                name='configuration/step')[0]
-                        if gsd_step < step:
-                            return False
-                    else:
-                        return False
-            except RuntimeError:
-                # treat corrupt GSD files as not complete, as these are still
-                # being written.
-                return False
-
-        return True
-
-    return gsd_step_greater_equal
-
-
 def get_job_filename(sim_mode, device, name, type):
     """Construct a job filename."""
     import hoomd
