@@ -23,7 +23,6 @@ TOTAL_STEPS = RANDOMIZE_STEPS + EQUILIBRATE_STEPS + RUN_STEPS
 
 WRITE_PERIOD = 4_000
 LOG_PERIOD = {'trajectory': 50_000, 'quantities': 100}
-# TODO: Increase r_cut?
 LJ_PARAMS = {'epsilon': 0.25, 'sigma': 1.0, 'r_on': 2.0, 'r_cut': 2.5}
 NUM_CPU_RANKS = min(8, CONFIG["max_cores_sim"])
 CUBE_VERTS = [
