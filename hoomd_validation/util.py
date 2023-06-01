@@ -4,7 +4,6 @@
 """Helper functions for grabbing data and plotting."""
 
 import numpy
-import gsd.fl
 import signac
 
 
