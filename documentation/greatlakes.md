@@ -13,7 +13,7 @@ max_walltime: 96
 
 * When building with `ENABLE_LLVM=on`, built separate CPU and GPU builds in:
   * `${HOME}/build/hoomd-cpu`
-  * and ``${HOME}/build/hoomd-gpu`.
+  * and `${HOME}/build/hoomd-gpu`.
 * To link to `libcuda.so`, compile `hoomd-gpu` in an interactive job:
   `srun -Asglotzer<N> --gres=gpu:1 --nodes=1 --ntasks-per-node=1 --cpus-per-task=8 --partition gpu -t 8:00:00 --mem=64G --pty /bin/zsh`
 

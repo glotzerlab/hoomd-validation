@@ -788,7 +788,7 @@ def run_npt_mc_sim(job, device, complete_filename):
         device.notice(
             f'Restored rotate move size: {sim.operations.integrator.a["R"]}')
         boxmc.volume = dict(weight=1.0, mode='ln', delta=data['volume_delta'])
-        device.notice(f'Resotred volume move size: {boxmc.volume["delta"]}')
+        device.notice(f'Restored volume move size: {boxmc.volume["delta"]}')
 
     # run
     device.notice('Running...')
@@ -1077,7 +1077,7 @@ def lj_union_compare_modes(*jobs):
                               pressure=set_pressure,
                               potential_energy=None)
 
-    fig = matplotlib.figure.Figure(figsize=(8, 8 / 1.618 * 3), layout='tight')
+    fig = matplotlib.figure.Figure(figsize=(10, 10 / 1.618 * 2), layout='tight')
     fig.suptitle(f"$kT={kT}$, $\\rho={set_density}$, $N={num_particles}$")
 
     for i, quantity_name in enumerate(quantity_names):

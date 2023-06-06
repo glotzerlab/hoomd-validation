@@ -730,7 +730,7 @@ def run_npt_mc_sim(job, device, complete_filename):
         device.notice(
             f'Restored trial move size: {sim.operations.integrator.d["A"]}')
         boxmc.volume = dict(weight=1.0, mode='ln', delta=data['volume_delta'])
-        device.notice(f'Resotred volume move size: {boxmc.volume["delta"]}')
+        device.notice(f'Restored volume move size: {boxmc.volume["delta"]}')
 
     # run
     device.notice('Running...')
@@ -1020,7 +1020,7 @@ def lj_fluid_compare_modes(*jobs):
                               pressure=set_pressure,
                               potential_energy=None)
 
-    fig = matplotlib.figure.Figure(figsize=(8, 8 / 1.618 * 3), layout='tight')
+    fig = matplotlib.figure.Figure(figsize=(10, 10 / 1.618 * 3), layout='tight')
     fig.suptitle(f"$kT={kT}$, $\\rho={set_density}$, "
                  f"$r_\\mathrm{{cut}}={jobs[0].statepoint.r_cut}$, "
                  f"$N={num_particles}$")

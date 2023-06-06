@@ -35,7 +35,7 @@ class ConfigFile(dict):
         self["max_gpus_submission"] = int(config.get("max_gpus_submission", 1))
         self["max_walltime"] = int(config.get("max_walltime", 24))
         self["short_walltime"] = int(config.get("short_walltime", 2))
-        self["replicates"] = int(config.get("replicates", 16))
+        self["replicates"] = int(config.get("replicates", 32))
         self["enable_llvm"] = bool(config.get("enable_llvm", True))
         self["enable_gpu"] = bool(config.get("enable_gpu", True))
 

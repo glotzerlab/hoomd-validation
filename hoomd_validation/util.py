@@ -4,35 +4,7 @@
 """Helper functions for grabbing data and plotting."""
 
 import numpy
-import gsd.fl
 import signac
-
-
-def read_gsd_log_trajectory(traj):
-    """Read the log values from a GSD trajectory.
-
-    Args:
-        traj (`gsd.hoomd.Trajectory`): trajectory to read data from
-
-    Reading GSD file is expensive, call `read_gsd_log_trajectory` once, then
-    call `get_log_quantity` multiple times to extract individual log quantities.
-    """
-    return [frame.log for frame in traj]
-
-
-def get_log_quantity(log_traj, quantity):
-    """Get logged values from the return value of `read_gsd_log_trajectory`.
-
-    Args:
-        log_traj: trajectory to read data from
-        quantity (str): name of the quantity to read
-    """
-    if len(log_traj[0][quantity]) == 1:
-        qty_values = [frame[quantity][0] for frame in log_traj]
-    else:
-        qty_values = [frame[quantity] for frame in log_traj]
-
-    return numpy.array(qty_values)
 
 
 def true_all(*jobs, key):
@@ -43,46 +15,6 @@ def true_all(*jobs, key):
 def total_ranks_function(ranks_per_job):
     """Make a function that computes the number of ranks for an aggregate."""
     return lambda *jobs: ranks_per_job * len(jobs)
-
-
-def gsd_step_greater_equal_function(gsd_filename, step):
-    """Make a function that compares the timestep in the gsd to step.
-
-    Returns `True` when the final timestep in ``job.fn(gsd_filename)`` is
-    greater than or equal to ``step``.
-
-    The function returns `False` for files that do not exist and files that
-    have no frames.
-    """
-
-    def gsd_step_greater_equal(*jobs):
-        for job in jobs:
-            if not job.isfile(gsd_filename):
-                return False
-
-            try:
-                with gsd.fl.open(name=job.fn(gsd_filename), mode='rb') as f:
-                    if f.nframes == 0:
-                        return False
-
-                    last_frame = f.nframes - 1
-
-                    if f.chunk_exists(frame=last_frame,
-                                      name='configuration/step'):
-                        gsd_step = f.read_chunk(frame=last_frame,
-                                                name='configuration/step')[0]
-                        if gsd_step < step:
-                            return False
-                    else:
-                        return False
-            except RuntimeError:
-                # treat corrupt GSD files as not complete, as these are still
-                # being written.
-                return False
-
-        return True
-
-    return gsd_step_greater_equal
 
 
 def get_job_filename(sim_mode, device, name, type):
@@ -299,7 +231,7 @@ def plot_vs_expected(ax,
         # Indicate average nvt and npt values separately.
         npt_modes = list(filter(lambda x: 'npt' in x, sim_modes))
         npt_mean = numpy.nanmean([avg_value[mode] for mode in npt_modes])
-        nvt_modes = list(filter(lambda x: 'nvt' in x, sim_modes))
+        nvt_modes = list(filter(lambda x: 'nvt' in x or 'nec' in x, sim_modes))
         nvt_mean = numpy.nanmean([avg_value[mode] for mode in nvt_modes])
 
         if relative_scale is not None:
@@ -361,4 +293,4 @@ def plot_timeseries(ax,
 
 def _sort_sim_modes(sim_modes):
     """Sort simulation modes for comparison."""
-    sim_modes.sort(key=lambda x: ('nvt' in x, 'md' in x, x))
+    sim_modes.sort(key=lambda x: ('nvt' in x or 'nec' in x, 'md' in x, x))

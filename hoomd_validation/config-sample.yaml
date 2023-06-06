@@ -11,7 +11,7 @@
   # singularity_options: ""
 
 ## Number of replicate simulations to average over for ensemble comparisons.
-# replicates: 16
+# replicates: 32
 
 ## Maximum CPU cores to use in a single simulation.
 # max_cores_sim: 16
