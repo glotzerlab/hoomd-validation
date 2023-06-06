@@ -18,6 +18,7 @@ import pathlib
 RANDOMIZE_STEPS = 20_000
 EQUILIBRATE_STEPS = 100_000
 RUN_STEPS = 500_000
+RESTART_STEPS = RUN_STEPS // 10
 TOTAL_STEPS = RANDOMIZE_STEPS + EQUILIBRATE_STEPS + RUN_STEPS
 
 WRITE_PERIOD = 4_000
@@ -29,11 +30,6 @@ WALLTIME_STOP_SECONDS = CONFIG["max_walltime"] * 3600 - 10 * 60
 
 # Limit the number of long NVE runs to reduce the number of CPU hours needed.
 NUM_NVE_RUNS = 2
-
-
-def _sort_sim_modes(sim_modes):
-    """Sort simulation modes for comparison."""
-    sim_modes.sort(key=lambda x: ('nvt' in x, 'md' in x, x))
 
 
 def job_statepoints():
@@ -639,7 +635,7 @@ def run_nvt_mc_sim(job, device, complete_filename):
     device.notice('Running...')
     util.run_up_to_walltime(sim=sim,
                             end_step=TOTAL_STEPS,
-                            steps=200_000,
+                            steps=RESTART_STEPS,
                             walltime_stop=WALLTIME_STOP_SECONDS)
 
     hoomd.write.GSD.write(state=sim.state,
@@ -740,7 +736,7 @@ def run_npt_mc_sim(job, device, complete_filename):
     device.notice('Running...')
     util.run_up_to_walltime(sim=sim,
                             end_step=TOTAL_STEPS,
-                            steps=200_000,
+                            steps=RESTART_STEPS,
                             walltime_stop=WALLTIME_STOP_SECONDS)
 
     hoomd.write.GSD.write(state=sim.state,
@@ -870,7 +866,7 @@ def lj_fluid_analyze(job):
     if os.path.exists(job.fn('nvt_mc_gpu_quantities.gsd')):
         sim_modes.extend(['nvt_mc_gpu'])
 
-    _sort_sim_modes(sim_modes)
+    util._sort_sim_modes(sim_modes)
 
     timesteps = {}
     energies = {}
@@ -1005,7 +1001,7 @@ def lj_fluid_compare_modes(*jobs):
     if os.path.exists(jobs[0].fn('nvt_mc_gpu_quantities.gsd')):
         sim_modes.extend(['nvt_mc_gpu'])
 
-    _sort_sim_modes(sim_modes)
+    util._sort_sim_modes(sim_modes)
 
     quantity_names = ['density', 'pressure', 'potential_energy']
     labels = {
@@ -1120,7 +1116,7 @@ def lj_fluid_distribution_analyze(*jobs):
     if os.path.exists(jobs[0].fn('nvt_mc_gpu_quantities.gsd')):
         sim_modes.extend(['nvt_mc_gpu'])
 
-    _sort_sim_modes(sim_modes)
+    util._sort_sim_modes(sim_modes)
 
     # grab the common statepoint parameters
     kT = jobs[0].sp.kT
