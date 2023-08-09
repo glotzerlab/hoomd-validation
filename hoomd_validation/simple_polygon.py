@@ -30,18 +30,18 @@ SHAPE_VERTICES = [
 
 WRITE_PERIOD = 1_000
 LOG_PERIOD = {'trajectory': 50_000, 'quantities': 100}
-NUM_CPU_RANKS = min(64, CONFIG["max_cores_sim"])
+NUM_CPU_RANKS = min(8, CONFIG["max_cores_sim"])
 
 WALLTIME_STOP_SECONDS = CONFIG["max_walltime"] * 3600 - 10 * 60
 
 
 def job_statepoints():
     """list(dict): A list of statepoints for this subproject."""
-    num_particles = 128**2
+    num_particles = 64**2
     replicate_indices = range(CONFIG["replicates"])
     # reference statepoint from: http://dx.doi.org/10.1016/j.jcp.2013.07.023
     # Assume the same pressure for a 128**2 system as this is in the fluid
-    params_list = [(0.8, 9.17079)]
+    params_list = [(0.75, 6.22)]
     for density, pressure in params_list:
         for idx in replicate_indices:
             yield ({
@@ -133,9 +133,14 @@ def simple_polygon_create_initial_state(*jobs):
     device.notice(f'Move counts: {mc.translate_moves} {mc.rotate_moves}')
     device.notice('Done.')
 
+    trajectory_logger = hoomd.logging.Logger(categories=['object'])
+    trajectory_logger.add(mc, quantities=['type_shapes'])
+
     hoomd.write.GSD.write(state=sim.state,
                           filename=job.fn("simple_polygon_initial_state.gsd"),
-                          mode='wb')
+                          mode='wb',
+                          logger=trajectory_logger,
+                          )
 
     if communicator.rank == 0:
         print(f'completed simple_polygon_create_initial_state: '
@@ -164,6 +169,7 @@ def make_mc_simulation(job,
             quantity name.
     """
     import hoomd
+    import numpy
     from custom_actions import ComputeDensity
 
     # integrator
@@ -185,6 +191,9 @@ def make_mc_simulation(job,
     for loggable, quantity in extra_loggables:
         logger_gsd.add(loggable, quantities=[quantity])
 
+    trajectory_logger = hoomd.logging.Logger(categories=['object'])
+    trajectory_logger.add(mc, quantities=['type_shapes'])
+
     # make simulation
     sim = util.make_simulation(job=job,
                                device=device,
@@ -196,7 +205,9 @@ def make_mc_simulation(job,
                                trajectory_write_period=LOG_PERIOD['trajectory'],
                                log_write_period=LOG_PERIOD['quantities'],
                                log_start_step=RANDOMIZE_STEPS
-                               + EQUILIBRATE_STEPS)
+                               + EQUILIBRATE_STEPS,
+                               trajectory_logger=trajectory_logger,
+                               )
 
     sim.operations.computes.append(sdf)
     compute_density.attach(sim)
@@ -212,7 +223,7 @@ def make_mc_simulation(job,
         moves=['d', 'a'],
         target=0.2,
         max_translation_move=0.5,
-        max_rotation_move=2*numpy.pi / 4
+        max_rotation_move=2*numpy.pi / 4,
         trigger=hoomd.trigger.And([
             hoomd.trigger.Periodic(100),
             hoomd.trigger.Before(RANDOMIZE_STEPS + EQUILIBRATE_STEPS // 2)
@@ -351,7 +362,11 @@ def run_npt_sim(job, device, complete_filename):
         translate_moves = sim.operations.integrator.translate_moves
         translate_acceptance = translate_moves[0] / sum(translate_moves)
         device.notice(f'Translate move acceptance: {translate_acceptance}')
-        device.notice(f'Trial move size: {sim.operations.integrator.d["A"]}')
+        device.notice(f'Translate trial move size: {sim.operations.integrator.d["A"]}')
+        rotate_moves = sim.operations.integrator.rotate_moves
+        rotate_acceptance = rotate_moves[0] / sum(rotate_moves)
+        device.notice(f'Rotate move acceptance: {rotate_acceptance}')
+        device.notice(f'Rotate trial move size: {sim.operations.integrator.a["A"]}')
 
         volume_moves = boxmc.volume_moves
         volume_acceptance = volume_moves[0] / sum(volume_moves)
@@ -364,6 +379,7 @@ def run_npt_sim(job, device, complete_filename):
             with open(job.fn(name), 'w') as f:
                 json.dump(
                     dict(d_A=sim.operations.integrator.d["A"],
+                         a_A=sim.operations.integrator.a["A"],
                          volume_delta=boxmc.volume['delta']), f)
     else:
         device.notice('Restarting...')
@@ -373,8 +389,11 @@ def run_npt_sim(job, device, complete_filename):
             data = json.load(f)
 
         sim.operations.integrator.d["A"] = data['d_A']
+        sim.operations.integrator.a["A"] = data['a_A']
         device.notice(
-            f'Restored trial move size: {sim.operations.integrator.d["A"]}')
+            f'Restored translate trial move size: {sim.operations.integrator.d["A"]}')
+        device.notice(
+            f'Restored rotate trial move size: {sim.operations.integrator.a["A"]}')
         boxmc.volume = dict(weight=1.0, mode='ln', delta=data['volume_delta'])
         device.notice(f'Restored volume move size: {boxmc.volume["delta"]}')
 
@@ -507,11 +526,7 @@ def simple_polygon_analyze(job):
 
         timesteps[sim_mode] = log_traj['configuration/step']
 
-        if 'nec' in sim_mode:
-            pressures[sim_mode] = log_traj[
-                'log/hpmc/nec/integrate/Sphere/virial_pressure']
-        else:
-            pressures[sim_mode] = log_traj['log/hpmc/compute/SDF/betaP']
+        pressures[sim_mode] = log_traj['log/hpmc/compute/SDF/betaP']
 
         densities[sim_mode] = log_traj[
             'log/custom_actions/ComputeDensity/density']
@@ -569,7 +584,6 @@ def simple_polygon_compare_modes(*jobs):
 
     sim_modes = [
         'nvt_cpu',
-        'nec_cpu',
         'npt_cpu',
     ]
 
