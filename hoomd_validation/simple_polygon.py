@@ -186,9 +186,6 @@ def make_mc_simulation(job,
     logger_gsd = hoomd.logging.Logger(categories=['scalar', 'sequence'])
     logger_gsd.add(mc, quantities=['translate_moves'])
     logger_gsd.add(sdf, quantities=['betaP'])
-    # for testing:
-    logger_gsd.add(sdf, quantities=['sdf_compression', 'sdf_expansion', 'x_compression',
-        'x_expansion'])
     logger_gsd.add(compute_density, quantities=['density'])
     for loggable, quantity in extra_loggables:
         logger_gsd.add(loggable, quantities=[quantity])
