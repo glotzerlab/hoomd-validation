@@ -26,7 +26,8 @@ SHAPE_VERTICES = [
     (-0.25, -0.25),
     (-0.25, 0.25),
     (0.5, 0.25),
-    (0.5, 0.5),]
+    (0.5, 0.5),
+]
 
 WRITE_PERIOD = 1_000
 LOG_PERIOD = {'trajectory': 50_000, 'quantities': 100}
@@ -138,11 +139,12 @@ def simple_polygon_create_initial_state(*jobs):
     trajectory_logger = hoomd.logging.Logger(categories=['object'])
     trajectory_logger.add(mc, quantities=['type_shapes'])
 
-    hoomd.write.GSD.write(state=sim.state,
-                          filename=job.fn("simple_polygon_initial_state.gsd"),
-                          mode='wb',
-                          logger=trajectory_logger,
-                          )
+    hoomd.write.GSD.write(
+        state=sim.state,
+        filename=job.fn("simple_polygon_initial_state.gsd"),
+        mode='wb',
+        logger=trajectory_logger,
+    )
 
     if communicator.rank == 0:
         print(f'completed simple_polygon_create_initial_state: '
@@ -194,19 +196,19 @@ def make_mc_simulation(job,
     trajectory_logger.add(mc, quantities=['type_shapes'])
 
     # make simulation
-    sim = util.make_simulation(job=job,
-                               device=device,
-                               initial_state=initial_state,
-                               integrator=mc,
-                               sim_mode=sim_mode,
-                               logger=logger_gsd,
-                               table_write_period=WRITE_PERIOD,
-                               trajectory_write_period=LOG_PERIOD['trajectory'],
-                               log_write_period=LOG_PERIOD['quantities'],
-                               log_start_step=RANDOMIZE_STEPS
-                               + EQUILIBRATE_STEPS,
-                               trajectory_logger=trajectory_logger,
-                               )
+    sim = util.make_simulation(
+        job=job,
+        device=device,
+        initial_state=initial_state,
+        integrator=mc,
+        sim_mode=sim_mode,
+        logger=logger_gsd,
+        table_write_period=WRITE_PERIOD,
+        trajectory_write_period=LOG_PERIOD['trajectory'],
+        log_write_period=LOG_PERIOD['quantities'],
+        log_start_step=RANDOMIZE_STEPS + EQUILIBRATE_STEPS,
+        trajectory_logger=trajectory_logger,
+    )
 
     sim.operations.computes.append(sdf)
     compute_density.attach(sim)
@@ -222,7 +224,7 @@ def make_mc_simulation(job,
         moves=['d', 'a'],
         target=0.2,
         max_translation_move=0.5,
-        max_rotation_move=2*numpy.pi / 4,
+        max_rotation_move=2 * numpy.pi / 4,
         trigger=hoomd.trigger.And([
             hoomd.trigger.Periodic(100),
             hoomd.trigger.Before(RANDOMIZE_STEPS + EQUILIBRATE_STEPS // 2)
@@ -265,16 +267,21 @@ def run_nvt_sim(job, device, complete_filename):
         rotate_moves = sim.operations.integrator.rotate_moves
         rotate_acceptance = rotate_moves[0] / sum(rotate_moves)
         device.notice(f'Translate move acceptance: {translate_acceptance}')
-        device.notice(f'Trial translate move size: {sim.operations.integrator.d["A"]}')
+        device.notice(
+            f'Trial translate move size: {sim.operations.integrator.d["A"]}')
         device.notice(f'Rotate move acceptance: {rotate_acceptance}')
-        device.notice(f'Trial rotate move size: {sim.operations.integrator.a["A"]}')
+        device.notice(
+            f'Trial rotate move size: {sim.operations.integrator.a["A"]}')
 
         # save move size to a file
         if device.communicator.rank == 0:
             name = util.get_job_filename(sim_mode, device, 'move_size', 'json')
             with open(job.fn(name), 'w') as f:
-                json.dump(dict(d_A=sim.operations.integrator.d["A"],
-                               a_A=sim.operations.integrator.a["A"],), f)
+                json.dump(
+                    dict(
+                        d_A=sim.operations.integrator.d["A"],
+                        a_A=sim.operations.integrator.a["A"],
+                    ), f)
     else:
         device.notice('Restarting...')
         # read move size from the file
@@ -285,9 +292,11 @@ def run_nvt_sim(job, device, complete_filename):
         sim.operations.integrator.d["A"] = data['d_A']
         sim.operations.integrator.a["A"] = data['a_A']
         device.notice(
-            f'Restored translate trial move size: {sim.operations.integrator.d["A"]}')
+            f'Restored translate trial move size: {sim.operations.integrator.d["A"]}'
+        )
         device.notice(
-            f'Restored rotate trial move size: {sim.operations.integrator.a["A"]}')
+            f'Restored rotate trial move size: {sim.operations.integrator.a["A"]}'
+        )
 
     # run
     device.notice('Running...')
@@ -361,11 +370,13 @@ def run_npt_sim(job, device, complete_filename):
         translate_moves = sim.operations.integrator.translate_moves
         translate_acceptance = translate_moves[0] / sum(translate_moves)
         device.notice(f'Translate move acceptance: {translate_acceptance}')
-        device.notice(f'Translate trial move size: {sim.operations.integrator.d["A"]}')
+        device.notice(
+            f'Translate trial move size: {sim.operations.integrator.d["A"]}')
         rotate_moves = sim.operations.integrator.rotate_moves
         rotate_acceptance = rotate_moves[0] / sum(rotate_moves)
         device.notice(f'Rotate move acceptance: {rotate_acceptance}')
-        device.notice(f'Rotate trial move size: {sim.operations.integrator.a["A"]}')
+        device.notice(
+            f'Rotate trial move size: {sim.operations.integrator.a["A"]}')
 
         volume_moves = boxmc.volume_moves
         volume_acceptance = volume_moves[0] / sum(volume_moves)
@@ -390,9 +401,11 @@ def run_npt_sim(job, device, complete_filename):
         sim.operations.integrator.d["A"] = data['d_A']
         sim.operations.integrator.a["A"] = data['a_A']
         device.notice(
-            f'Restored translate trial move size: {sim.operations.integrator.d["A"]}')
+            f'Restored translate trial move size: {sim.operations.integrator.d["A"]}'
+        )
         device.notice(
-            f'Restored rotate trial move size: {sim.operations.integrator.a["A"]}')
+            f'Restored rotate trial move size: {sim.operations.integrator.a["A"]}'
+        )
         boxmc.volume = dict(weight=1.0, mode='ln', delta=data['volume_delta'])
         device.notice(f'Restored volume move size: {boxmc.volume["delta"]}')
 
@@ -564,8 +577,8 @@ def simple_polygon_analyze(job):
 
 @Project.pre(
     lambda *jobs: util.true_all(*jobs, key='simple_polygon_analysis_complete'))
-@Project.post(
-    lambda *jobs: util.true_all(*jobs, key='simple_polygon_compare_modes_complete'))
+@Project.post(lambda *jobs: util.true_all(
+    *jobs, key='simple_polygon_compare_modes_complete'))
 @Project.operation(directives=dict(executable=CONFIG["executable"]),
                    aggregator=aggregator.groupby(
                        key=['density', 'num_particles'],
