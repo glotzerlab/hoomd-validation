@@ -294,7 +294,7 @@ def run_nvt_sim(job, device, complete_filename):
         sim.operations.integrator.a["A"] = data['a_A']
         mcd = sim.operations.integrator.d["A"]
         device.notice(
-            f'Restored translate trial move size: {mdc}'
+            f'Restored translate trial move size: {mcd}'
         )
         mca = sim.operations.integrator.a["A"]
         device.notice(

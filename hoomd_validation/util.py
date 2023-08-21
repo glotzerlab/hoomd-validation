@@ -90,7 +90,7 @@ def make_simulation(
 
         log_start_step (int): Timestep to start writing trajectories.
 
-        trajectory.logger (`hoomd.logging.Logger`): Logger to add to trajectory
+        trajectory_logger (`hoomd.logging.Logger`): Logger to add to trajectory
             writer.
     """
     import hoomd
