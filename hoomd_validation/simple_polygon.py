@@ -42,7 +42,7 @@ def job_statepoints():
     replicate_indices = range(CONFIG["replicates"])
     # reference statepoint from: http://dx.doi.org/10.1016/j.jcp.2013.07.023
     # Assume the same pressure for a 128**2 system as this is in the fluid
-    # from first test: mean +- std_err_means = 
+    # from first test: mean +- std_err_means =
     # 6.205344838518146 +- 0.0011239315686705335
     # based on nvt sims at density = 0.75 over 32 replicas
     params_list = [(0.75, 6.205)]  # mean +- st
@@ -293,13 +293,9 @@ def run_nvt_sim(job, device, complete_filename):
         sim.operations.integrator.d["A"] = data['d_A']
         sim.operations.integrator.a["A"] = data['a_A']
         mcd = sim.operations.integrator.d["A"]
-        device.notice(
-            f'Restored translate trial move size: {mcd}'
-        )
+        device.notice(f'Restored translate trial move size: {mcd}')
         mca = sim.operations.integrator.a["A"]
-        device.notice(
-            f'Restored rotate trial move size: {mca}'
-        )
+        device.notice(f'Restored rotate trial move size: {mca}')
 
     # run
     device.notice('Running...')
@@ -404,13 +400,9 @@ def run_npt_sim(job, device, complete_filename):
         sim.operations.integrator.d["A"] = data['d_A']
         sim.operations.integrator.a["A"] = data['a_A']
         mcd = sim.operations.integrator.d["A"]
-        device.notice(
-            f'Restored translate trial move size: {mcd}'
-        )
+        device.notice(f'Restored translate trial move size: {mcd}')
         mca = sim.operations.integrator.a["A"]
-        device.notice(
-            f'Restored rotate trial move size: {mca}'
-        )
+        device.notice(f'Restored rotate trial move size: {mca}')
         boxmc.volume = dict(weight=1.0, mode='ln', delta=data['volume_delta'])
         device.notice(f'Restored volume move size: {boxmc.volume["delta"]}')
 
