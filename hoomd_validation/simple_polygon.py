@@ -1,7 +1,7 @@
 # Copyright (c) 2022-2023 The Regents of the University of Michigan.
 # Part of HOOMD-blue, released under the BSD 3-Clause License.
 
-"""Hard disk equation of state validation test."""
+"""Simple polygon equation of state validation test."""
 
 from config import CONFIG
 from project_class import Project
@@ -16,7 +16,7 @@ import pathlib
 RANDOMIZE_STEPS = 20_000
 EQUILIBRATE_STEPS = 100_000
 RUN_STEPS = 2_500_000
-RESTART_STEPS = RUN_STEPS // 10
+RESTART_STEPS = RUN_STEPS // 50
 TOTAL_STEPS = RANDOMIZE_STEPS + EQUILIBRATE_STEPS + RUN_STEPS
 SHAPE_VERTICES = [
     (-0.5, 0.5),
@@ -40,9 +40,7 @@ def job_statepoints():
     """list(dict): A list of statepoints for this subproject."""
     num_particles = 64**2
     replicate_indices = range(CONFIG["replicates"])
-    # reference statepoint from: http://dx.doi.org/10.1016/j.jcp.2013.07.023
-    # Assume the same pressure for a 128**2 system as this is in the fluid
-    # from first test: mean +- std_err_means =
+    # statepoint chosen from initial tests: mean +- std_err_means =
     # 6.205344838518146 +- 0.0011239315686705335
     # based on nvt sims at density = 0.75 over 32 replicas
     params_list = [(0.75, 6.205)]  # mean +- st
