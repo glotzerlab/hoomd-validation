@@ -439,10 +439,17 @@ job_definitions = [
     },
 ]
 
+job_definitions = []
 if CONFIG["enable_gpu"]:
     job_definitions.extend([
         {
             'mode': 'nvt',
+            'device_name': 'gpu',
+            'ranks_per_partition': 1,
+            'aggregator': partition_jobs_gpu
+        },
+        {
+            'mode': 'npt',
             'device_name': 'gpu',
             'ranks_per_partition': 1,
             'aggregator': partition_jobs_gpu
