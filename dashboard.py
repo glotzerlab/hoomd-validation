@@ -31,7 +31,8 @@ class ValidationDashboard(Dashboard):
             return f"alj_2d: kT={job.statepoint.kT}, " \
                    f"rho={job.statepoint.density}"
         elif (job.statepoint.subproject == 'hard_disk'
-              or job.statepoint.subproject == 'hard_sphere'):
+              or job.statepoint.subproject == 'hard_sphere'
+              or job.statepoint.subproject == 'simple_polygon'):
             return f"{job.statepoint.subproject}: rho={job.statepoint.density}"
         else:
             raise RuntimeError("Unexpected job")

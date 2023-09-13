@@ -594,13 +594,11 @@ def simple_polygon_compare_modes(*jobs):
 
     print('starting simple_polygon_compare_modes:', jobs[0])
 
-    sim_modes = [
-        'nvt_cpu',
-        'npt_cpu',
-    ]
-
-    if os.path.exists(jobs[0].fn('nvt_gpu_quantities.gsd')):
-        sim_modes.extend(['nvt_gpu'])
+    sim_modes = []
+    for _ensemble in ['nvt', 'npt']:
+        for _device in ['cpu', 'gpu']:
+            if jobs[0].isfile(f'{_ensemble}_{_device}_quantities.gsd'):
+                sim_modes.append(f'{_ensemble}_{_device}')
 
     util._sort_sim_modes(sim_modes)
 
