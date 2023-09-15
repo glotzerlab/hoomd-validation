@@ -1,4 +1,4 @@
-# First make the project just run, then put in project file
+
 
 """Patchy LJ validation test."""
 
@@ -38,36 +38,33 @@ def job_statepoints():
             density=0.6269137133228043,
             pressure=1.0,
             num_particles=16**3,
-            r_cut=4.0,
-            r_on=3.2,
+            r_cut=4.0
         ),
         dict(
             kT=1.0,
             density=0.9193740949934834,
             pressure=11.0,
             num_particles=12**3,
-            r_cut=2**(1 / 6),
-            r_on=2.0,
+            r_cut=2**(1 / 6)
         ),
     ]
 
     for param in params_list:
         for idx in replicate_indices:
             yield ({
-                "subproject": "patchylj_fluid",
+                "subproject": "patchy_lj_fluid",
                 "kT": param['kT'],
                 "density": param['density'],
                 "pressure": param['pressure'],
                 "num_particles": param['num_particles'],
                 "replicate_idx": idx,
-                "r_cut": param['r_cut'],
-                "r_on": param['r_on'],
+                "r_cut": param['r_cut']
             })
 
 
-def is_patchylj_fluid(job):
-    """Test if a given job is part of the patchylj_fluid subproject."""
-    return job.statepoint['subproject'] == 'patchylj_fluid'
+def is_patchy_lj_fluid(job):
+    """Test if a given job is part of the patchy_lj_fluid subproject."""
+    return job.statepoint['subproject'] == 'patchy_lj_fluid'
 
 def sort_key(job):
     """Aggregator sort key."""
@@ -189,12 +186,11 @@ def make_md_simulation(job,
 
     # pair force
     nlist = md.nlist.Cell(buffer=0.4)
-    lj = md.pair.LJ(default_r_cut=job.statepoint.r_cut,
-                    default_r_on=job.statepoint.r_on,
+    wca = md.pair.LJ(default_r_cut=job.statepoint.r_cut,
                     nlist=nlist)
-    lj.params[('A', 'A')] = dict(sigma=LJ_PARAMS['sigma'],
+    wca.params[('A', 'A')] = dict(sigma=LJ_PARAMS['sigma'],
                                  epsilon=LJ_PARAMS['epsilon'])
-    lj.mode = 'xplor'
+    wca.mode = 'shift'
 
     # integrator
     integrator = md.Integrator(dt=0.001, methods=[method], forces=[lj])
@@ -280,67 +276,90 @@ def make_mc_simulation(job,
     # pair potential
     epsilon = LJ_PARAMS['epsilon'] / job.sp.kT  # noqa F841
     sigma = LJ_PARAMS['sigma']
-    r_on = job.statepoint.r_on
     r_cut = job.statepoint.r_cut
 
-    # the potential will have xplor smoothing with r_on=2
-    lj_str = """// standard lj energy with sigma set to 1
+    # WCA goes to 0 at 2^1/6 sigma, no XPLOR needed
+    lj_str = """
                 float rsq = dot(r_ij, r_ij);
-                float r_cut = {r_cut};
+                float r_cut = {r_cut_wca};
                 float r_cutsq = r_cut * r_cut;
 
                 if (rsq >= r_cutsq)
                     return 0.0f;
 
-                float sigma = {sigma};
+                float sigma = {wca_sigma};
                 float sigsq = sigma * sigma;
                 float rsqinv = sigsq / rsq;
                 float r6inv = rsqinv * rsqinv * rsqinv;
                 float r12inv = r6inv * r6inv;
-                float energy = 4 * {epsilon} * (r12inv - r6inv);
-
-                float r_on = {r_on};
-                float r_onsq = r_on * r_on;
+                float energy = 4 * {wca_epsilon} * (r12inv - r6inv);
 
                 // energy shift for WCA
-                if (r_onsq > r_cutsq)
-                {{
-                    energy += {epsilon};
-                }}
+                energy += {wca_epsilon};
 
-                // apply xplor smoothing
-                if (rsq > r_onsq)
-                {{
-                    // computing denominator for the shifting factor
-                    float diff = r_cutsq - r_onsq;
-                    float denom = diff * diff * diff;
-
-                    // compute second term for the shift
-                    float second_term = diff - r_onsq - r_onsq;
-                    second_term += (2 * rsq);
-
-                    // compute first term for the shift
-                    float first_term = r_cutsq - rsq;
-                    first_term = first_term * first_term;
-                    float smoothing = first_term * second_term / denom;
-                    energy = energy * smoothing;
-                }}
                 return energy;
-            """.format(epsilon=epsilon, sigma=sigma, r_on=r_on, r_cut=r_cut)
+            """.format(wca_epsilon=epsilon, wca_sigma=sigma, r_cut_wca=sigma * 2**(1/6))
 
-    lj_jit_potential = hpmc.pair.user.CPPPotential(r_cut=r_cut,
+    wca_jit_potential = hpmc.pair.user.CPPPotential(r_cut=r_cut,
                                                    code=lj_str,
                                                    param_array=[])
-    mc.pair_potential = lj_jit_potential
+    mc.pair_potential = wca_jit_potential
+
+    patchy_lj_str = """
+                    //patchy stuff
+                    ni_world = rotate(q_i, n_i);
+                    nj_world = rotate(q_j, n_j);
+
+                    //rsq calculated in WCA part
+                    magdr = sqrt(rsq);
+                    float rhat = r_ij / magdr;
+
+                    costhetai = -dot(rhat, ni_world);
+                    costhetaj = dot(rhat, nj_world);
+                    float fi()
+                    {{
+                        return 1.0f / (1.0f + exp(-{omega} * (costhetai - {cosalpha})) );
+                    }}
+                    float fj()
+                    {{
+                        return 1.0f / (1.0f + exp(-{omega} * (costhetaj - {cosalpha})) );
+                    }}
+
+    
+                    // loop over patches eventually
+                    float this_envelope = fi() * fj();
+
+ 
+                    // regular lj to be modulated
+                    float r_cut = {r_cut};
+                    float r_cutsq = r_cut * r_cut;
+                   
+                    if (rsq >= r_cutsq)
+                        return 0.0f;
+                   
+                    float sigma = {sigma};
+                    float sigsq = sigma * sigma;
+                    float rsqinv = sigsq / rsq;
+                    float r6inv = rsqinv * rsqinv * rsqinv;
+                    float r12inv = r6inv * r6inv;
+                    float lj_energy = 4 * {epsilon} * (r12inv - r6inv);
+                   
+                    // energy shift at cutoff
+                    lj_energy += 0.0f; // TODO
+                   
+    
+                    return wca_energy + lj_energy * this_envelope;
+                    """.format(epsilon=epsilon, sigma=sigma, omega=omega, cosalpha=numpy.cos(alpha))
+
+
 
     # pair force to compute virial pressure
     nlist = hoomd.md.nlist.Cell(buffer=0.4)
-    lj = hoomd.md.pair.LJ(default_r_cut=job.statepoint.r_cut,
-                          default_r_on=job.statepoint.r_on,
+    wca = hoomd.md.pair.LJ(default_r_cut=sigma * 2**(1/6),
                           nlist=nlist)
-    lj.params[('A', 'A')] = dict(sigma=LJ_PARAMS['sigma'],
-                                 epsilon=LJ_PARAMS['epsilon'])
-    lj.mode = 'xplor'
+    wca.params[('A', 'A')] = dict(sigma=LJ_PARAMS['sigma'],
+                                 epsilon=LJ_PARAMS['epsilon']) # TODO: why not /kt
+    wca.mode = 'shift'
 
     # compute the density
     compute_density = ComputeDensity()
