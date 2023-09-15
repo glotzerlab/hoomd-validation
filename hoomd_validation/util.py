@@ -60,6 +60,7 @@ def make_simulation(
     trajectory_write_period,
     log_write_period,
     log_start_step,
+    trajectory_logger=None,
 ):
     """Make a simulation.
 
@@ -88,6 +89,9 @@ def make_simulation(
         log_write_period (int): Number of timesteps between log file writes.
 
         log_start_step (int): Timestep to start writing trajectories.
+
+        trajectory_logger (`hoomd.logging.Logger`): Logger to add to trajectory
+            writer.
     """
     import hoomd
 
@@ -115,6 +119,7 @@ def make_simulation(
             hoomd.trigger.Periodic(trajectory_write_period),
             hoomd.trigger.After(log_start_step)
         ]),
+        logger=trajectory_logger,
         mode='ab')
     sim.operations.add(trajectory_writer)
 
