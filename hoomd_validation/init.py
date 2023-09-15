@@ -13,8 +13,9 @@ import lj_fluid
 import lj_union
 import hard_disk
 import hard_sphere
+import patchy_lj
 
-subprojects = [alj_2d, lj_fluid, lj_union, hard_disk, hard_sphere]
+subprojects = [alj_2d, lj_fluid, lj_union, hard_disk, hard_sphere, patchy_lj]
 
 project = signac.init_project(path=config.project_root)
 
