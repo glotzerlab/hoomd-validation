@@ -279,43 +279,48 @@ def make_mc_simulation(job,
     r_cut = job.statepoint.r_cut
 
     # WCA goes to 0 at 2^1/6 sigma, no XPLOR needed
-    lj_str = """
-                float rsq = dot(r_ij, r_ij);
-                float r_cut = {r_cut_wca};
-                float r_cutsq = r_cut * r_cut;
-
-                if (rsq >= r_cutsq)
-                    return 0.0f;
-
-                float sigma = {wca_sigma};
-                float sigsq = sigma * sigma;
-                float rsqinv = sigsq / rsq;
-                float r6inv = rsqinv * rsqinv * rsqinv;
-                float r12inv = r6inv * r6inv;
-                float energy = 4 * {wca_epsilon} * (r12inv - r6inv);
-
-                // energy shift for WCA
-                energy += {wca_epsilon};
-
-                return energy;
-            """.format(wca_epsilon=epsilon, wca_sigma=sigma, r_cut_wca=sigma * 2**(1/6))
-
-    wca_jit_potential = hpmc.pair.user.CPPPotential(r_cut=r_cut,
-                                                   code=lj_str,
-                                                   param_array=[])
-    mc.pair_potential = wca_jit_potential
 
     patchy_lj_str = """
-                    //patchy stuff
-                    ni_world = rotate(q_i, n_i);
-                    nj_world = rotate(q_j, n_j);
+                    // WCA via shift
 
-                    //rsq calculated in WCA part
-                    magdr = sqrt(rsq);
-                    float rhat = r_ij / magdr;
+                    float sigma;
+                    float sigsq;
+                    float rsqinv;
+                    float r6inv;
+                    float r12inv;
+                    float wca_energy;
+    
+                    float rsq = dot(r_ij, r_ij);
+                    float r_cut = {r_cut_wca};
+                    float r_cutsq = r_cut * r_cut;
+              
+                    if (rsq >= r_cutsq)
+                    {{
+                        wca_energy = 0.0f;
+                    }}
+                    else
+                    {{
+                        sigma = {wca_sigma};
+                        sigsq = sigma * sigma;
+                        rsqinv = sigsq / rsq;
+                        r6inv = rsqinv * rsqinv * rsqinv;
+                        r12inv = r6inv * r6inv;
+                        wca_energy = 4 * {wca_epsilon} * (r12inv - r6inv);
+                       
+                        // energy shift for WCA
+                        wca_energy += {wca_epsilon};
+                    }}
+    
+                    // patchy stuff
+                    vec3 ni_world = rotate(q_i, n_i);
+                    vec3 nj_world = rotate(q_j, n_j);
 
-                    costhetai = -dot(rhat, ni_world);
-                    costhetaj = dot(rhat, nj_world);
+                    float magdr = sqrt(rsq);
+                    vec3 rhat = r_ij / magdr;
+
+                    float costhetai = -dot(rhat, ni_world);
+                    float costhetaj = dot(rhat, nj_world);
+
                     float fi()
                     {{
                         return 1.0f / (1.0f + exp(-{omega} * (costhetai - {cosalpha})) );
@@ -328,29 +333,41 @@ def make_mc_simulation(job,
     
                     // loop over patches eventually
                     float this_envelope = fi() * fj();
-
  
                     // regular lj to be modulated
-                    float r_cut = {r_cut};
-                    float r_cutsq = r_cut * r_cut;
-                   
+                    r_cut = {r_cut};
+                    r_cutsq = r_cut * r_cut;
+                    
                     if (rsq >= r_cutsq)
-                        return 0.0f;
+                    {{
+                        lj_energy = 0.0f;
+                    }}
+                    else
+                    {{
+                        sigma = {sigma};
+                        sigsq = sigma * sigma;
+                        rsqinv = sigsq / rsq;
+                        r6inv = rsqinv * rsqinv * rsqinv;
+                        r12inv = r6inv * r6inv;
+                        float lj_energy = 4 * {epsilon} * (r12inv - r6inv);
+                        
+                        // energy shift at cutoff
+                        float r_cutsqinv = sigsq / r_cutsq;
+                        r_cut6inv = r_cutsqinv * r_cutsqinv * r_cutsqinv;
+                        r_cut12inv = r_cut6inv * r_cut6inv;
+                        float cutVal = 4 * {epsilon} * (r_cut12inv - r_cut6inv);
+                        lj_energy -= cutVal;
+                    }}
                    
-                    float sigma = {sigma};
-                    float sigsq = sigma * sigma;
-                    float rsqinv = sigsq / rsq;
-                    float r6inv = rsqinv * rsqinv * rsqinv;
-                    float r12inv = r6inv * r6inv;
-                    float lj_energy = 4 * {epsilon} * (r12inv - r6inv);
-                   
-                    // energy shift at cutoff
-                    lj_energy += 0.0f; // TODO
-                   
-    
                     return wca_energy + lj_energy * this_envelope;
-                    """.format(epsilon=epsilon, sigma=sigma, omega=omega, cosalpha=numpy.cos(alpha))
+                    """.format(epsilon=epsilon, sigma=sigma, r_cut=r_cut,
+                               wca_epsilon=epsilon, wca_sigma=sigma, r_cut_wca=sigma * 2**(1/6),
+                               omega=omega, cosalpha=numpy.cos(alpha))
 
+    jit_potential = hpmc.pair.user.CPPPotential(r_cut=r_cut,
+                                                code=patchy_lj_str,
+                                                param_array=[])
+    mc.pair_potential = jit_potential
 
 
     # pair force to compute virial pressure
