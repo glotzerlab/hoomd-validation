@@ -70,32 +70,28 @@ patchy_lj_str = """
                 }}
 
                 // patchy stuff
-                vec3 ni_world = rotate(q_i, n_i);
-                vec3 nj_world = rotate(q_j, n_j);
+
+                vec3<float> n_i(1,0,0);
+                vec3<float> n_j(1,0,0);
+                vec3<float> ni_world = rotate(q_i, n_i);
+                vec3<float> nj_world = rotate(q_j, n_j);
 
                 float magdr = sqrt(rsq);
-                vec3 rhat = r_ij / magdr;
+                vec3<float> rhat = r_ij / magdr;
 
                 float costhetai = -dot(rhat, ni_world);
                 float costhetaj = dot(rhat, nj_world);
 
-                float fi()
-                {{
-                    return 1.0f / (1.0f + exp(-{omega} * (costhetai - {cosalpha})) );
-                }}
-                float fj()
-                {{
-                    return 1.0f / (1.0f + exp(-{omega} * (costhetaj - {cosalpha})) );
-                }}
-
 
                 // loop over patches eventually
-                float this_envelope = fi() * fj();
+                float this_envelope = (1.0f / (1.0f + exp(-{omega} * (costhetai - {cosalpha})) ) ) * (1.0f / (1.0f + exp(-{omega} * (costhetaj - {cosalpha})) ) );
 
                 // regular lj to be modulated
                 r_cut = {r_cut};
                 r_cutsq = r_cut * r_cut;
-                
+
+                float lj_energy;
+
                 if (rsq >= r_cutsq)
                 {{
                     lj_energy = 0.0f;
@@ -107,12 +103,12 @@ patchy_lj_str = """
                     rsqinv = sigsq / rsq;
                     r6inv = rsqinv * rsqinv * rsqinv;
                     r12inv = r6inv * r6inv;
-                    float lj_energy = 4 * {epsilon} * (r12inv - r6inv);
+                    lj_energy = 4 * {epsilon} * (r12inv - r6inv);
                     
                     // energy shift at cutoff
                     float r_cutsqinv = sigsq / r_cutsq;
-                    r_cut6inv = r_cutsqinv * r_cutsqinv * r_cutsqinv;
-                    r_cut12inv = r_cut6inv * r_cut6inv;
+                    float r_cut6inv = r_cutsqinv * r_cutsqinv * r_cutsqinv;
+                    float r_cut12inv = r_cut6inv * r_cut6inv;
                     float cutVal = 4 * {epsilon} * (r_cut12inv - r_cut6inv);
                     lj_energy -= cutVal;
                 }}
