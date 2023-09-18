@@ -277,90 +277,87 @@ def make_mc_simulation(job,
     epsilon = LJ_PARAMS['epsilon'] / job.sp.kT  # noqa F841
     sigma = LJ_PARAMS['sigma']
     r_cut = job.statepoint.r_cut
-
+    omega = job.statepoint.omega
+    alpha = job.statepoint.alpha
     # WCA goes to 0 at 2^1/6 sigma, no XPLOR needed
 
     patchy_lj_str = """
-                    // WCA via shift
+                // WCA via shift
 
-                    float sigma;
-                    float sigsq;
-                    float rsqinv;
-                    float r6inv;
-                    float r12inv;
-                    float wca_energy;
-    
-                    float rsq = dot(r_ij, r_ij);
-                    float r_cut = {r_cut_wca};
-                    float r_cutsq = r_cut * r_cut;
-              
-                    if (rsq >= r_cutsq)
-                    {{
-                        wca_energy = 0.0f;
-                    }}
-                    else
-                    {{
-                        sigma = {wca_sigma};
-                        sigsq = sigma * sigma;
-                        rsqinv = sigsq / rsq;
-                        r6inv = rsqinv * rsqinv * rsqinv;
-                        r12inv = r6inv * r6inv;
-                        wca_energy = 4 * {wca_epsilon} * (r12inv - r6inv);
-                       
-                        // energy shift for WCA
-                        wca_energy += {wca_epsilon};
-                    }}
-    
-                    // patchy stuff
-                    vec3 ni_world = rotate(q_i, n_i);
-                    vec3 nj_world = rotate(q_j, n_j);
+                float sigma;
+                float sigsq;
+                float rsqinv;
+                float r6inv;
+                float r12inv;
+                float wca_energy;
 
-                    float magdr = sqrt(rsq);
-                    vec3 rhat = r_ij / magdr;
-
-                    float costhetai = -dot(rhat, ni_world);
-                    float costhetaj = dot(rhat, nj_world);
-
-                    float fi()
-                    {{
-                        return 1.0f / (1.0f + exp(-{omega} * (costhetai - {cosalpha})) );
-                    }}
-                    float fj()
-                    {{
-                        return 1.0f / (1.0f + exp(-{omega} * (costhetaj - {cosalpha})) );
-                    }}
-
-    
-                    // loop over patches eventually
-                    float this_envelope = fi() * fj();
- 
-                    // regular lj to be modulated
-                    r_cut = {r_cut};
-                    r_cutsq = r_cut * r_cut;
-                    
-                    if (rsq >= r_cutsq)
-                    {{
-                        lj_energy = 0.0f;
-                    }}
-                    else
-                    {{
-                        sigma = {sigma};
-                        sigsq = sigma * sigma;
-                        rsqinv = sigsq / rsq;
-                        r6inv = rsqinv * rsqinv * rsqinv;
-                        r12inv = r6inv * r6inv;
-                        float lj_energy = 4 * {epsilon} * (r12inv - r6inv);
-                        
-                        // energy shift at cutoff
-                        float r_cutsqinv = sigsq / r_cutsq;
-                        r_cut6inv = r_cutsqinv * r_cutsqinv * r_cutsqinv;
-                        r_cut12inv = r_cut6inv * r_cut6inv;
-                        float cutVal = 4 * {epsilon} * (r_cut12inv - r_cut6inv);
-                        lj_energy -= cutVal;
-                    }}
+                float rsq = dot(r_ij, r_ij);
+                float r_cut = {r_cut_wca};
+                float r_cutsq = r_cut * r_cut;
+          
+                if (rsq >= r_cutsq)
+                {{
+                    wca_energy = 0.0f;
+                }}
+                else
+                {{
+                    sigma = {wca_sigma};
+                    sigsq = sigma * sigma;
+                    rsqinv = sigsq / rsq;
+                    r6inv = rsqinv * rsqinv * rsqinv;
+                    r12inv = r6inv * r6inv;
+                    wca_energy = 4 * {wca_epsilon} * (r12inv - r6inv);
                    
-                    return wca_energy + lj_energy * this_envelope;
-                    """.format(epsilon=epsilon, sigma=sigma, r_cut=r_cut,
+                    // energy shift for WCA
+                    wca_energy += {wca_epsilon};
+                }}
+
+                // patchy stuff
+
+                vec3<float> n_i(1,0,0);
+                vec3<float> n_j(1,0,0);
+                vec3<float> ni_world = rotate(q_i, n_i);
+                vec3<float> nj_world = rotate(q_j, n_j);
+
+                float magdr = sqrt(rsq);
+                vec3<float> rhat = r_ij / magdr;
+
+                float costhetai = -dot(rhat, ni_world);
+                float costhetaj = dot(rhat, nj_world);
+
+
+                // loop over patches eventually
+                float this_envelope = (1.0f / (1.0f + exp(-{omega} * (costhetai - {cosalpha})) ) ) * (1.0f / (1.0f + exp(-{omega} * (costhetaj - {cosalpha})) ) );
+
+                // regular lj to be modulated
+                r_cut = {r_cut};
+                r_cutsq = r_cut * r_cut;
+
+                float lj_energy;
+
+                if (rsq >= r_cutsq)
+                {{
+                    lj_energy = 0.0f;
+                }}
+                else
+                {{
+                    sigma = {sigma};
+                    sigsq = sigma * sigma;
+                    rsqinv = sigsq / rsq;
+                    r6inv = rsqinv * rsqinv * rsqinv;
+                    r12inv = r6inv * r6inv;
+                    lj_energy = 4 * {epsilon} * (r12inv - r6inv);
+                    
+                    // energy shift at cutoff
+                    float r_cutsqinv = sigsq / r_cutsq;
+                    float r_cut6inv = r_cutsqinv * r_cutsqinv * r_cutsqinv;
+                    float r_cut12inv = r_cut6inv * r_cut6inv;
+                    float cutVal = 4 * {epsilon} * (r_cut12inv - r_cut6inv);
+                    lj_energy -= cutVal;
+                }}
+               
+                return wca_energy + lj_energy * this_envelope;
+                """.format(epsilon=epsilon, sigma=sigma, r_cut=r_cut,
                                wca_epsilon=epsilon, wca_sigma=sigma, r_cut_wca=sigma * 2**(1/6),
                                omega=omega, cosalpha=numpy.cos(alpha))
 
@@ -372,6 +369,7 @@ def make_mc_simulation(job,
 
     # pair force to compute virial pressure
     nlist = hoomd.md.nlist.Cell(buffer=0.4)
+    # TODO make this be my patch potential
     wca = hoomd.md.pair.LJ(default_r_cut=sigma * 2**(1/6),
                           nlist=nlist)
     wca.params[('A', 'A')] = dict(sigma=LJ_PARAMS['sigma'],
@@ -383,12 +381,29 @@ def make_mc_simulation(job,
 
     # log to gsd
     logger_gsd = hoomd.logging.Logger(categories=['scalar', 'sequence'])
-    logger_gsd.add(lj_jit_potential, quantities=['energy'])
+    logger_gsd.add(jit_potential, quantities=['energy'])
     logger_gsd.add(mc, quantities=['translate_moves'])
     logger_gsd.add(compute_density)
     for loggable in extra_loggables:
         logger_gsd.add(loggable)
 
+
+    # just for debugging
+    device = hoomd.device.CPU()
+    sim = hoomd.Simulation(device=device, seed=100)
+    sim.operations.integrator = mc
+
+    snap = hoomd.Snapshot(device.communicator)
+    snap.particles.N = 2
+    snap.particles.types = ['A']
+    L = 10
+    snap.configuration.box = [L, L, L, 0, 0, 0]
+    snap.particles.position[:] = [[-2,0,0],[2,0,0]]
+    snap.particles.typeid[:] = [0,0]
+    sim.create_state_from_snapshot(snap)
+
+    # end for debugging
+    
     # make simulation
     sim = util.make_simulation(job=job,
                                device=device,
@@ -410,7 +425,7 @@ def make_mc_simulation(job,
     compute_density.attach(sim)
 
     def _compute_virial_pressure():
-        virials = numpy.sum(lj.virials, 0)
+        virials = numpy.sum(wca.virials, 0) # TODO should be MD patch potential object
         w = 0
         if virials is not None:
             w = virials[0] + virials[3] + virials[5]
