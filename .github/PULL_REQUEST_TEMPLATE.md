@@ -17,4 +17,3 @@ Resolves #???
 
 - [ ] I have reviewed the [**Contributor Guidelines**](https://github.com/glotzerlab/hoomd-validation/blob/trunk/CONTRIBUTING.md).
 - [ ] I agree with the terms of the [**HOOMD-blue Contributor Agreement**](https://github.com/glotzerlab/hoomd-validation/blob/trunk/ContributorAgreement.md).
-- [ ] My name is on the list of contributors (`CONTRIBUTORS.md`) in the pull request source branch.
