@@ -299,3 +299,45 @@ def plot_timeseries(ax,
 def _sort_sim_modes(sim_modes):
     """Sort simulation modes for comparison."""
     sim_modes.sort(key=lambda x: ('nvt' in x or 'nec' in x, 'md' in x, x))
+
+
+def _single_patch_kern_frenkel_code(delta_rad, lambda_, sigma, kT):
+    """Generate code for JIT compilation of Kern-Frenkel potential.
+
+    Args:
+        delta_rad (float): Half-opening angle of patchy interaction in radians
+
+        lambda_ (float): range of patchy interaction relative to hard core
+            diameter
+
+        sigma (float): Diameter of hard core of particles
+
+        kT (float): Temperature; sets the energy scale
+
+    The terminology (e.g., `ehat`) comes from the "Modelling Patchy Particles"
+    HOOMD-blue tutorial.
+
+    """
+    patch_code = f"""
+    const float delta = {delta_rad};
+    const float lambda = {lambda_:f};
+    const float sigma = {sigma:f};  // hard core diameter
+    const float kT = {kT:f};
+    const vec3<float> ehat_particle_reference_frame(1, 0, 0);
+    vec3<float> ehat_i = rotate(q_i, ehat_particle_reference_frame);
+    vec3<float> ehat_j = rotate(q_j, ehat_particle_reference_frame);
+    vec3<float> r_hat_ij = r_ij / sqrtf(dot(r_ij, r_ij));
+    bool patch_on_i_is_aligned_with_r_ij = dot(ehat_i, r_hat_ij) >= cos(delta);
+    bool patch_on_j_is_aligned_with_r_ji = dot(ehat_j, -r_hat_ij) >= cos(delta);
+    float rsq = dot(r_ij, r_ij);
+    if (patch_on_i_is_aligned_with_r_ij
+        && patch_on_j_is_aligned_with_r_ji
+        && dot(r_ij, r_ij) < lambda*sigma*lambda*sigma)
+        {{
+        return -1 / kT;
+        }}
+    else
+        {{
+        return 0.0;
+        }}
+    """
