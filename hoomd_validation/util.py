@@ -28,7 +28,7 @@ def get_job_filename(sim_mode, device, name, type):
     return f"{sim_mode}_{suffix}_{name}.{type}"
 
 
-def run_up_to_walltime(sim, end_step, steps, walltime_stop):
+def run_up_to_walltime(sim, end_step, steps, walltime_stop, minutes_per_run=None):
     """Run a simulation, stopping early if a walltime limit is reached.
 
     Args:

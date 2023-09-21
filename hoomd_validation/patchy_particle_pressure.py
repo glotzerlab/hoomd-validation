@@ -15,7 +15,7 @@ import pathlib
 # Step counts must be even and a multiple of the log quantity period.
 RANDOMIZE_STEPS = 20_000
 EQUILIBRATE_STEPS = 100_000
-RUN_STEPS = 2_500_000
+RUN_STEPS = 1_000_000
 RESTART_STEPS = RUN_STEPS // 50
 TOTAL_STEPS = RANDOMIZE_STEPS + EQUILIBRATE_STEPS + RUN_STEPS
 
@@ -32,7 +32,7 @@ def job_statepoints():
     replicate_indices = range(CONFIG["replicates"])
     # statepoint chosen to be in a dense liquid
     # FILL IN STATEPOINT AND JUSTIFICATION
-    params_list = [(0.7, 0.6, 1.0, 0.7, 1.5)]  # kT, rho, pressure, chi, lambda_
+    params_list = [(0.7, 0.6, -1.2085475196748359, 0.7, 1.5)]  # kT, rho, pressure, chi, lambda_
     for temperature, density, pressure, chi, lambda_ in params_list:
         for idx in replicate_indices:
             yield ({
