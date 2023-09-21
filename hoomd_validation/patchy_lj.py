@@ -27,8 +27,12 @@ NUM_CPU_RANKS = min(8, CONFIG["max_cores_sim"])
 
 WALLTIME_STOP_SECONDS = CONFIG["max_walltime"] * 3600 - 10 * 60
 
+# Limit the number of long NVE runs to reduce the number of CPU hours needed.
+NUM_NVE_RUNS = 2
+
 def job_statepoints():
     """list(dict): A list of statepoints for this subproject."""
+    import numpy
     replicate_indices = range(CONFIG["replicates"])
     params_list = [
         dict(
@@ -852,7 +856,7 @@ def add_mc_sampling_job(mode, device_name, ranks_per_partition, aggregator):
     if device_name == 'gpu':
         directives['ngpu'] = util.total_ranks_function(ranks_per_partition)
 
-    @Project.pre.after(lj_fluid_create_initial_state)
+    @Project.pre.after(patchy_lj_fluid_create_initial_state)
     @Project.post.isfile(f'{mode}_mc_{device_name}_complete')
     @Project.operation(name=f'patchy_lj_fluid_{mode}_mc_{device_name}',
                        directives=directives,

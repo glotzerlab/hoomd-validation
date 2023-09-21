@@ -13,6 +13,7 @@ import lj_fluid
 import lj_union
 import hard_disk
 import hard_sphere
+import patchy_lj
 
 # use srun on delta (mpiexec fails on multiple nodes)
 flow.environments.xsede.DeltaEnvironment.mpi_cmd = "srun"
@@ -23,6 +24,7 @@ __all__ = [
     "lj_union",
     "hard_disk",
     "hard_sphere",
+    "patchy_lj_fluid"
 ]
 
 if __name__ == "__main__":
