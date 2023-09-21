@@ -37,7 +37,7 @@ def job_statepoints():
             pressure=11.0,
             num_particles=12**3,
             r_cut=10,
-            patch_vector=(1,0,0)
+            patch_vector=(1,0,0), # make sure it is normalized here
             alpha=numpy.deg2rad(20),
             omega=20,
             patch_epsilon=2,
@@ -465,8 +465,9 @@ def make_mc_simulation(job,
     r_cut = job.statepoint.r_cut # not for WCA
     omega = job.statepoint.omega
     alpha = job.statepoint.alpha
-    # WCA goes to 0 at 2^1/6 sigma, no XPLOR needed
 
+    nx,ny,nz = job.statepoint.patch_vector
+    
     patchy_lj_str = """
                 // WCA via shift
 
@@ -500,8 +501,8 @@ def make_mc_simulation(job,
 
                 // patchy stuff
 
-                vec3<float> n_i(1,0,0);
-                vec3<float> n_j(1,0,0);
+                vec3<float> n_i(nx,ny,nz);
+                vec3<float> n_j(nx,ny,nz);
                 vec3<float> ni_world = rotate(q_i, n_i);
                 vec3<float> nj_world = rotate(q_j, n_j);
 
@@ -544,8 +545,9 @@ def make_mc_simulation(job,
                
                 return wca_energy + lj_energy * this_envelope;
                 """.format(epsilon=epsilon, sigma=sigma, r_cut=r_cut,
-                               wca_epsilon=wca_epsilon, wca_sigma=wca_sigma, r_cut_wca=wca_sigma * 2**(1/6),
-                               omega=omega, cosalpha=numpy.cos(alpha))
+                           wca_epsilon=wca_epsilon, wca_sigma=wca_sigma, r_cut_wca=wca_sigma * 2**(1/6),
+                           omega=omega, cosalpha=numpy.cos(alpha),
+                           nx=nx, ny=ny, nz=nz)
 
     jit_potential = hpmc.pair.user.CPPPotential(r_cut=r_cut,
                                                 code=patchy_lj_str,
