@@ -122,7 +122,7 @@ def patchy_particle_pressure_create_initial_state(*jobs):
     diameter = 1.0
     mc.shape['A'] = dict(diameter=diameter, orientable=True)
     delta = 2 * numpy.arcsin(numpy.sqrt(chi))
-    patch_code =  util._single_patch_kern_frenkel_code(
+    patch_code = util._single_patch_kern_frenkel_code(
         delta, lambda_, diameter, temperature)
     r_cut = diameter + diameter * (lambda_ - 1)
     patches = hoomd.hpmc.pair.user.CPPPotential(
@@ -454,7 +454,7 @@ job_definitions = [
     },
 ]
 
-job_definitions = []
+#job_definitions = []
 if CONFIG["enable_gpu"]:
     job_definitions.extend([
         {

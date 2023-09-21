@@ -341,3 +341,4 @@ def _single_patch_kern_frenkel_code(delta_rad, lambda_, sigma, kT):
         return 0.0;
         }}
     """
+    return patch_code
