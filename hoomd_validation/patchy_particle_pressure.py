@@ -318,6 +318,7 @@ def run_nvt_sim(job, device, complete_filename):
                             steps=RESTART_STEPS,
                             walltime_stop=WALLTIME_STOP_SECONDS)
 
+
     hoomd.write.GSD.write(state=sim.state,
                           filename=job.fn(restart_filename),
                           mode='wb')
