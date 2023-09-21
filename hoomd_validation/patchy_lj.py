@@ -188,14 +188,13 @@ def make_md_simulation(job,
     nlist = md.nlist.Cell(buffer=0.4)
     r_cut_wca = sigma * 2**(1/6)
     wca = md.pair.LJ(default_r_cut=r_cut_wca,
-                    nlist=nlist)
+                     nlist=nlist)
     wca.params[('A', 'A')] = dict(sigma=WCA_PARAMS['sigma'],
                                  epsilon=WCA_PARAMS['epsilon'])
     wca.mode = 'shift'
 
     patch = md.pair.aniso.PatchyLJ(nlist=nlist,
                                    default_r_cut=job.statepoint.r_cut)
-    
     patch.patches['A'] = [job.statepoint.patch_vector]
     patch.params[('A', 'A')] = dict(pair_params=dict(epsilon=job.statepoint.patch_epsilon,
                                                      omega=job.statepoint.patch_omega),
@@ -554,7 +553,7 @@ def make_mc_simulation(job,
     mc.pair_potential = jit_potential
 
 
-    # pair force to compute virial pressure
+    # pair forces to compute virial pressure
     nlist = hoomd.md.nlist.Cell(buffer=0.4)
     wca = hoomd.md.pair.LJ(default_r_cut=sigma * 2**(1/6),
                           nlist=nlist)
@@ -562,8 +561,13 @@ def make_mc_simulation(job,
                                  epsilon=WCA_PARAMS['epsilon']) # TODO: why not /kt
     wca.mode = 'shift'
 
-    # TODO add patch potential to compute virial pressure
-    patch = hoomd.md.pair.PatchyLJ(default_r_cut)
+    patch = md.pair.PatchyLJ(nlist=nlist,
+                             default_r_cut = job.statepoint.r_cut)
+    patch.patches['A'] = [job.statepoint.patch_vector]
+    patch.params[('A', 'A')] = dict(pair_params=dict(epsilon=job.statepoint.patch_epsilon,
+                                                     omega=job.statepoint.patch_omega),
+                                    envelope_params=dict(alpha=job.statepoint.alpha,
+                                                         omega = job.statepoint.omega))
 
     # compute the density
     compute_density = ComputeDensity()
