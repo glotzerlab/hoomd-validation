@@ -454,6 +454,7 @@ def make_mc_simulation(job,
     """
     import hoomd
     from hoomd import hpmc
+    from hoomd import md
     import numpy
     from custom_actions import ComputeDensity
 
@@ -567,7 +568,7 @@ def make_mc_simulation(job,
                                  epsilon=WCA_PARAMS['epsilon']) # TODO: why not /kt
     wca.mode = 'shift'
 
-    patch = md.pair.PatchyLJ(nlist=nlist,
+    patch = md.pair.aniso.PatchyLJ(nlist=nlist,
                              default_r_cut = job.statepoint.r_cut)
     patch.patches['A'] = [job.statepoint.patch_vector]
     patch.params[('A', 'A')] = dict(pair_params=dict(epsilon=job.statepoint.patch_epsilon,
