@@ -190,7 +190,7 @@ def make_md_simulation(job,
 
     # pair force
     nlist = md.nlist.Cell(buffer=0.4)
-    r_cut_wca = sigma * 2**(1/6)
+    r_cut_wca = WCA_PARAMS['sigma'] * 2**(1/6)
     wca = md.pair.LJ(default_r_cut=r_cut_wca,
                      nlist=nlist)
     wca.params[('A', 'A')] = dict(sigma=WCA_PARAMS['sigma'],
@@ -201,7 +201,7 @@ def make_md_simulation(job,
                                    default_r_cut=job.statepoint.r_cut)
     patch.patches['A'] = [job.statepoint.patch_vector]
     patch.params[('A', 'A')] = dict(pair_params=dict(epsilon=job.statepoint.patch_epsilon,
-                                                     omega=job.statepoint.patch_omega),
+                                                     sigma=job.statepoint.patch_sigma),
                                     envelope_params=dict(alpha=job.statepoint.alpha,
                                                          omega = job.statepoint.omega))
 
