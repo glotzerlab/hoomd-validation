@@ -21,7 +21,7 @@ TOTAL_STEPS = RANDOMIZE_STEPS + EQUILIBRATE_STEPS + RUN_STEPS
 
 WRITE_PERIOD = 1_000
 LOG_PERIOD = {'trajectory': 50_000, 'quantities': 100}
-NUM_CPU_RANKS = min(8, CONFIG["max_cores_sim"])
+NUM_CPU_RANKS = min(9, CONFIG["max_cores_sim"])
 
 WALLTIME_STOP_SECONDS = CONFIG["max_walltime"] * 3600 - 10 * 60
 
