@@ -40,7 +40,7 @@ def job_statepoints():
             density=0.9193740949934834,
             pressure=11.0,
             num_particles=12**3,
-            r_cut=10,
+            r_cut=3,
             patch_vector=(1,0,0), # make sure it is normalized here
             alpha=numpy.deg2rad(20),
             omega=20,
