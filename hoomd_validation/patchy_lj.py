@@ -506,8 +506,8 @@ def make_mc_simulation(job,
 
                 // patchy stuff
 
-                vec3<float> n_i(nx,ny,nz);
-                vec3<float> n_j(nx,ny,nz);
+                vec3<float> n_i({nx},{ny},{nz});
+                vec3<float> n_j({nx},{ny},{nz});
                 vec3<float> ni_world = rotate(q_i, n_i);
                 vec3<float> nj_world = rotate(q_j, n_j);
 
@@ -572,7 +572,7 @@ def make_mc_simulation(job,
                              default_r_cut = job.statepoint.r_cut)
     patch.patches['A'] = [job.statepoint.patch_vector]
     patch.params[('A', 'A')] = dict(pair_params=dict(epsilon=job.statepoint.patch_epsilon,
-                                                     omega=job.statepoint.patch_omega),
+                                                     sigma=job.statepoint.patch_sigma),
                                     envelope_params=dict(alpha=job.statepoint.alpha,
                                                          omega = job.statepoint.omega))
 
@@ -594,12 +594,13 @@ def make_mc_simulation(job,
     sim.operations.integrator = mc
 
     snap = hoomd.Snapshot(device.communicator)
-    snap.particles.N = 2
-    snap.particles.types = ['A']
-    L = 10
-    snap.configuration.box = [L, L, L, 0, 0, 0]
-    snap.particles.position[:] = [[-2,0,0],[2,0,0]]
-    snap.particles.typeid[:] = [0,0]
+    if device.communicator.rank == 0:
+        snap.particles.N = 2
+        snap.particles.types = ['A']
+        L = 10
+        snap.configuration.box = [L, L, L, 0, 0, 0]
+        snap.particles.position[:] = [[-2,0,0],[2,0,0]]
+        snap.particles.typeid[:] = [0,0]
     sim.create_state_from_snapshot(snap)
 
     # end for debugging
@@ -626,9 +627,12 @@ def make_mc_simulation(job,
 
     def _compute_virial_pressure():
         virials = numpy.sum(wca.virials, 0) # TODO should be MD patch potential object
+        virals2 = numpy.sum(patch.virials, 0)
         w = 0
         if virials is not None:
             w = virials[0] + virials[3] + virials[5]
+        if virials2 is not None:
+            w += virials2[0] + virials2[3] + virials2[5]
         V = sim.state.box.volume
         return job.statepoint.num_particles * job.statepoint.kT / V + w / (3
                                                                            * V)
@@ -646,7 +650,8 @@ def make_mc_simulation(job,
             hoomd.trigger.Before(RANDOMIZE_STEPS | EQUILIBRATE_STEPS // 2)
         ]))
     sim.operations.add(mstuner)
-    sim.operations.computes.append(lj)
+    sim.operations.computes.append(wca)
+    sim.operations.computes.append(patch)
 
     return sim
 
@@ -666,7 +671,7 @@ def run_nvt_mc_sim(job, device, complete_filename):
         initial_state = job.fn(restart_filename)
         restart = True
     else:
-        initial_state = job.fn('patch_lj_fluid_initial_state.gsd')
+        initial_state = job.fn('patchy_lj_fluid_initial_state.gsd')
         restart = False
 
     sim = make_mc_simulation(job, device, initial_state, sim_mode)
