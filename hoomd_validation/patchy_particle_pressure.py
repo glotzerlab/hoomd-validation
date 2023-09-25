@@ -31,8 +31,9 @@ def job_statepoints():
     num_particles = 64**2
     replicate_indices = range(CONFIG["replicates"])
     # statepoint chosen to be in a dense liquid
-    # FILL IN STATEPOINT AND JUSTIFICATION
-    params_list = [(0.7, 0.6, -1.2085475196748359, 0.7, 1.5)]  # kT, rho, pressure, chi, lambda_
+    # nvt simulations at density = 0.6 yielded a measured pressure of
+    # -1.218 +/- 0.002 (mean +/- std. error of means) over 32 replicas
+    params_list = [(0.7, 0.6, -1.218, 0.7, 1.5)]  # kT, rho, pressure, chi, lambda_
     for temperature, density, pressure, chi, lambda_ in params_list:
         for idx in replicate_indices:
             yield ({
