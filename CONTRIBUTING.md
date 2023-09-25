@@ -6,7 +6,7 @@ the project.
 
 ## Base your work off the correct branch
 
-All new work should be based on `main`.
+All new work should be based on `trunk`.
 
 ## Propose a minimal set of related changes
 
