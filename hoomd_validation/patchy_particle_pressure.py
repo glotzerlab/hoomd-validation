@@ -44,9 +44,10 @@ def job_statepoints():
         (3.0, 0.8, 3.7415391338219885, 1.0, 1.5),
         # next 2 are from 10.1063/1.3054361
         # pressure from webplotdigitizer fig 7
-        (1.0, 0.8, 1.70178459919393820, 1.0, 1.5), # pressure = pressure = pressure/kT
-        (3.0, 0.8, 13.549010655204555, 1.0, 1.5), # pressure = pressure
-        (3.0, 0.8, 4.516336885068185, 1.0, 1.5), # pressure = pressure/kT
+        (1.0, 0.8, 1.70178459919393820, 1.0, 1.5
+         ),  # pressure = pressure = pressure/kT
+        (3.0, 0.8, 13.549010655204555, 1.0, 1.5),  # pressure = pressure
+        (3.0, 0.8, 4.516336885068185, 1.0, 1.5),  # pressure = pressure/kT
     ]  # kT, rho, pressure, chi, lambda_
     for temperature, density, pressure, chi, lambda_ in params_list:
         for idx in replicate_indices:
@@ -72,10 +73,11 @@ def is_patchy_particle_pressure_positive_pressure(job):
 
 
 
-partition_jobs_cpu_serial = aggregator.groupsof(num=min(
-    CONFIG["replicates"], CONFIG["max_cores_submission"]),
-                                                sort_by='density',
-                                                select=is_patchy_particle_pressure,)
+def is_patchy_particle_pressure_positive_pressure(job):
+    """Test if a job is part of the patchy_particle_pressure subproject."""
+    return job.statepoint[
+        'subproject'] == 'patchy_particle_pressure' and job.statepoint[
+            'pressure'] > 0.0
 
 partition_jobs_cpu_mpi_nvt = aggregator.groupsof(num=min(
     CONFIG["replicates"], CONFIG["max_cores_submission"] // NUM_CPU_RANKS),
@@ -147,11 +149,12 @@ def patchy_particle_pressure_create_initial_state(*jobs):
     diameter = 1.0
     mc.shape['A'] = dict(diameter=diameter, orientable=True)
     delta = 2 * numpy.arcsin(numpy.sqrt(chi))
-    patch_code = util._single_patch_kern_frenkel_code(
-        delta, lambda_, diameter, temperature)
+    patch_code = util._single_patch_kern_frenkel_code(delta, lambda_, diameter,
+                                                      temperature)
     r_cut = diameter + diameter * (lambda_ - 1)
-    patches = hoomd.hpmc.pair.user.CPPPotential(
-        r_cut=r_cut, code=patch_code, param_array=[])
+    patches = hoomd.hpmc.pair.user.CPPPotential(r_cut=r_cut,
+                                                code=patch_code,
+                                                param_array=[])
     mc.pair_potential = patches
 
     sim = hoomd.Simulation(device=device, seed=util.make_seed(job))
@@ -211,11 +214,12 @@ def make_mc_simulation(job,
     mc = hoomd.hpmc.integrate.Sphere(default_d=0.05, default_a=0.1)
     mc.shape['A'] = dict(diameter=diameter, orientable=True)
     delta = 2 * numpy.arcsin(numpy.sqrt(chi))
-    patch_code =  util._single_patch_kern_frenkel_code(
-        delta, lambda_, diameter, temperature)
+    patch_code = util._single_patch_kern_frenkel_code(delta, lambda_, diameter,
+                                                      temperature)
     r_cut = diameter + diameter * (lambda_ - 1)
-    patches = hoomd.hpmc.pair.user.CPPPotential(
-        r_cut=r_cut, code=patch_code, param_array=[])
+    patches = hoomd.hpmc.pair.user.CPPPotential(r_cut=r_cut,
+                                                code=patch_code,
+                                                param_array=[])
     mc.pair_potential = patches
 
     # compute the density and pressure
@@ -508,6 +512,7 @@ def add_sampling_job(mode, device_name, ranks_per_partition, aggregator):
 
     @Project.pre.after(patchy_particle_pressure_create_initial_state)
     @Project.post.isfile(f'{mode}_{device_name}_complete')
+    #@Project.post(lambda j: j.isfile(f'{mode}_{device_name}_complete') or j.sp.pressure <= 0)
     @Project.operation(name=f'patchy_particle_pressure_{mode}_{device_name}',
                        directives=directives,
                        aggregator=aggregator)
@@ -520,7 +525,8 @@ def add_sampling_job(mode, device_name, ranks_per_partition, aggregator):
         job = jobs[communicator.partition]
 
         if communicator.rank == 0:
-            print(f'starting patchy_particle_pressure_{mode}_{device_name}:', job)
+            print(f'starting patchy_particle_pressure_{mode}_{device_name}:',
+                  job)
 
         if device_name == 'gpu':
             device_cls = hoomd.device.GPU
@@ -590,7 +596,7 @@ def patchy_particle_pressure_analyze(job):
 
     # Plot results
     fig = matplotlib.figure.Figure(figsize=(10, 10 / 1.618 * 2), layout='tight')
-    ax = fig.add_subplot(2, 1, 1)
+    ax = fig.add_subplot(2, 2, 1)
     util.plot_timeseries(ax=ax,
                          timesteps=timesteps,
                          data=densities,
@@ -599,32 +605,54 @@ def patchy_particle_pressure_analyze(job):
                          max_points=500)
     ax.legend()
 
-    ax = fig.add_subplot(2, 1, 2)
+    ax_distribution = fig.add_subplot(2, 2, 2, sharey=ax)
+    util.plot_distribution(
+        ax_distribution,
+        {k: v for k, v in densities.items() if not k.startswith('nvt')},
+        #densities,
+        r'',
+        expected=job.sp.density,
+        bins=50,
+        plot_rotated=True,
+    )
+
+    ax = fig.add_subplot(2, 2, 3)
     util.plot_timeseries(ax=ax,
                          timesteps=timesteps,
                          data=pressures,
                          ylabel=r"$\beta P$",
                          expected=job.sp.pressure,
-                         max_points=500)
+                         max_points=500,)
+    ax_distribution = fig.add_subplot(2, 2, 4, sharey=ax)
+    util.plot_distribution(
+        ax_distribution,
+        pressures,
+        r'',
+        expected=job.sp.pressure,
+        bins=50,
+        plot_rotated=True,
+    )
 
     fig.suptitle(f"$\\rho={job.statepoint.density}$, "
                  f"$N={job.statepoint.num_particles}$, "
-                 f"temperature={job.statepoint.temperature}, "
+                 f"T={job.statepoint.temperature}, "
+                 f"$\\chi={job.statepoint.chi}$, "
                  f"replicate={job.statepoint.replicate_idx}")
-    fig.savefig(job.fn('nvt_npt_plots.svg'), bbox_inches='tight')
+    fig.savefig(job.fn('nvt_npt_plots.svg'), bbox_inches='tight', transparent=False)
 
     job.document['patchy_particle_pressure_analysis_complete'] = True
 
 
-@Project.pre(
-    lambda *jobs: util.true_all(*jobs, key='patchy_particle_pressure_analysis_complete'))
+@Project.pre(lambda *jobs: util.true_all(
+    *jobs, key='patchy_particle_pressure_analysis_complete'))
 @Project.post(lambda *jobs: util.true_all(
     *jobs, key='patchy_particle_pressure_compare_modes_complete'))
-@Project.operation(directives=dict(executable=CONFIG["executable"]),
-                   aggregator=aggregator.groupby(
-                       key=['pressure', 'density', 'temperature', 'chi', 'num_particles'],
-                       sort_by='replicate_idx',
-                       select=is_patchy_particle_pressure))
+@Project.operation(
+    directives=dict(executable=CONFIG["executable"]),
+    aggregator=aggregator.groupby(
+        key=['pressure', 'density', 'temperature', 'chi', 'num_particles'],
+        sort_by='replicate_idx',
+        select=is_patchy_particle_pressure))
 def patchy_particle_pressure_compare_modes(*jobs):
     """Compares the tested simulation modes."""
     import numpy
@@ -654,12 +682,14 @@ def patchy_particle_pressure_compare_modes(*jobs):
     set_density = jobs[0].sp.density
     set_pressure = jobs[0].sp.pressure
     set_temperature = jobs[0].sp.temperature
+    set_chi = jobs[0].sp.chi
     num_particles = jobs[0].sp.num_particles
 
     quantity_reference = dict(density=set_density, pressure=set_pressure)
 
     fig = matplotlib.figure.Figure(figsize=(10, 10 / 1.618 * 2), layout='tight')
-    fig.suptitle(f"$\\rho={set_density}$, $N={num_particles}$, $T={set_temperature}$")
+    fig.suptitle(
+        f"$\\rho={set_density}$, $N={num_particles}$, $T={set_temperature}$, $\\chi={set_chi}$")
 
     for i, quantity_name in enumerate(quantity_names):
         ax = fig.add_subplot(2, 1, i + 1)
@@ -687,9 +717,13 @@ def patchy_particle_pressure_compare_modes(*jobs):
             relative_scale=1000,
             separate_nvt_npt=True)
 
-    filename = f'patchy_particle_pressure_compare_density{round(set_density, 2)}_temperature{round(set_temperature, 4)}.svg'
+    filename = f'patchy_particle_pressure_compare_'
+    filename += f'density{round(set_density, 2)}_'
+    filename += f'temperature{round(set_temperature, 4)}_'
+    filename += f'pressure{round(set_pressure, 3)}_'
+    filename += f'chi{round(set_chi, 2)}.svg'
     fig.savefig(os.path.join(jobs[0]._project.path, filename),
-                bbox_inches='tight')
+                bbox_inches='tight', transparent=False)
 
     for job in jobs:
         job.document['patchy_particle_pressure_compare_modes_complete'] = True
