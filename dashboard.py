@@ -32,10 +32,23 @@ class ValidationDashboard(Dashboard):
                    f"rho={job.statepoint.density}"
         elif (job.statepoint.subproject == 'hard_disk'
               or job.statepoint.subproject == 'hard_sphere'
-              or job.statepoint.subproject == 'simple_polygon'):
+              or job.statepoint.subproject == 'simple_polygon'
+              or job.statepoint.subproject == 'patchy_particle_pressure'):
             return f"{job.statepoint.subproject}: rho={job.statepoint.density}"
         else:
             raise RuntimeError("Unexpected job")
+
+    def job_sorter(self, job):
+        if job.statepoint.subproject == 'patchy_particle_pressure':
+            return (
+                job.sp.density,
+                job.sp.pressure,
+                job.sp.temperature,
+                job.sp.chi,
+                job.sp.replicate_idx,
+            )
+        else:
+            return job.statepoint.num_particles
 
 
 if __name__ == "__main__":
