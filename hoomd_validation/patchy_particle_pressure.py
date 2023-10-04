@@ -20,7 +20,7 @@ RESTART_STEPS = RUN_STEPS // 50
 TOTAL_STEPS = RANDOMIZE_STEPS + EQUILIBRATE_STEPS + RUN_STEPS
 
 WRITE_PERIOD = 1_000
-LOG_PERIOD = {'trajectory': 50_000, 'quantities': 100}
+LOG_PERIOD = {'trajectory': 50_000, 'quantities': 500}
 NUM_CPU_RANKS = min(9, CONFIG["max_cores_sim"])
 
 WALLTIME_STOP_SECONDS = CONFIG["max_walltime"] * 3600 - 10 * 60
@@ -28,11 +28,27 @@ WALLTIME_STOP_SECONDS = CONFIG["max_walltime"] * 3600 - 10 * 60
 
 def job_statepoints():
     """list(dict): A list of statepoints for this subproject."""
-    num_particles = 64**2
+    num_particles = 8**3
     replicate_indices = range(CONFIG["replicates"])
     # statepoint chosen to be in a dense liquid
-    # FILL IN STATEPOINT AND JUSTIFICATION
-    params_list = [(0.7, 0.6, -1.2085475196748359, 0.7, 1.5)]  # kT, rho, pressure, chi, lambda_
+    # nvt simulations at density = 0.95 yielded a measured pressure of
+    # 6.415 +/- 0.003 (mean +/- std. error of means) over 32 replicas
+    params_list = [
+        (1000.0, 0.95, 12.12, 0.7, 1.5),
+        (10.0, 0.95, 11.83, 0.7, 1.5),
+        (1.0, 0.95, 8.27, 0.7, 1.5),
+        # next 3 are from 10.1063/1.3054361
+        # pressure from NVT simulations
+        (0.5714, 0.8, -5.871736803897682, 1.0, 1.5),
+        (1.0, 0.8, -1.0235450460184001, 1.0, 1.5),
+        (3.0, 0.8, 3.7415391338219885, 1.0, 1.5),
+        # next 2 are from 10.1063/1.3054361
+        # pressure from webplotdigitizer fig 7
+        (1.0, 0.8, 1.70178459919393820, 1.0, 1.5
+         ),  # pressure = pressure = pressure/kT
+        (3.0, 0.8, 13.549010655204555, 1.0, 1.5),  # pressure = pressure
+        (3.0, 0.8, 4.516336885068185, 1.0, 1.5),  # pressure = pressure/kT
+    ]  # kT, rho, pressure, chi, lambda_
     for temperature, density, pressure, chi, lambda_ in params_list:
         for idx in replicate_indices:
             yield ({
@@ -52,27 +68,47 @@ def is_patchy_particle_pressure(job):
     return job.statepoint['subproject'] == 'patchy_particle_pressure'
 
 
-partition_jobs_cpu_serial = aggregator.groupsof(num=min(
-    CONFIG["replicates"], CONFIG["max_cores_submission"]),
-                                                sort_by='density',
-                                                select=is_patchy_particle_pressure,)
+def is_patchy_particle_pressure_positive_pressure(job):
+    """Test if a job is part of the patchy_particle_pressure subproject."""
+    return job.statepoint[
+        'subproject'] == 'patchy_particle_pressure' and job.statepoint[
+            'pressure'] > 0.0
 
-partition_jobs_cpu_mpi = aggregator.groupsof(num=min(
-    CONFIG["replicates"], CONFIG["max_cores_submission"] // NUM_CPU_RANKS),
-                                             sort_by='density',
-                                             select=is_patchy_particle_pressure,)
 
-partition_jobs_gpu = aggregator.groupsof(num=min(CONFIG["replicates"],
-                                                 CONFIG["max_gpus_submission"]),
-                                         sort_by='density', select=is_patchy_particle_pressure,)
+partition_jobs_cpu_serial = aggregator.groupsof(
+    num=min(CONFIG["replicates"], CONFIG["max_cores_submission"]),
+    sort_by='density',
+    select=is_patchy_particle_pressure,
+)
+
+partition_jobs_cpu_mpi_nvt = aggregator.groupsof(
+    num=min(CONFIG["replicates"],
+            CONFIG["max_cores_submission"] // NUM_CPU_RANKS),
+    sort_by='density',
+    select=is_patchy_particle_pressure,
+)
+
+partition_jobs_cpu_mpi_npt = aggregator.groupsof(
+    num=min(CONFIG["replicates"],
+            CONFIG["max_cores_submission"] // NUM_CPU_RANKS),
+    sort_by='density',
+    select=is_patchy_particle_pressure_positive_pressure,
+)
+
+partition_jobs_gpu = aggregator.groupsof(
+    num=min(CONFIG["replicates"], CONFIG["max_gpus_submission"]),
+    sort_by='density',
+    select=is_patchy_particle_pressure,
+)
 
 
 @Project.post.isfile('patchy_particle_pressure_initial_state.gsd')
-@Project.operation(directives=dict(
-    executable=CONFIG["executable"],
-    nranks=util.total_ranks_function(NUM_CPU_RANKS),
-    walltime=1),
-                   aggregator=partition_jobs_cpu_mpi,)
+@Project.operation(
+    directives=dict(executable=CONFIG["executable"],
+                    nranks=util.total_ranks_function(NUM_CPU_RANKS),
+                    walltime=1),
+    aggregator=partition_jobs_cpu_mpi_nvt,
+)
 def patchy_particle_pressure_create_initial_state(*jobs):
     """Create initial system configuration."""
     import hoomd
@@ -122,11 +158,12 @@ def patchy_particle_pressure_create_initial_state(*jobs):
     diameter = 1.0
     mc.shape['A'] = dict(diameter=diameter, orientable=True)
     delta = 2 * numpy.arcsin(numpy.sqrt(chi))
-    patch_code = util._single_patch_kern_frenkel_code(
-        delta, lambda_, diameter, temperature)
+    patch_code = util._single_patch_kern_frenkel_code(delta, lambda_, diameter,
+                                                      temperature)
     r_cut = diameter + diameter * (lambda_ - 1)
-    patches = hoomd.hpmc.pair.user.CPPPotential(
-        r_cut=r_cut, code=patch_code, param_array=[])
+    patches = hoomd.hpmc.pair.user.CPPPotential(r_cut=r_cut,
+                                                code=patch_code,
+                                                param_array=[])
     mc.pair_potential = patches
 
     sim = hoomd.Simulation(device=device, seed=util.make_seed(job))
@@ -186,11 +223,12 @@ def make_mc_simulation(job,
     mc = hoomd.hpmc.integrate.Sphere(default_d=0.05, default_a=0.1)
     mc.shape['A'] = dict(diameter=diameter, orientable=True)
     delta = 2 * numpy.arcsin(numpy.sqrt(chi))
-    patch_code =  util._single_patch_kern_frenkel_code(
-        delta, lambda_, diameter, temperature)
+    patch_code = util._single_patch_kern_frenkel_code(delta, lambda_, diameter,
+                                                      temperature)
     r_cut = diameter + diameter * (lambda_ - 1)
-    patches = hoomd.hpmc.pair.user.CPPPotential(
-        r_cut=r_cut, code=patch_code, param_array=[])
+    patches = hoomd.hpmc.pair.user.CPPPotential(r_cut=r_cut,
+                                                code=patch_code,
+                                                param_array=[])
     mc.pair_potential = patches
 
     # compute the density and pressure
@@ -444,13 +482,13 @@ job_definitions = [
         'mode': 'nvt',
         'device_name': 'cpu',
         'ranks_per_partition': NUM_CPU_RANKS,
-        'aggregator': partition_jobs_cpu_mpi
+        'aggregator': partition_jobs_cpu_mpi_nvt
     },
     {
         'mode': 'npt',
         'device_name': 'cpu',
         'ranks_per_partition': NUM_CPU_RANKS,
-        'aggregator': partition_jobs_cpu_mpi
+        'aggregator': partition_jobs_cpu_mpi_npt
     },
 ]
 
@@ -483,6 +521,7 @@ def add_sampling_job(mode, device_name, ranks_per_partition, aggregator):
 
     @Project.pre.after(patchy_particle_pressure_create_initial_state)
     @Project.post.isfile(f'{mode}_{device_name}_complete')
+    #@Project.post(lambda j: j.isfile(f'{mode}_{device_name}_complete') or j.sp.pressure <= 0)
     @Project.operation(name=f'patchy_particle_pressure_{mode}_{device_name}',
                        directives=directives,
                        aggregator=aggregator)
@@ -495,7 +534,8 @@ def add_sampling_job(mode, device_name, ranks_per_partition, aggregator):
         job = jobs[communicator.partition]
 
         if communicator.rank == 0:
-            print(f'starting patchy_particle_pressure_{mode}_{device_name}:', job)
+            print(f'starting patchy_particle_pressure_{mode}_{device_name}:',
+                  job)
 
         if device_name == 'gpu':
             device_cls = hoomd.device.GPU
