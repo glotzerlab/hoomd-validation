@@ -34,20 +34,14 @@ def job_statepoints():
     # nvt simulations at density = 0.95 yielded a measured pressure of
     # 6.415 +/- 0.003 (mean +/- std. error of means) over 32 replicas
     params_list = [
-        (10.0, 0.95, 11.83, 0.7, 1.5),
-        (1.0, 0.95, 8.27, 0.7, 1.5),
-        (0.6, 0.95, 8.27, 0.7, 1.5),
+        (10.0, 0.95, 11.942862877236088, 0.7, 1.5),
+        (1.0, 0.95, 10.147994162256277, 0.7, 1.5),
+        (0.6, 0.95, 8.926992055668622, 0.7, 1.5),
         # next 3 are from 10.1063/1.3054361
         # pressure from NVT simulations
-        (0.5714, 0.8, -5.871736803897682, 1.0, 1.5),
-        (1.0, 0.8, -1.0235450460184001, 1.0, 1.5),
-        (3.0, 0.8, 3.7415391338219885, 1.0, 1.5),
-        # next 2 are from 10.1063/1.3054361
-        # pressure from webplotdigitizer fig 7
-        (1.0, 0.8, 1.70178459919393820, 1.0, 1.5
-         ),  # pressure = pressure = pressure/kT
-        (3.0, 0.8, 13.549010655204555, 1.0, 1.5),  # pressure = pressure
-        (3.0, 0.8, 4.516336885068185, 1.0, 1.5),  # pressure = pressure/kT
+        (0.5714, 0.8, -0.22167766330477995, 1.0, 1.5),
+        (1.0, 0.8, 2.2911186181, 1.0, 1.5),
+        (3.0, 0.8, 4.8393938019, 1.0, 1.5),
     ]  # kT, rho, pressure, chi, lambda_
     for temperature, density, pressure, chi, lambda_ in params_list:
         for idx in replicate_indices:
