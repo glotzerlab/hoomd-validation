@@ -627,7 +627,7 @@ def make_mc_simulation(job,
 
     def _compute_virial_pressure():
         virials = numpy.sum(wca.virials, 0) # TODO should be MD patch potential object
-        virals2 = numpy.sum(patch.virials, 0)
+        virials2 = numpy.sum(patch.virials, 0)
         w = 0
         if virials is not None:
             w = virials[0] + virials[3] + virials[5]
