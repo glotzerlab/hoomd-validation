@@ -14,34 +14,34 @@ import pathlib
 # Run parameters shared between simulations.
 # Step counts must be even and a multiple of the log quantity period.
 RANDOMIZE_STEPS = 20_000
-EQUILIBRATE_STEPS = 100_000
-RUN_STEPS = 1_000_000
+EQUILIBRATE_STEPS = 200_000
+RUN_STEPS = 2_000_000
 RESTART_STEPS = RUN_STEPS // 50
 TOTAL_STEPS = RANDOMIZE_STEPS + EQUILIBRATE_STEPS + RUN_STEPS
 
 WRITE_PERIOD = 1_000
 LOG_PERIOD = {'trajectory': 50_000, 'quantities': 500}
-NUM_CPU_RANKS = min(9, CONFIG["max_cores_sim"])
+NUM_CPU_RANKS = min(16, CONFIG["max_cores_sim"])
 
 WALLTIME_STOP_SECONDS = CONFIG["max_walltime"] * 3600 - 10 * 60
 
 
 def job_statepoints():
     """list(dict): A list of statepoints for this subproject."""
-    num_particles = 8**3
+    num_particles = 16**3
     replicate_indices = range(CONFIG["replicates"])
     # statepoint chosen to be in a dense liquid
     # nvt simulations at density = 0.95 yielded a measured pressure of
     # 6.415 +/- 0.003 (mean +/- std. error of means) over 32 replicas
     params_list = [
-        (10.0, 0.95, 11.942862877236088, 0.7, 1.5),
-        (1.0, 0.95, 10.147994162256277, 0.7, 1.5),
-        (0.6, 0.95, 8.926992055668622, 0.7, 1.5),
+        (10.0, 0.95, 11.951630531873338, 0.7, 1.5),
+        (1.0, 0.95, 10.208625410213362, 0.7, 1.5),
+        (0.6, 0.95, 8.927827449359, 0.7, 1.5),
         # next 3 are from 10.1063/1.3054361
         # pressure from NVT simulations
         (0.5714, 0.8, -0.22167766330477995, 1.0, 1.5),
-        (1.0, 0.8, 2.2911186181, 1.0, 1.5),
-        (3.0, 0.8, 4.8393938019, 1.0, 1.5),
+        (1.0, 0.8, 2.2766339608381325, 1.0, 1.5),
+        (3.0, 0.8, 4.837436833423719, 1.0, 1.5),
     ]  # kT, rho, pressure, chi, lambda_
     for temperature, density, pressure, chi, lambda_ in params_list:
         for idx in replicate_indices:
@@ -710,12 +710,14 @@ def patchy_particle_pressure_compare_modes(*jobs):
             expected=reference,
             relative_scale=1000,
             separate_nvt_npt=True)
+        ax.axhline(0.0, c='k', ls='--')
 
     filename = f'patchy_particle_pressure_compare_'
     filename += f'density{round(set_density, 2)}_'
     filename += f'temperature{round(set_temperature, 4)}_'
     filename += f'pressure{round(set_pressure, 3)}_'
-    filename += f'chi{round(set_chi, 2)}.svg'
+    filename += f'chi{round(set_chi, 2)}_'
+    filename += f'{num_particles}particles.svg'
     fig.savefig(os.path.join(jobs[0]._project.path, filename),
                 bbox_inches='tight', transparent=False)
 
