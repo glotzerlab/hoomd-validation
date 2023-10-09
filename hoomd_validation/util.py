@@ -28,7 +28,7 @@ def get_job_filename(sim_mode, device, name, type):
     return f"{sim_mode}_{suffix}_{name}.{type}"
 
 
-def run_up_to_walltime(sim, end_step, steps, walltime_stop, minutes_per_run=None):
+def run_up_to_walltime(sim, end_step, steps, walltime_stop):
     """Run a simulation, stopping early if a walltime limit is reached.
 
     Args:
@@ -152,7 +152,12 @@ def make_seed(job, sim_mode=None):
     return int(signac.job.calc_id(statepoint), 16) & 0xffff
 
 
-def plot_distribution(ax, data, xlabel, expected=None, bins=100, plot_rotated=False):
+def plot_distribution(ax,
+                      data,
+                      independent_variable_label,
+                      expected=None,
+                      bins=100,
+                      plot_rotated=False):
     """Plot distributions."""
     import numpy
 
@@ -176,27 +181,27 @@ def plot_distribution(ax, data, xlabel, expected=None, bins=100, plot_rotated=Fa
         max_density_histogram = max(max_density_histogram, numpy.max(histogram))
 
         if plot_rotated:
-            XX, YY = histogram, bin_centers #bin_edges[:-1]
-            ax.set_ylabel(xlabel)
+            ax.set_ylabel(independent_variable_label)
             ax.set_xlabel('probability density')
+            ax.plot(histogram, bin_centers, label=mode)
         else:
-            XX, YY = bin_edges[:-1], histogram
-            ax.set_xlabel(xlabel)
+            ax.set_xlabel(independent_variable_label)
             ax.set_ylabel('probability density')
-        ax.plot(XX, YY, label=mode)
-
+            ax.plot(bin_centers, histogram, label=mode)
 
     if callable(expected):
         if plot_rotated:
-            #Y, X = bin_edges[:-1], expected(bin_edges[:-1])
-            Y, X = bin_centers, expected(bin_centers)
+            ax.plot(expected(bin_centers),
+                    bin_centers,
+                    linestyle='dashed',
+                    color='k',
+                    label='expected')
         else:
-            X, Y = bin_edges[:-1], expected(bin_edges[:-1])
-        ax.plot(X,
-                Y,
-                linestyle='dashed',
-                color='k',
-                label='expected')
+            ax.plot(bin_centers,
+                    expected(bin_centers),
+                    linestyle='dashed',
+                    color='k',
+                    label='expected')
 
     elif expected is not None:
         if plot_rotated:
@@ -318,46 +323,3 @@ def plot_timeseries(ax,
 def _sort_sim_modes(sim_modes):
     """Sort simulation modes for comparison."""
     sim_modes.sort(key=lambda x: ('nvt' in x or 'nec' in x, 'md' in x, x))
-
-
-def _single_patch_kern_frenkel_code(delta_rad, lambda_, sigma, kT):
-    """Generate code for JIT compilation of Kern-Frenkel potential.
-
-    Args:
-        delta_rad (float): Half-opening angle of patchy interaction in radians
-
-        lambda_ (float): range of patchy interaction relative to hard core
-            diameter
-
-        sigma (float): Diameter of hard core of particles
-
-        kT (float): Temperature; sets the energy scale
-
-    The terminology (e.g., `ehat`) comes from the "Modelling Patchy Particles"
-    HOOMD-blue tutorial.
-
-    """
-    patch_code = f"""
-    const float delta = {delta_rad};
-    const float lambda = {lambda_:f};
-    const float sigma = {sigma:f};  // hard core diameter
-    const float kT = {kT:f};
-    const vec3<float> ehat_particle_reference_frame(1, 0, 0);
-    vec3<float> ehat_i = rotate(q_i, ehat_particle_reference_frame);
-    vec3<float> ehat_j = rotate(q_j, ehat_particle_reference_frame);
-    vec3<float> r_hat_ij = r_ij / sqrtf(dot(r_ij, r_ij));
-    bool patch_on_i_is_aligned_with_r_ij = dot(ehat_i, r_hat_ij) >= cos(delta);
-    bool patch_on_j_is_aligned_with_r_ji = dot(ehat_j, -r_hat_ij) >= cos(delta);
-    float rsq = dot(r_ij, r_ij);
-    if (patch_on_i_is_aligned_with_r_ij
-        && patch_on_j_is_aligned_with_r_ji
-        && dot(r_ij, r_ij) < lambda*sigma*lambda*sigma)
-        {{
-        return -1 / kT;
-        }}
-    else
-        {{
-        return 0.0;
-        }}
-    """
-    return patch_code

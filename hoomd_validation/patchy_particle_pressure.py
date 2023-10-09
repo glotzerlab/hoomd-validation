@@ -30,20 +30,24 @@ def job_statepoints():
     """list(dict): A list of statepoints for this subproject."""
     num_particles = 16**3
     replicate_indices = range(CONFIG["replicates"])
-    # statepoint chosen to be in a dense liquid
-    # nvt simulations at density = 0.95 yielded a measured pressure of
-    # 6.415 +/- 0.003 (mean +/- std. error of means) over 32 replicas
     params_list = [
-        (10.0, 0.95, 11.951630531873338, 0.7, 1.5),
-        (1.0, 0.95, 10.208625410213362, 0.7, 1.5),
-        (0.6, 0.95, 8.927827449359, 0.7, 1.5),
-        # next 3 are from 10.1063/1.3054361
-        # pressure from NVT simulations
-        (0.5714, 0.8, -0.22167766330477995, 1.0, 1.5),
-        (1.0, 0.8, 2.2766339608381325, 1.0, 1.5),
-        (3.0, 0.8, 4.837436833423719, 1.0, 1.5),
-    ]  # kT, rho, pressure, chi, lambda_
-    for temperature, density, pressure, chi, lambda_ in params_list:
+        # kern-frenkel statepoints. densities/temperatures chosen to prorduce
+        # a dense liquid. pressures measure from NVT simulations.
+        (10.0, 0.95, 11.951630531873338, 0.7, 1.5, 1.0),
+        (1.0, 0.95, 10.208625410213362, 0.7, 1.5, 1.0),
+        (0.6, 0.95, 8.927827449359, 0.7, 1.5, 1.0),
+        # hard sphere + square well statepoints, from 10.1063/1.3054361
+        # pressure from NVT simulations, NOT from values in paper
+        (0.5714, 0.8, -0.2692376274894095, 1.0, 1.5, 1.0),
+        (1.0, 0.8, 2.2766339608381325, 1.0, 1.5, 1.0),
+        (3.0, 0.8, 4.837436833423719, 1.0, 1.5, 1.0),
+        # hard sphere + square well + repulsive shoulder statepoints.
+        # temperatures/densities from initial tests, pressures from NVT
+        # simulations.
+        (3.0, 0.7, -5.0, 1.0, 1.0, -1.0),
+        (1.0, 0.7, -5.0, 1.0, 1.0, -1.0),
+    ]  # kT, rho, pressure, chi, lambda_, long_range_interaction_scale_factor
+    for temperature, density, pressure, chi, lambda_, lrisf in params_list:
         for idx in replicate_indices:
             yield ({
                 "subproject": "patchy_particle_pressure",
@@ -54,17 +58,13 @@ def job_statepoints():
                 "num_particles": num_particles,
                 "replicate_idx": idx,
                 "temperature": temperature,
+                "long_range_interaction_scale_factor": lrisf,
             })
 
 
 def is_patchy_particle_pressure(job):
     """Test if a job is part of the patchy_particle_pressure subproject."""
     return job.statepoint['subproject'] == 'patchy_particle_pressure'
-
-def is_patchy_particle_pressure_positive_pressure(job):
-    """Test if a job is part of the patchy_particle_pressure subproject."""
-    return job.statepoint['subproject'] == 'patchy_particle_pressure' and job.statepoint['pressure'] > 0.0
-
 
 
 def is_patchy_particle_pressure_positive_pressure(job):
@@ -73,27 +73,94 @@ def is_patchy_particle_pressure_positive_pressure(job):
         'subproject'] == 'patchy_particle_pressure' and job.statepoint[
             'pressure'] > 0.0
 
-partition_jobs_cpu_mpi_nvt = aggregator.groupsof(num=min(
-    CONFIG["replicates"], CONFIG["max_cores_submission"] // NUM_CPU_RANKS),
-                                             sort_by='density',
-                                             select=is_patchy_particle_pressure,)
 
-partition_jobs_cpu_mpi_npt = aggregator.groupsof(num=min(
-    CONFIG["replicates"], CONFIG["max_cores_submission"] // NUM_CPU_RANKS),
-                                             sort_by='density',
-                                             select=is_patchy_particle_pressure_positive_pressure,)
+partition_jobs_cpu_mpi_nvt = aggregator.groupsof(
+    num=min(CONFIG["replicates"],
+            CONFIG["max_cores_submission"] // NUM_CPU_RANKS),
+    sort_by='density',
+    select=is_patchy_particle_pressure,
+)
 
-partition_jobs_gpu = aggregator.groupsof(num=min(CONFIG["replicates"],
-                                                 CONFIG["max_gpus_submission"]),
-                                         sort_by='density', select=is_patchy_particle_pressure,)
+partition_jobs_cpu_mpi_npt = aggregator.groupsof(
+    num=min(CONFIG["replicates"],
+            CONFIG["max_cores_submission"] // NUM_CPU_RANKS),
+    sort_by='density',
+    select=is_patchy_particle_pressure_positive_pressure,
+)
+
+partition_jobs_gpu = aggregator.groupsof(
+    num=min(CONFIG["replicates"], CONFIG["max_gpus_submission"]),
+    sort_by='density',
+    select=is_patchy_particle_pressure,
+)
+
+
+def _single_patch_kern_frenkel_code(delta_rad, sq_well_lambda, sigma, kT,
+                                    long_range_interaction_scale_factor):
+    """Generate code for JIT compilation of Kern-Frenkel potential.
+
+    Args:
+        delta_rad (float): Half-opening angle of patchy interaction in radians
+
+        sq_well_lambda (float): range of patchy interaction relative to hard
+            core diameter
+
+        sigma (float): Diameter of hard core of particles
+
+        kT (float): Temperature; sets the energy scale
+
+        long_range_interaction_scale_factor (float): factor to multiply the
+            pair potential by when the interparticle separation is between
+            sq_well_lambda/2*sigma and sq_well_lambda*sigma.
+
+    The terminology (e.g., `ehat`) comes from the "Modelling Patchy Particles"
+    HOOMD-blue tutorial.
+
+    """
+    patch_code = f"""
+    const float delta = {delta_rad};
+    const float lambda = {sq_well_lambda:f};
+    const float sigma = {sigma:f};  // hard core diameter
+    const float kT = {kT:f};
+    const float long_range_interaction_scale_factor = {
+        long_range_interaction_scale_factor:f};
+    const vec3<float> ehat_particle_reference_frame(1, 0, 0);
+    vec3<float> ehat_i = rotate(q_i, ehat_particle_reference_frame);
+    vec3<float> ehat_j = rotate(q_j, ehat_particle_reference_frame);
+    vec3<float> r_hat_ij = r_ij / sqrtf(dot(r_ij, r_ij));
+    bool patch_on_i_is_aligned_with_r_ij = dot(ehat_i, r_hat_ij) >= cos(delta);
+    bool patch_on_j_is_aligned_with_r_ji = dot(ehat_j, -r_hat_ij) >= cos(delta);
+    float rsq = dot(r_ij, r_ij);
+    if (patch_on_i_is_aligned_with_r_ij && patch_on_j_is_aligned_with_r_ji)
+        {{
+        if (rsq < lambda / 2 * sigma * lambda / 2 * sigma)
+            {{
+            return -1 / kT;
+            }}
+        else if (rsq < lambda * sigma * lambda * sigma)
+            {{
+            return -1 / kT * long_range_interaction_scale_factor;
+            }}
+        else
+            {{
+            return 0.0;
+            }}
+        }}
+    else
+        {{
+        return 0.0;
+        }}
+    """
+    return patch_code
 
 
 @Project.post.isfile('patchy_particle_pressure_initial_state.gsd')
-@Project.operation(directives=dict(
-    executable=CONFIG["executable"],
-    nranks=util.total_ranks_function(NUM_CPU_RANKS),
-    walltime=1),
-                   aggregator=partition_jobs_cpu_mpi_nvt,)
+@Project.operation(
+    directives=dict(executable=CONFIG["executable"],
+                    nranks=util.total_ranks_function(NUM_CPU_RANKS),
+                    walltime=1),
+    aggregator=partition_jobs_cpu_mpi_nvt,
+)
 def patchy_particle_pressure_create_initial_state(*jobs):
     """Create initial system configuration."""
     import hoomd
@@ -112,6 +179,8 @@ def patchy_particle_pressure_create_initial_state(*jobs):
     temperature = job.statepoint['temperature']
     chi = job.statepoint['chi']
     lambda_ = job.statepoint['lambda_']
+    long_range_interaction_scale_factor = job.statepoint[
+        'long_range_interaction_scale_factor']
 
     box_volume = num_particles / density
     L = box_volume**(1 / 3.)
@@ -143,8 +212,13 @@ def patchy_particle_pressure_create_initial_state(*jobs):
     diameter = 1.0
     mc.shape['A'] = dict(diameter=diameter, orientable=True)
     delta = 2 * numpy.arcsin(numpy.sqrt(chi))
-    patch_code = util._single_patch_kern_frenkel_code(delta, lambda_, diameter,
-                                                      temperature)
+    patch_code = _single_patch_kern_frenkel_code(
+        delta,
+        lambda_,
+        diameter,
+        temperature,
+        long_range_interaction_scale_factor,
+    )
     r_cut = diameter + diameter * (lambda_ - 1)
     patches = hoomd.hpmc.pair.user.CPPPotential(r_cut=r_cut,
                                                 code=patch_code,
@@ -204,12 +278,19 @@ def make_mc_simulation(job,
     temperature = job.statepoint['temperature']
     chi = job.statepoint['chi']
     lambda_ = job.statepoint['lambda_']
+    long_range_interaction_scale_factor = job.statepoint[
+        'long_range_interaction_scale_factor']
     diameter = 1.0
     mc = hoomd.hpmc.integrate.Sphere(default_d=0.05, default_a=0.1)
     mc.shape['A'] = dict(diameter=diameter, orientable=True)
     delta = 2 * numpy.arcsin(numpy.sqrt(chi))
-    patch_code = util._single_patch_kern_frenkel_code(delta, lambda_, diameter,
-                                                      temperature)
+    patch_code = _single_patch_kern_frenkel_code(
+        delta,
+        lambda_,
+        diameter,
+        temperature,
+        long_range_interaction_scale_factor,
+    )
     r_cut = diameter + diameter * (lambda_ - 1)
     patches = hoomd.hpmc.pair.user.CPPPotential(r_cut=r_cut,
                                                 code=patch_code,
@@ -477,7 +558,6 @@ job_definitions = [
     },
 ]
 
-#job_definitions = []
 if CONFIG["enable_gpu"]:
     job_definitions.extend([
         {
@@ -506,7 +586,6 @@ def add_sampling_job(mode, device_name, ranks_per_partition, aggregator):
 
     @Project.pre.after(patchy_particle_pressure_create_initial_state)
     @Project.post.isfile(f'{mode}_{device_name}_complete')
-    #@Project.post(lambda j: j.isfile(f'{mode}_{device_name}_complete') or j.sp.pressure <= 0)
     @Project.operation(name=f'patchy_particle_pressure_{mode}_{device_name}',
                        directives=directives,
                        aggregator=aggregator)
@@ -603,7 +682,6 @@ def patchy_particle_pressure_analyze(job):
     util.plot_distribution(
         ax_distribution,
         {k: v for k, v in densities.items() if not k.startswith('nvt')},
-        #densities,
         r'',
         expected=job.sp.density,
         bins=50,
@@ -611,12 +689,14 @@ def patchy_particle_pressure_analyze(job):
     )
 
     ax = fig.add_subplot(2, 2, 3)
-    util.plot_timeseries(ax=ax,
-                         timesteps=timesteps,
-                         data=pressures,
-                         ylabel=r"$\beta P$",
-                         expected=job.sp.pressure,
-                         max_points=500,)
+    util.plot_timeseries(
+        ax=ax,
+        timesteps=timesteps,
+        data=pressures,
+        ylabel=r"$\beta P$",
+        expected=job.sp.pressure,
+        max_points=500,
+    )
     ax_distribution = fig.add_subplot(2, 2, 4, sharey=ax)
     util.plot_distribution(
         ax_distribution,
@@ -632,7 +712,9 @@ def patchy_particle_pressure_analyze(job):
                  f"T={job.statepoint.temperature}, "
                  f"$\\chi={job.statepoint.chi}$, "
                  f"replicate={job.statepoint.replicate_idx}")
-    fig.savefig(job.fn('nvt_npt_plots.svg'), bbox_inches='tight', transparent=False)
+    fig.savefig(job.fn('nvt_npt_plots.svg'),
+                bbox_inches='tight',
+                transparent=False)
 
     job.document['patchy_particle_pressure_analysis_complete'] = True
 
@@ -641,12 +723,18 @@ def patchy_particle_pressure_analyze(job):
     *jobs, key='patchy_particle_pressure_analysis_complete'))
 @Project.post(lambda *jobs: util.true_all(
     *jobs, key='patchy_particle_pressure_compare_modes_complete'))
-@Project.operation(
-    directives=dict(executable=CONFIG["executable"]),
-    aggregator=aggregator.groupby(
-        key=['pressure', 'density', 'temperature', 'chi', 'num_particles'],
-        sort_by='replicate_idx',
-        select=is_patchy_particle_pressure))
+@Project.operation(directives=dict(executable=CONFIG["executable"]),
+                   aggregator=aggregator.groupby(
+                       key=[
+                           'pressure',
+                           'density',
+                           'temperature',
+                           'chi',
+                           'num_particles',
+                           'long_range_interaction_scale_factor',
+                       ],
+                       sort_by='replicate_idx',
+                       select=is_patchy_particle_pressure))
 def patchy_particle_pressure_compare_modes(*jobs):
     """Compares the tested simulation modes."""
     import numpy
@@ -678,12 +766,16 @@ def patchy_particle_pressure_compare_modes(*jobs):
     set_temperature = jobs[0].sp.temperature
     set_chi = jobs[0].sp.chi
     num_particles = jobs[0].sp.num_particles
+    lrisf = jobs[0].sp.long_range_interaction_scale_factor
 
     quantity_reference = dict(density=set_density, pressure=set_pressure)
 
     fig = matplotlib.figure.Figure(figsize=(10, 10 / 1.618 * 2), layout='tight')
-    fig.suptitle(
-        f"$\\rho={set_density}$, $N={num_particles}$, $T={set_temperature}$, $\\chi={set_chi}$")
+    fig.suptitle(f"$\\rho={set_density}$, "
+                 f"$N={num_particles}$, "
+                 f"T={set_temperature}, "
+                 f"$\\chi={set_chi}$, "
+                 f"$\\varepsilon_2/\\varepsilon_1 = {lrisf}")
 
     for i, quantity_name in enumerate(quantity_names):
         ax = fig.add_subplot(2, 1, i + 1)
@@ -712,14 +804,15 @@ def patchy_particle_pressure_compare_modes(*jobs):
             separate_nvt_npt=True)
         ax.axhline(0.0, c='k', ls='--')
 
-    filename = f'patchy_particle_pressure_compare_'
+    filename = 'patchy_particle_pressure_compare_'
     filename += f'density{round(set_density, 2)}_'
     filename += f'temperature{round(set_temperature, 4)}_'
     filename += f'pressure{round(set_pressure, 3)}_'
     filename += f'chi{round(set_chi, 2)}_'
     filename += f'{num_particles}particles.svg'
     fig.savefig(os.path.join(jobs[0]._project.path, filename),
-                bbox_inches='tight', transparent=False)
+                bbox_inches='tight',
+                transparent=False)
 
     for job in jobs:
         job.document['patchy_particle_pressure_compare_modes_complete'] = True
