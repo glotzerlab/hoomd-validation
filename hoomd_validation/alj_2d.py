@@ -91,7 +91,8 @@ def alj_2d_create_initial_state(*jobs):
 
     device = hoomd.device.CPU(
         communicator=communicator,
-        message_filename=job.fn('create_initial_state.log'))
+        message_filename=job.fn('create_initial_state.log'),
+        notice_level=5)
 
     num_particles = job.statepoint['num_particles']
     density = job.statepoint['density']
@@ -136,8 +137,7 @@ def alj_2d_create_initial_state(*jobs):
                           mode='wb')
 
     if communicator.rank == 0:
-        print(f'completed alj_2d_create_initial_state: '
-              f'{job} in {communicator.walltime} s')
+        print(f'completed alj_2d_create_initial_state: {job}')
 
 
 def make_md_simulation(job,
@@ -329,8 +329,7 @@ def add_nve_md_job(device_name, ranks_per_partition, aggregator):
                        complete_filename=f'{sim_mode}_{device_name}_complete')
 
         if communicator.rank == 0:
-            print(f'completed alj_2d_{sim_mode}_{device_name} '
-                  f'{job} in {communicator.walltime} s')
+            print(f'completed alj_2d_{sim_mode}_{device_name}: {job}')
 
     nve_md_sampling_jobs.append(alj_2d_nve_md_job)
 

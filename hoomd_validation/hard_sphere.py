@@ -96,7 +96,8 @@ def hard_sphere_create_initial_state(*jobs):
     # create snapshot
     device = hoomd.device.CPU(
         communicator=communicator,
-        message_filename=job.fn('create_initial_state.log'))
+        message_filename=job.fn('create_initial_state.log'),
+        notice_level=5)
     snap = hoomd.Snapshot(device.communicator)
 
     if device.communicator.rank == 0:
@@ -124,8 +125,7 @@ def hard_sphere_create_initial_state(*jobs):
                           mode='wb')
 
     if communicator.rank == 0:
-        print(f'completed hard_sphere_create_initial_state: '
-              f'{job} in {communicator.walltime} s')
+        print(f'completed hard_sphere_create_initial_state: {job}')
 
 
 def make_mc_simulation(job,
@@ -452,8 +452,7 @@ def add_sampling_job(mode, device_name, ranks_per_partition, aggregator):
             job, device, complete_filename=f'{mode}_{device_name}_complete')
 
         if communicator.rank == 0:
-            print(f'completed hard_sphere_{mode}_{device_name} '
-                  f'{job} in {communicator.walltime} s')
+            print(f'completed hard_sphere_{mode}_{device_name}: {job}')
 
     sampling_jobs.append(sampling_operation)
 
