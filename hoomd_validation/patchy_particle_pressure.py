@@ -810,7 +810,7 @@ def patchy_particle_pressure_compare_modes(*jobs):
     filename += f'pressure{round(set_pressure, 3)}_'
     filename += f'chi{round(set_chi, 2)}_'
     filename += f'{num_particles}particles_'
-    filename += f"$epsilonrepulsive{lrisf}.svg"
+    filename += f"epsilonrepulsive{lrisf}.svg"
     fig.savefig(os.path.join(jobs[0]._project.path, filename),
                 bbox_inches='tight',
                 transparent=False)
