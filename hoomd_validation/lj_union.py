@@ -99,8 +99,7 @@ def lj_union_create_initial_state(*jobs):
     sp = job.sp
     device = hoomd.device.CPU(
         communicator=communicator,
-        message_filename=job.fn('create_initial_state.log'),
-        notice_level=5)
+        message_filename=job.fn('create_initial_state.log'))
 
     box_volume = sp["num_particles"] / sp["density"]
     L = box_volume**(1 / 3.)
@@ -1421,8 +1420,7 @@ def add_nve_md_job(device_name, ranks_per_partition, aggregator, run_length):
 
         device = device_cls(
             communicator=communicator,
-            message_filename=job.fn(f'{sim_mode}_{device_name}.log'),
-            notice_level=10)
+            message_filename=job.fn(f'{sim_mode}_{device_name}.log'))
         run_nve_md_sim(job,
                        device,
                        run_length=run_length,

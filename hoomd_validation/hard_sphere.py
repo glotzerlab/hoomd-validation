@@ -96,8 +96,7 @@ def hard_sphere_create_initial_state(*jobs):
     # create snapshot
     device = hoomd.device.CPU(
         communicator=communicator,
-        message_filename=job.fn('create_initial_state.log'),
-        notice_level=5)
+        message_filename=job.fn('create_initial_state.log'))
     snap = hoomd.Snapshot(device.communicator)
 
     if device.communicator.rank == 0:

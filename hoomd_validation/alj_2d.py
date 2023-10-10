@@ -91,8 +91,7 @@ def alj_2d_create_initial_state(*jobs):
 
     device = hoomd.device.CPU(
         communicator=communicator,
-        message_filename=job.fn('create_initial_state.log'),
-        notice_level=5)
+        message_filename=job.fn('create_initial_state.log'))
 
     num_particles = job.statepoint['num_particles']
     density = job.statepoint['density']

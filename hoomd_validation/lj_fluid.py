@@ -111,8 +111,7 @@ def lj_fluid_create_initial_state(*jobs):
     sp = job.sp
     device = hoomd.device.CPU(
         communicator=communicator,
-        message_filename=job.fn('create_initial_state.log'),
-        notice_level=5)
+        message_filename=job.fn('create_initial_state.log'))
 
     box_volume = sp["num_particles"] / sp["density"]
     L = box_volume**(1 / 3.)
