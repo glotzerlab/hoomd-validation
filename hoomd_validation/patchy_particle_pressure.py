@@ -44,7 +44,7 @@ def job_statepoints():
         # hard sphere + square well + repulsive shoulder statepoints.
         # temperatures/densities from initial tests, pressures from NVT
         # simulations.
-        (3.0, 0.7, -5.0, 1.0, 1.0, -1.0),
+        (3.0, 0.7, 4.00804, 1.0, 1.0, -1.0),
         (1.0, 0.7, -5.0, 1.0, 1.0, -1.0),
     ]  # kT, rho, pressure, chi, lambda_, long_range_interaction_scale_factor
     for temperature, density, pressure, chi, lambda_, lrisf in params_list:
