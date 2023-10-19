@@ -39,6 +39,7 @@ class ValidationDashboard(Dashboard):
             raise RuntimeError("Unexpected job")
 
     def job_sorter(self, job):
+        """Sort jobs."""
         if job.statepoint.subproject == 'patchy_particle_pressure':
             return (
                 job.sp.density,
