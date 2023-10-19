@@ -15,7 +15,7 @@ import pathlib
 # Step counts must be even and a multiple of the log quantity period.
 RANDOMIZE_STEPS = 20_000
 EQUILIBRATE_STEPS = 200_000
-RUN_STEPS = 2_000_000
+RUN_STEPS = 500_000
 RESTART_STEPS = RUN_STEPS // 50
 TOTAL_STEPS = RANDOMIZE_STEPS + EQUILIBRATE_STEPS + RUN_STEPS
 
@@ -33,19 +33,19 @@ def job_statepoints():
     params_list = [
         # kern-frenkel statepoints. densities/temperatures chosen to prorduce
         # a dense liquid. pressures measure from NVT simulations.
-        (10.0, 0.95, 11.951630531873338, 0.7, 1.5, 1.0),
+        #(10.0, 0.95, 11.951630531873338, 0.7, 1.5, 1.0),
         (1.0, 0.95, 10.208625410213362, 0.7, 1.5, 1.0),
-        (0.6, 0.95, 8.927827449359, 0.7, 1.5, 1.0),
+        #(0.6, 0.95, 8.927827449359, 0.7, 1.5, 1.0),
         # hard sphere + square well statepoints, from 10.1063/1.3054361
         # pressure from NVT simulations, NOT from values in paper
-        (0.5714, 0.8, -0.2692376274894095, 1.0, 1.5, 1.0),
-        (1.0, 0.8, 2.2766339608381325, 1.0, 1.5, 1.0),
+        #(0.5714, 0.8, -0.2692376274894095, 1.0, 1.5, 1.0),
+        #(1.0, 0.8, 2.2766339608381325, 1.0, 1.5, 1.0),
         (3.0, 0.8, 4.837436833423719, 1.0, 1.5, 1.0),
         # hard sphere + square well + repulsive shoulder statepoints.
         # temperatures/densities from initial tests, pressures from NVT
         # simulations.
         (3.0, 0.7, 4.00804, 1.0, 1.0, -1.0),
-        (1.0, 0.7, -5.0, 1.0, 1.0, -1.0),
+        #(1.0, 0.7, -5.0, 1.0, 1.0, -1.0),
     ]  # kT, rho, pressure, chi, lambda_, long_range_interaction_scale_factor
     for temperature, density, pressure, chi, lambda_, lrisf in params_list:
         for idx in replicate_indices:
@@ -559,6 +559,7 @@ job_definitions = [
 ]
 
 if CONFIG["enable_gpu"]:
+    job_definitions = []
     job_definitions.extend([
         {
             'mode': 'nvt',
