@@ -17,12 +17,12 @@ import simple_polygon
 import patchy_particle_pressure
 
 subprojects = [
-    #    alj_2d,
-    #    lj_fluid,
-    #    lj_union,
-    #    hard_disk,
-    #    hard_sphere,
-    #    simple_polygon,
+    alj_2d,
+    lj_fluid,
+    lj_union,
+    hard_disk,
+    hard_sphere,
+    simple_polygon,
     patchy_particle_pressure,
 ]
 
