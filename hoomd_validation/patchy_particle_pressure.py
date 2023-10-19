@@ -245,8 +245,7 @@ def patchy_particle_pressure_create_initial_state(*jobs):
     )
 
     if communicator.rank == 0:
-        print(f'completed patchy_particle_pressure_create_initial_state: '
-              f'{job} in {communicator.walltime} s')
+        print(f'completed patchy_particle_pressure_create_initial_state: {job}')
 
 
 def make_mc_simulation(job,
@@ -430,8 +429,7 @@ def run_nvt_sim(job, device, complete_filename):
         pathlib.Path(job.fn(complete_filename)).touch()
         device.notice('Done.')
     else:
-        device.notice('Ending run early due to walltime limits at:'
-                      f'{device.communicator.walltime}')
+        device.notice(f'Ending {job} run early due to walltime limits.')
 
 
 def run_npt_sim(job, device, complete_filename):
@@ -538,8 +536,7 @@ def run_npt_sim(job, device, complete_filename):
         pathlib.Path(job.fn(complete_filename)).touch()
         device.notice('Done.')
     else:
-        device.notice('Ending run early due to walltime limits at:'
-                      f'{device.communicator.walltime}')
+        device.notice(f'Ending {job} run early due to walltime limits.')
 
 
 sampling_jobs = []
@@ -616,7 +613,7 @@ def add_sampling_job(mode, device_name, ranks_per_partition, aggregator):
 
         if communicator.rank == 0:
             print(f'completed patchy_particle_pressure_{mode}_{device_name} '
-                  f'{job} in {communicator.walltime} s')
+                  f'{job}')
 
     sampling_jobs.append(sampling_operation)
 
