@@ -33,19 +33,19 @@ def job_statepoints():
     params_list = [
         # kern-frenkel statepoints. densities/temperatures chosen to prorduce
         # a dense liquid. pressures measure from NVT simulations.
-        #(10.0, 0.95, 11.951630531873338, 0.7, 1.5, 1.0),
+        # (10.0, 0.95, 11.951630531873338, 0.7, 1.5, 1.0),
         (1.0, 0.95, 10.208625410213362, 0.7, 1.5, 1.0),
-        #(0.6, 0.95, 8.927827449359, 0.7, 1.5, 1.0),
+        # (0.6, 0.95, 8.927827449359, 0.7, 1.5, 1.0),
         # hard sphere + square well statepoints, from 10.1063/1.3054361
         # pressure from NVT simulations, NOT from values in paper
-        #(0.5714, 0.8, -0.2692376274894095, 1.0, 1.5, 1.0),
-        #(1.0, 0.8, 2.2766339608381325, 1.0, 1.5, 1.0),
+        # (0.5714, 0.8, -0.2692376274894095, 1.0, 1.5, 1.0),
+        # (1.0, 0.8, 2.2766339608381325, 1.0, 1.5, 1.0),
         (3.0, 0.8, 4.837436833423719, 1.0, 1.5, 1.0),
         # hard sphere + square well + repulsive shoulder statepoints.
         # temperatures/densities from initial tests, pressures from NVT
         # simulations.
         (3.0, 0.7, 4.00804, 1.0, 1.0, -1.0),
-        #(1.0, 0.7, -5.0, 1.0, 1.0, -1.0),
+        # (1.0, 0.7, -5.0, 1.0, 1.0, -1.0),
     ]  # kT, rho, pressure, chi, lambda_, long_range_interaction_scale_factor
     for temperature, density, pressure, chi, lambda_, lrisf in params_list:
         for idx in replicate_indices:
@@ -713,7 +713,7 @@ def patchy_particle_pressure_analyze(job):
                  f"T={job.sp.temperature}, "
                  f"$\\chi={job.sp.chi}$, "
                  f"replicate={job.statepoint.replicate_idx}, "
-                 "$\\varepsilon_{\mathrm{rep}}/\\varepsilon_{\mathrm{att}}$"
+                 r"$\\varepsilon_{\mathrm{rep}}/\\varepsilon_{\mathrm{att}}$"
                  f"$={job.sp.long_range_interaction_scale_factor}$")
     fig.savefig(job.fn('nvt_npt_plots.svg'),
                 bbox_inches='tight',
@@ -778,7 +778,7 @@ def patchy_particle_pressure_compare_modes(*jobs):
                  f"$N={num_particles}$, "
                  f"T={set_temperature}, "
                  f"$\\chi={set_chi}$, "
-                 "$\\varepsilon_{\mathrm{rep}}/\\varepsilon_{\mathrm{att}}$"
+                 r"$\\varepsilon_{\mathrm{rep}}/\\varepsilon_{\mathrm{att}}$"
                  f"$={lrisf}$")
 
     for i, quantity_name in enumerate(quantity_names):
