@@ -152,7 +152,12 @@ def make_seed(job, sim_mode=None):
     return int(signac.job.calc_id(statepoint), 16) & 0xffff
 
 
-def plot_distribution(ax, data, xlabel, expected=None, bins=100):
+def plot_distribution(ax,
+                      data,
+                      independent_variable_label,
+                      expected=None,
+                      bins=100,
+                      plot_rotated=False):
     """Plot distributions."""
     import numpy
 
@@ -168,30 +173,49 @@ def plot_distribution(ax, data, xlabel, expected=None, bins=100):
                                                bins=bins,
                                                range=(range_min, range_max),
                                                density=True)
+        bin_centers = 0.5 * (bin_edges[:-1] + bin_edges[1:])
 
         if numpy.all(data_arr == data_arr[0]):
             histogram[:] = 0
 
         max_density_histogram = max(max_density_histogram, numpy.max(histogram))
 
-        ax.plot(bin_edges[:-1], histogram, label=mode)
-
-    ax.set_xlabel(xlabel)
-    ax.set_ylabel('probability density')
+        if plot_rotated:
+            ax.set_ylabel(independent_variable_label)
+            ax.set_xlabel('probability density')
+            ax.plot(histogram, bin_centers, label=mode)
+        else:
+            ax.set_xlabel(independent_variable_label)
+            ax.set_ylabel('probability density')
+            ax.plot(bin_centers, histogram, label=mode)
 
     if callable(expected):
-        ax.plot(bin_edges[:-1],
-                expected(bin_edges[:-1]),
-                linestyle='dashed',
-                color='k',
-                label='expected')
+        if plot_rotated:
+            ax.plot(expected(bin_centers),
+                    bin_centers,
+                    linestyle='dashed',
+                    color='k',
+                    label='expected')
+        else:
+            ax.plot(bin_centers,
+                    expected(bin_centers),
+                    linestyle='dashed',
+                    color='k',
+                    label='expected')
 
     elif expected is not None:
-        ax.vlines(x=expected,
-                  ymin=0,
-                  ymax=max_density_histogram,
-                  linestyles='dashed',
-                  colors='k')
+        if plot_rotated:
+            ax.hlines(y=expected,
+                      xmin=0,
+                      xmax=max_density_histogram,
+                      linestyles='dashed',
+                      colors='k')
+        else:
+            ax.vlines(x=expected,
+                      ymin=0,
+                      ymax=max_density_histogram,
+                      linestyles='dashed',
+                      colors='k')
 
 
 def plot_vs_expected(ax,
