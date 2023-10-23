@@ -14,6 +14,7 @@ import lj_union
 import hard_disk
 import hard_sphere
 import simple_polygon
+import patchy_particle_pressure
 
 # use srun on delta (mpiexec fails on multiple nodes)
 flow.environments.xsede.DeltaEnvironment.mpi_cmd = "srun"
@@ -25,6 +26,7 @@ __all__ = [
     "hard_disk",
     "hard_sphere",
     "simple_polygon",
+    "patchy_particle_pressure",
 ]
 
 if __name__ == "__main__":
