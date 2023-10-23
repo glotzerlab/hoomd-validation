@@ -149,6 +149,7 @@ def _single_patch_kern_frenkel_code(delta_rad, sq_well_lambda, sigma, kT,
     return patch_code
 
 
+@Project.pre(lambda *jobs: CONFIG['enable_llvm'])
 @Project.post.isfile('patchy_particle_pressure_initial_state.gsd')
 @Project.operation(
     directives=dict(executable=CONFIG["executable"],
