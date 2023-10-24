@@ -192,7 +192,7 @@ def patchy_particle_pressure_create_initial_state(*jobs):
     # create snapshot
     device = hoomd.device.CPU(
         communicator=communicator,
-        message_filename=job.fn('create_initial_state.log'))
+        message_filename=util.get_message_filename(job, 'create_initial_state.log'))
     snap = hoomd.Snapshot(communicator)
 
     if communicator.rank == 0:
@@ -602,7 +602,7 @@ def add_sampling_job(mode, device_name, ranks_per_partition, aggregator):
 
         device = device_cls(
             communicator=communicator,
-            message_filename=job.fn(f'{mode}_{device_name}.log'))
+            message_filename=util.get_message_filename(job, f'{mode}_{device_name}.log'))
 
         globals().get(f'run_{mode}_sim')(
             job, device, complete_filename=f'{mode}_{device_name}_complete')
