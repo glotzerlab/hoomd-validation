@@ -1049,19 +1049,22 @@ def lj_fluid_compare_modes(*jobs):
             separate_nvt_npt=True)
 
         if quantity_name == "density":
-            print(f"Average npt_mc_cpu density {num_particles}:",
-                  avg_quantity['npt_mc_cpu'], '+/-',
-                  stderr_quantity['npt_mc_cpu'])
+            if 'npt_mc_cpu' in avg_quantity:
+                print(f"Average npt_mc_cpu density {num_particles}:",
+                      avg_quantity['npt_mc_cpu'], '+/-',
+                      stderr_quantity['npt_mc_cpu'])
             print(f"Average npt_md_cpu density {num_particles}:",
                   avg_quantity['npt_bussi_md_cpu'], '+/-',
                   stderr_quantity['npt_bussi_md_cpu'])
         if quantity_name == "pressure":
-            print(f"Average nvt_mc_cpu pressure {num_particles}:",
-                  avg_quantity['nvt_mc_cpu'], '+/-',
-                  stderr_quantity['nvt_mc_cpu'])
-            print(f"Average npt_mc_cpu pressure {num_particles}:",
-                  avg_quantity['npt_mc_cpu'], '+/-',
-                  stderr_quantity['npt_mc_cpu'])
+            if 'nvt_mc_cpu' in avg_quantity:
+                print(f"Average nvt_mc_cpu pressure {num_particles}:",
+                      avg_quantity['nvt_mc_cpu'], '+/-',
+                      stderr_quantity['nvt_mc_cpu'])
+            if 'npt_mc_cpu' in avg_quantity:
+                print(f"Average npt_mc_cpu pressure {num_particles}:",
+                      avg_quantity['npt_mc_cpu'], '+/-',
+                      stderr_quantity['npt_mc_cpu'])
 
     filename = f'lj_fluid_compare_kT{kT}_density{round(set_density, 2)}_' \
                f'r_cut{round(jobs[0].statepoint.r_cut, 2)}_' \

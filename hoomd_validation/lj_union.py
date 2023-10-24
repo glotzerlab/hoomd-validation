@@ -1104,9 +1104,10 @@ def lj_union_compare_modes(*jobs):
             separate_nvt_npt=True)
 
         if quantity_name == "density":
-            print(f"Average npt_mc_cpu density {num_particles}:",
-                  avg_quantity['npt_mc_cpu'], '+/-',
-                  stderr_quantity['npt_mc_cpu'])
+            if 'npt_mc_cpu' in avg_quantity:
+                print(f"Average npt_mc_cpu density {num_particles}:",
+                      avg_quantity['npt_mc_cpu'], '+/-',
+                      stderr_quantity['npt_mc_cpu'])
             print(f"Average npt_md_cpu density {num_particles}:",
                   avg_quantity['npt_bussi_md_cpu'], '+/-',
                   stderr_quantity['npt_bussi_md_cpu'])
