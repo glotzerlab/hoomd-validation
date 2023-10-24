@@ -89,9 +89,9 @@ def alj_2d_create_initial_state(*jobs):
 
     init_diameter = CIRCUMCIRCLE_RADIUS * 2 * 1.15
 
-    device = hoomd.device.CPU(
-        communicator=communicator,
-        message_filename=util.get_message_filename(job, 'create_initial_state.log'))
+    device = hoomd.device.CPU(communicator=communicator,
+                              message_filename=util.get_message_filename(
+                                  job, 'create_initial_state.log'))
 
     num_particles = job.statepoint['num_particles']
     density = job.statepoint['density']
@@ -320,9 +320,9 @@ def add_nve_md_job(device_name, ranks_per_partition, aggregator):
         elif device_name == 'cpu':
             device_cls = hoomd.device.CPU
 
-        device = device_cls(
-            communicator=communicator,
-            message_filename=util.get_message_filename(job, f'{sim_mode}_{device_name}.log'))
+        device = device_cls(communicator=communicator,
+                            message_filename=util.get_message_filename(
+                                job, f'{sim_mode}_{device_name}.log'))
         run_nve_md_sim(job,
                        device,
                        complete_filename=f'{sim_mode}_{device_name}_complete')

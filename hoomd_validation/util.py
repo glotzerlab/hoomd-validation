@@ -30,13 +30,13 @@ def get_job_filename(sim_mode, device, name, type):
 
 
 def get_message_filename(job, filename):
-    """Get a cluster job unique message filename.
-    """
+    """Get a cluster job unique message filename."""
     cluster_id = os.environ.get('SLURM_JOB_ID', None)
     if cluster_id is not None:
         return job.fn(f'{cluster_id}-{filename}')
     else:
         return job.fn(filename)
+
 
 def run_up_to_walltime(sim, end_step, steps, walltime_stop):
     """Run a simulation, stopping early if a walltime limit is reached.

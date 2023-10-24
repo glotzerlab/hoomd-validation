@@ -97,9 +97,9 @@ def lj_union_create_initial_state(*jobs):
         print('starting lj_union_create_initial_state:', job)
 
     sp = job.sp
-    device = hoomd.device.CPU(
-        communicator=communicator,
-        message_filename=util.get_message_filename(job, 'create_initial_state.log'))
+    device = hoomd.device.CPU(communicator=communicator,
+                              message_filename=util.get_message_filename(
+                                  job, 'create_initial_state.log'))
 
     box_volume = sp["num_particles"] / sp["density"]
     L = box_volume**(1 / 3.)
@@ -437,9 +437,9 @@ def add_md_sampling_job(ensemble, thermostat, device_name, ranks_per_partition,
         elif device_name == 'cpu':
             device_cls = hoomd.device.CPU
 
-        device = device_cls(
-            communicator=communicator,
-            message_filename=util.get_message_filename(job, f'{sim_mode}_{device_name}.log'))
+        device = device_cls(communicator=communicator,
+                            message_filename=util.get_message_filename(
+                                job, f'{sim_mode}_{device_name}.log'))
 
         run_md_sim(job,
                    device,
@@ -864,9 +864,9 @@ def add_mc_sampling_job(mode, device_name, ranks_per_partition, aggregator):
         elif device_name == 'cpu':
             device_cls = hoomd.device.CPU
 
-        device = device_cls(
-            communicator=communicator,
-            message_filename=util.get_message_filename(job, f'{mode}_mc_{device_name}.log'))
+        device = device_cls(communicator=communicator,
+                            message_filename=util.get_message_filename(
+                                job, f'{mode}_mc_{device_name}.log'))
 
         globals().get(f'run_{mode}_mc_sim')(
             job, device, complete_filename=f'{mode}_mc_{device_name}_complete')
@@ -1419,9 +1419,9 @@ def add_nve_md_job(device_name, ranks_per_partition, aggregator, run_length):
         elif device_name == 'cpu':
             device_cls = hoomd.device.CPU
 
-        device = device_cls(
-            communicator=communicator,
-            message_filename=util.get_message_filename(job, f'{sim_mode}_{device_name}.log'))
+        device = device_cls(communicator=communicator,
+                            message_filename=util.get_message_filename(
+                                job, f'{sim_mode}_{device_name}.log'))
         run_nve_md_sim(job,
                        device,
                        run_length=run_length,
