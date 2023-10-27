@@ -570,8 +570,8 @@ def add_sampling_job(mode, device_name, ranks_per_partition, aggregator):
                   job)
 
         device = hoomd.device.CPU(communicator=communicator,
-                            message_filename=util.get_message_filename(
-                                job, f'{mode}_{device_name}.log'))
+                                  message_filename=util.get_message_filename(
+                                      job, f'{mode}_{device_name}.log'))
 
         globals().get(f'run_{mode}_sim')(
             job, device, complete_filename=f'{mode}_{device_name}_complete')
