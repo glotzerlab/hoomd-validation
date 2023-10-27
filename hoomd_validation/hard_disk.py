@@ -99,9 +99,9 @@ def hard_disk_create_initial_state(*jobs):
     position_2d = list(itertools.product(x, repeat=2))[:num_particles]
 
     # create snapshot
-    device = hoomd.device.CPU(
-        communicator=communicator,
-        message_filename=job.fn('create_initial_state.log'))
+    device = hoomd.device.CPU(communicator=communicator,
+                              message_filename=util.get_message_filename(
+                                  job, 'create_initial_state.log'))
     snap = hoomd.Snapshot(communicator)
 
     if communicator.rank == 0:
@@ -129,8 +129,7 @@ def hard_disk_create_initial_state(*jobs):
                           mode='wb')
 
     if communicator.rank == 0:
-        print(f'completed hard_disk_create_initial_state: '
-              f'{job} in {communicator.walltime} s')
+        print(f'completed hard_disk_create_initial_state: {job}')
 
 
 def make_mc_simulation(job,
@@ -565,16 +564,15 @@ def add_sampling_job(mode, device_name, ranks_per_partition, aggregator):
         elif device_name == 'cpu':
             device_cls = hoomd.device.CPU
 
-        device = device_cls(
-            communicator=communicator,
-            message_filename=job.fn(f'{mode}_{device_name}.log'))
+        device = device_cls(communicator=communicator,
+                            message_filename=util.get_message_filename(
+                                job, f'{mode}_{device_name}.log'))
 
         globals().get(f'run_{mode}_sim')(
             job, device, complete_filename=f'{mode}_{device_name}_complete')
 
         if communicator.rank == 0:
-            print(f'completed hard_disk_{mode}_{device_name} '
-                  f'{job} in {communicator.walltime} s')
+            print(f'completed hard_disk_{mode}_{device_name}: {job}')
 
     sampling_jobs.append(sampling_operation)
 

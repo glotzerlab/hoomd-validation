@@ -5,6 +5,7 @@
 
 import numpy
 import signac
+import os
 
 
 def true_all(*jobs, key):
@@ -26,6 +27,15 @@ def get_job_filename(sim_mode, device, name, type):
         suffix = 'gpu'
 
     return f"{sim_mode}_{suffix}_{name}.{type}"
+
+
+def get_message_filename(job, filename):
+    """Get a cluster job unique message filename."""
+    cluster_id = os.environ.get('SLURM_JOB_ID', None)
+    if cluster_id is not None:
+        return job.fn(f'{cluster_id}-{filename}')
+    else:
+        return job.fn(filename)
 
 
 def run_up_to_walltime(sim, end_step, steps, walltime_stop):
