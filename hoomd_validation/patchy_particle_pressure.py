@@ -83,12 +83,6 @@ partition_jobs_cpu_mpi_npt = aggregator.groupsof(
     select=is_patchy_particle_pressure_positive_pressure,
 )
 
-partition_jobs_gpu = aggregator.groupsof(
-    num=min(CONFIG["replicates"], CONFIG["max_gpus_submission"]),
-    sort_by='density',
-    select=is_patchy_particle_pressure,
-)
-
 
 def _single_patch_kern_frenkel_code(delta_rad, sq_well_lambda, sigma, kT,
                                     long_range_interaction_scale_factor):
@@ -551,32 +545,12 @@ job_definitions = [
     },
 ]
 
-if CONFIG["enable_gpu"]:
-    job_definitions = []
-    job_definitions.extend([
-        {
-            'mode': 'nvt',
-            'device_name': 'gpu',
-            'ranks_per_partition': 1,
-            'aggregator': partition_jobs_gpu
-        },
-        {
-            'mode': 'npt',
-            'device_name': 'gpu',
-            'ranks_per_partition': 1,
-            'aggregator': partition_jobs_gpu
-        },
-    ])
-
 
 def add_sampling_job(mode, device_name, ranks_per_partition, aggregator):
     """Add a sampling job to the workflow."""
     directives = dict(walltime=CONFIG["max_walltime"],
                       executable=CONFIG["executable"],
                       nranks=util.total_ranks_function(ranks_per_partition))
-
-    if device_name == 'gpu':
-        directives['ngpu'] = directives['nranks']
 
     @Project.pre.after(patchy_particle_pressure_create_initial_state)
     @Project.post.isfile(f'{mode}_{device_name}_complete')
@@ -595,12 +569,7 @@ def add_sampling_job(mode, device_name, ranks_per_partition, aggregator):
             print(f'starting patchy_particle_pressure_{mode}_{device_name}:',
                   job)
 
-        if device_name == 'gpu':
-            device_cls = hoomd.device.GPU
-        elif device_name == 'cpu':
-            device_cls = hoomd.device.CPU
-
-        device = device_cls(communicator=communicator,
+        device = hoomd.device.CPU(communicator=communicator,
                             message_filename=util.get_message_filename(
                                 job, f'{mode}_{device_name}.log'))
 
@@ -636,9 +605,8 @@ def patchy_particle_pressure_analyze(job):
 
     sim_modes = []
     for _ensemble in ['nvt', 'npt']:
-        for _device in ['cpu', 'gpu']:
-            if job.isfile(f'{_ensemble}_{_device}_quantities.gsd'):
-                sim_modes.append(f'{_ensemble}_{_device}')
+        if job.isfile(f'{_ensemble}_cpu_quantities.gsd'):
+            sim_modes.append(f'{_ensemble}_cpu')
 
     util._sort_sim_modes(sim_modes)
 
@@ -743,9 +711,8 @@ def patchy_particle_pressure_compare_modes(*jobs):
 
     sim_modes = []
     for _ensemble in ['nvt', 'npt']:
-        for _device in ['cpu', 'gpu']:
-            if jobs[0].isfile(f'{_ensemble}_{_device}_quantities.gsd'):
-                sim_modes.append(f'{_ensemble}_{_device}')
+        if jobs[0].isfile(f'{_ensemble}_cpu_quantities.gsd'):
+            sim_modes.append(f'{_ensemble}_cpu')
 
     util._sort_sim_modes(sim_modes)
 
