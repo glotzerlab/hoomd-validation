@@ -674,7 +674,7 @@ def patchy_particle_pressure_analyze(job):
                  f"T={job.sp.temperature}, "
                  f"$\\chi={job.sp.chi}$, "
                  f"replicate={job.statepoint.replicate_idx}, "
-                 "$\\varepsilon_{\mathrm{rep}}/\\varepsilon_{\mathrm{att}}$"
+                 "$\\varepsilon_{\\mathrm{rep}}/\\varepsilon_{\\mathrm{att}}$"
                  f"$={job.sp.long_range_interaction_scale_factor}$")
     fig.savefig(job.fn('nvt_npt_plots.svg'),
                 bbox_inches='tight',
@@ -738,7 +738,7 @@ def patchy_particle_pressure_compare_modes(*jobs):
                  f"$N={num_particles}$, "
                  f"T={set_temperature}, "
                  f"$\\chi={set_chi}$, "
-                 "$\\varepsilon_{\mathrm{rep}}/\\varepsilon_{\mathrm{att}}$"
+                 "$\\varepsilon_{\\mathrm{rep}}/\\varepsilon_{\\mathrm{att}}$"
                  f"$={lrisf}$")
 
     for i, quantity_name in enumerate(quantity_names):
