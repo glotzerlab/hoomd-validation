@@ -15,7 +15,7 @@ import pathlib
 # Step counts must be even and a multiple of the log quantity period.
 RANDOMIZE_STEPS = 20_000
 EQUILIBRATE_STEPS = 100_000
-RUN_STEPS = 2_500_000
+RUN_STEPS = 500_000
 RESTART_STEPS = RUN_STEPS // 50
 TOTAL_STEPS = RANDOMIZE_STEPS + EQUILIBRATE_STEPS + RUN_STEPS
 SHAPE_VERTICES = [
@@ -69,11 +69,6 @@ partition_jobs_cpu_mpi = aggregator.groupsof(num=min(
     CONFIG["replicates"], CONFIG["max_cores_submission"] // NUM_CPU_RANKS),
                                              sort_by='density',
                                              select=is_simple_polygon)
-
-partition_jobs_gpu = aggregator.groupsof(num=min(CONFIG["replicates"],
-                                                 CONFIG["max_gpus_submission"]),
-                                         sort_by='density',
-                                         select=is_simple_polygon)
 
 
 @Project.post.isfile('simple_polygon_initial_state.gsd')
@@ -438,32 +433,12 @@ job_definitions = [
     },
 ]
 
-job_definitions = []
-if CONFIG["enable_gpu"]:
-    job_definitions.extend([
-        {
-            'mode': 'nvt',
-            'device_name': 'gpu',
-            'ranks_per_partition': 1,
-            'aggregator': partition_jobs_gpu
-        },
-        {
-            'mode': 'npt',
-            'device_name': 'gpu',
-            'ranks_per_partition': 1,
-            'aggregator': partition_jobs_gpu
-        },
-    ])
-
 
 def add_sampling_job(mode, device_name, ranks_per_partition, aggregator):
     """Add a sampling job to the workflow."""
     directives = dict(walltime=CONFIG["max_walltime"],
                       executable=CONFIG["executable"],
                       nranks=util.total_ranks_function(ranks_per_partition))
-
-    if device_name == 'gpu':
-        directives['ngpu'] = directives['nranks']
 
     @Project.pre.after(simple_polygon_create_initial_state)
     @Project.post.isfile(f'{mode}_{device_name}_complete')
@@ -481,14 +456,9 @@ def add_sampling_job(mode, device_name, ranks_per_partition, aggregator):
         if communicator.rank == 0:
             print(f'starting simple_polygon_{mode}_{device_name}:', job)
 
-        if device_name == 'gpu':
-            device_cls = hoomd.device.GPU
-        elif device_name == 'cpu':
-            device_cls = hoomd.device.CPU
-
-        device = device_cls(communicator=communicator,
-                            message_filename=util.get_message_filename(
-                                job, f'{mode}_{device_name}.log'))
+        device = hoomd.device.CPU(communicator=communicator,
+                                  message_filename=util.get_message_filename(
+                                      job, f'{mode}_{device_name}.log'))
 
         globals().get(f'run_{mode}_sim')(
             job, device, complete_filename=f'{mode}_{device_name}_complete')
@@ -521,9 +491,8 @@ def simple_polygon_analyze(job):
 
     sim_modes = []
     for _ensemble in ['nvt', 'npt']:
-        for _device in ['cpu', 'gpu']:
-            if job.isfile(f'{_ensemble}_{_device}_quantities.gsd'):
-                sim_modes.append(f'{_ensemble}_{_device}')
+        if job.isfile(f'{_ensemble}_cpu_quantities.gsd'):
+            sim_modes.append(f'{_ensemble}_cpu')
 
     util._sort_sim_modes(sim_modes)
 
@@ -594,9 +563,8 @@ def simple_polygon_compare_modes(*jobs):
 
     sim_modes = []
     for _ensemble in ['nvt', 'npt']:
-        for _device in ['cpu', 'gpu']:
-            if jobs[0].isfile(f'{_ensemble}_{_device}_quantities.gsd'):
-                sim_modes.append(f'{_ensemble}_{_device}')
+        if jobs[0].isfile(f'{_ensemble}_cpu_quantities.gsd'):
+            sim_modes.append(f'{_ensemble}_cpu')
 
     util._sort_sim_modes(sim_modes)
 
