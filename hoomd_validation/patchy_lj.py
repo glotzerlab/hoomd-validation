@@ -206,7 +206,8 @@ def make_md_simulation(job,
                                                          omega = job.statepoint.omega))
 
     # integrator
-    integrator = md.Integrator(dt=0.001, methods=[method], forces=[wca, patch])
+    integrator = md.Integrator(dt=0.001, methods=[method], forces=[wca, patch],
+                               integrate_rotational_dof=True)
 
     # compute thermo
     thermo = md.compute.ThermodynamicQuantities(hoomd.filter.All())
@@ -460,7 +461,7 @@ def make_mc_simulation(job,
 
     # integrator
     mc = hpmc.integrate.Sphere(nselect=1)
-    mc.shape['A'] = dict(diameter=0.0)
+    mc.shape['A'] = dict(diameter=0.0, orientable=True)
 
     # pair potential
     epsilon = job.statepoint.patch_epsilon / job.sp.kT
