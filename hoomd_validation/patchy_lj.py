@@ -626,9 +626,10 @@ def make_mc_simulation(job,
 
     # move size tuner
     mstuner = hpmc.tune.MoveSize.scale_solver(
-        moves=['d'],
+        moves=['d', 'a'],
         target=0.2,
         max_translation_move=0.5,
+        max_rotation_move=1.0,
         trigger=hoomd.trigger.And([
             hoomd.trigger.Periodic(100),
             hoomd.trigger.Before(RANDOMIZE_STEPS | EQUILIBRATE_STEPS // 2)
@@ -765,7 +766,8 @@ def run_npt_mc_sim(job, device, complete_filename):
         translate_acceptance = translate_moves[0] / sum(translate_moves)
         device.notice(f'Translate move acceptance: {translate_acceptance}')
         device.notice(f'Trial move size: {sim.operations.integrator.d["A"]}')
-
+        device.notice(f'')
+        # todo use example from lj union
         volume_moves = boxmc.volume_moves
         volume_acceptance = volume_moves[0] / sum(volume_moves)
         device.notice(f'Volume move acceptance: {volume_acceptance}')
@@ -778,6 +780,7 @@ def run_npt_mc_sim(job, device, complete_filename):
                 json.dump(
                     dict(d_A=sim.operations.integrator.d["A"],
                          volume_delta=boxmc.volume['delta']), f)
+                # todo write rotation moves
     else:
         device.notice('Restarting...')
         # read move size from the file
@@ -790,7 +793,7 @@ def run_npt_mc_sim(job, device, complete_filename):
             f'Restored trial move size: {sim.operations.integrator.d["A"]}')
         boxmc.volume = dict(weight=1.0, mode='ln', delta=data['volume_delta'])
         device.notice(f'Restored volume move size: {boxmc.volume["delta"]}')
-
+        # todo get rotation move size
     # run
     device.notice('Running...')
     util.run_up_to_walltime(sim=sim,
