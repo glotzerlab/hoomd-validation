@@ -738,7 +738,7 @@ def patchy_particle_pressure_compare_modes(*jobs):
                  f"$N={num_particles}$, "
                  f"T={set_temperature}, "
                  f"$\\chi={set_chi}$, "
-                 r"$\\varepsilon_{\mathrm{rep}}/\\varepsilon_{\mathrm{att}}$"
+                 "$\\varepsilon_{\mathrm{rep}}/\\varepsilon_{\mathrm{att}}$"
                  f"$={lrisf}$")
 
     for i, quantity_name in enumerate(quantity_names):
