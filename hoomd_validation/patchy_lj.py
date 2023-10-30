@@ -588,23 +588,6 @@ def make_mc_simulation(job,
     for loggable in extra_loggables:
         logger_gsd.add(loggable)
 
-
-    # just for debugging
-    device = hoomd.device.CPU()
-    sim = hoomd.Simulation(device=device, seed=100)
-    sim.operations.integrator = mc
-
-    snap = hoomd.Snapshot(device.communicator)
-    if device.communicator.rank == 0:
-        snap.particles.N = 2
-        snap.particles.types = ['A']
-        L = 10
-        snap.configuration.box = [L, L, L, 0, 0, 0]
-        snap.particles.position[:] = [[-2,0,0],[2,0,0]]
-        snap.particles.typeid[:] = [0,0]
-    sim.create_state_from_snapshot(snap)
-
-    # end for debugging
     
     # make simulation
     sim = util.make_simulation(job=job,
