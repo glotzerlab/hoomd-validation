@@ -674,7 +674,7 @@ def patchy_particle_pressure_analyze(job):
                  f"T={job.sp.temperature}, "
                  f"$\\chi={job.sp.chi}$, "
                  f"replicate={job.statepoint.replicate_idx}, "
-                 r"$\\varepsilon_{\mathrm{rep}}/\\varepsilon_{\mathrm{att}}$"
+                 "$\\varepsilon_{\mathrm{rep}}/\\varepsilon_{\mathrm{att}}$"
                  f"$={job.sp.long_range_interaction_scale_factor}$")
     fig.savefig(job.fn('nvt_npt_plots.svg'),
                 bbox_inches='tight',
