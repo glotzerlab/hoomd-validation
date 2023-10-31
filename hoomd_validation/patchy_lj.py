@@ -675,11 +675,20 @@ def run_nvt_mc_sim(job, device, complete_filename):
         device.notice(f'Translate move acceptance: {translate_acceptance}')
         device.notice(f'Trial move size: {sim.operations.integrator.d["A"]}')
 
+        rotate_moves = sim.operations.integrator.rotate_moves
+        rotate_acceptance = rotate_moves[0] / sum(rotate_moves)
+        device.notice(f'Rotate move acceptance: {rotate_acceptance}')
+        device.notice(
+            f'Rotate move size: {sim.operations.integrator.a["A"]}')
+
         # save move size to a file
         if device.communicator.rank == 0:
             name = util.get_job_filename(sim_mode, device, 'move_size', 'json')
             with open(job.fn(name), 'w') as f:
-                json.dump(dict(d_A=sim.operations.integrator.d["A"]), f)
+                json.dump(
+                    dict(d_A=sim.operations.integrator.d["A"],
+                         a_A=sim.operations.integrator.a["A"],
+                    ), f)
     else:
         device.notice('Restarting...')
         # read move size from the file
@@ -688,8 +697,11 @@ def run_nvt_mc_sim(job, device, complete_filename):
             data = json.load(f)
 
         sim.operations.integrator.d["A"] = data['d_A']
+        sim.operations.integrator.a["A"] = data['a_A']
         device.notice(
             f'Restored trial move size: {sim.operations.integrator.d["A"]}')
+        device.notice(
+            f'Restored rotate move size: {sim.operations.integrator.a["A"]}')
 
     # run
     device.notice('Running...')
@@ -766,8 +778,13 @@ def run_npt_mc_sim(job, device, complete_filename):
         translate_acceptance = translate_moves[0] / sum(translate_moves)
         device.notice(f'Translate move acceptance: {translate_acceptance}')
         device.notice(f'Trial move size: {sim.operations.integrator.d["A"]}')
-        device.notice(f'')
-        # todo use example from lj union
+
+        rotate_moves = sim.operations.integrator.rotate_moves
+        rotate_acceptance = rotate_moves[0] / sum(rotate_moves)
+        device.notice(f'Rotate move acceptance: {rotate_acceptance}')
+        device.notice(
+            f'Rotate move size: {sim.operations.integrator.a["A"]}')
+
         volume_moves = boxmc.volume_moves
         volume_acceptance = volume_moves[0] / sum(volume_moves)
         device.notice(f'Volume move acceptance: {volume_acceptance}')
@@ -779,8 +796,9 @@ def run_npt_mc_sim(job, device, complete_filename):
             with open(job.fn(name), 'w') as f:
                 json.dump(
                     dict(d_A=sim.operations.integrator.d["A"],
-                         volume_delta=boxmc.volume['delta']), f)
-                # todo write rotation moves
+                         a_A=sim.operations.integrator.a["A"],
+                         volume_delta=boxmc.volume['delta']
+                    ), f)
     else:
         device.notice('Restarting...')
         # read move size from the file
@@ -789,11 +807,14 @@ def run_npt_mc_sim(job, device, complete_filename):
             data = json.load(f)
 
         sim.operations.integrator.d["A"] = data['d_A']
+        sim.operations.integrator.a["A"] = data['a_A']
+        boxmc.volume = dict(weight=1.0, mode='ln', delta=data['volume_delta'])
         device.notice(
             f'Restored trial move size: {sim.operations.integrator.d["A"]}')
-        boxmc.volume = dict(weight=1.0, mode='ln', delta=data['volume_delta'])
+        device.notice(
+            f'Restored rotate move size: {sim.operations.integrator.a["A"]}')
         device.notice(f'Restored volume move size: {boxmc.volume["delta"]}')
-        # todo get rotation move size
+
     # run
     device.notice('Running...')
     util.run_up_to_walltime(sim=sim,
