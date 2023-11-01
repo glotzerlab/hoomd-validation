@@ -1,5 +1,5 @@
 signac==2.1.0
 signac-flow==0.26.1
-numpy==1.26.0
+numpy==1.26.1
 PyYAML==6.0.1
 gsd==3.2.0
