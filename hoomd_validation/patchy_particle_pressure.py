@@ -67,7 +67,7 @@ def is_patchy_particle_pressure_positive_pressure(job):
     """Test if a job is part of the patchy_particle_pressure subproject."""
     return job.statepoint[
         'subproject'] == 'patchy_particle_pressure' and job.statepoint[
-            'pressure'] > 0.0
+            'pressure'] > 0
 
 
 partition_jobs_cpu_mpi_nvt = aggregator.groupsof(
@@ -179,7 +179,8 @@ def patchy_particle_pressure_create_initial_state(*jobs):
     N = int(numpy.ceil(num_particles**(1. / 3.)))
     x = numpy.linspace(-L / 2, L / 2, N, endpoint=False)
 
-    if x[1] - x[0] < 1.0:
+    particle_spacing = 1.0
+    if x[1] - x[0] < particle_spacing:
         raise RuntimeError('density too high to initialize on square lattice')
 
     position = list(itertools.product(x, repeat=3))[:num_particles]

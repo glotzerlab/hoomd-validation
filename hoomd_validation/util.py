@@ -20,7 +20,7 @@ def total_ranks_function(ranks_per_job):
     return lambda *jobs: ranks_per_job * len(jobs)
 
 
-def get_job_filename(sim_mode, device, name, type):
+def get_job_filename(sim_mode, device, name, file_type):
     """Construct a job filename."""
     import hoomd
 
@@ -28,7 +28,7 @@ def get_job_filename(sim_mode, device, name, type):
     if isinstance(device, hoomd.device.GPU):
         suffix = 'gpu'
 
-    return f"{sim_mode}_{suffix}_{name}.{type}"
+    return f"{sim_mode}_{suffix}_{name}.{file_type}"
 
 
 def get_message_filename(job, filename):
@@ -36,8 +36,8 @@ def get_message_filename(job, filename):
     cluster_id = os.environ.get('SLURM_JOB_ID', None)
     if cluster_id is not None:
         return job.fn(f'{cluster_id}-{filename}')
-    else:
-        return job.fn(filename)
+
+    return job.fn(filename)
 
 
 def run_up_to_walltime(sim, end_step, steps, walltime_stop):

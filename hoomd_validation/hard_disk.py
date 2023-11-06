@@ -95,7 +95,8 @@ def hard_disk_create_initial_state(*jobs):
     N = int(numpy.ceil(num_particles**(1. / 2.)))
     x = numpy.linspace(-L / 2, L / 2, N, endpoint=False)
 
-    if x[1] - x[0] < 1.0:
+    particle_spacing = 1.0
+    if x[1] - x[0] < particle_spacing:
         raise RuntimeError('density too high to initialize on square lattice')
 
     position_2d = list(itertools.product(x, repeat=2))[:num_particles]

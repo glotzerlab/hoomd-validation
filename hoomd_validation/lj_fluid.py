@@ -121,7 +121,8 @@ def lj_fluid_create_initial_state(*jobs):
     N = int(numpy.ceil(sp["num_particles"]**(1. / 3.)))
     x = numpy.linspace(-L / 2, L / 2, N, endpoint=False)
 
-    if x[1] - x[0] < 1.0:
+    particle_spacing = 1.0
+    if x[1] - x[0] < particle_spacing:
         raise RuntimeError('density too high to initialize on cubic lattice')
 
     position = list(itertools.product(x, repeat=3))[:sp["num_particles"]]

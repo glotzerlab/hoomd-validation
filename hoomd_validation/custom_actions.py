@@ -24,8 +24,8 @@ class ComputeDensity(hoomd.custom.Action):
         """float: The density of the system."""
         if self.N is None:
             return self._state.N_particles / self._state.box.volume
-        else:
-            return self.N / self._state.box.volume
+
+        return self.N / self._state.box.volume
 
     def act(self, timestep):
         """Dummy act method."""

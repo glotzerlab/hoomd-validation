@@ -24,16 +24,19 @@ class ValidationDashboard(Dashboard):
             return f"lj_fluid: kT={job.statepoint.kT}, " \
                    f"rho={job.statepoint.density}, " \
                    f"N={job.statepoint.num_particles}"
-        elif job.statepoint.subproject == 'lj_union':
+
+        if job.statepoint.subproject == 'lj_union':
             return f"lj_union: kT={job.statepoint.kT}, " \
                    f"rho={job.statepoint.density}"
-        elif job.statepoint.subproject == 'alj_2d':
+
+        if job.statepoint.subproject == 'alj_2d':
             return f"alj_2d: kT={job.statepoint.kT}, " \
                    f"rho={job.statepoint.density}"
-        elif (job.statepoint.subproject in ("hard_disk", "hard_sphere", "simple_polygon", "patchy_particle_pressure")):
+
+        if (job.statepoint.subproject in ("hard_disk", "hard_sphere", "simple_polygon", "patchy_particle_pressure")):
             return f"{job.statepoint.subproject}: rho={job.statepoint.density}"
-        else:
-            raise RuntimeError("Unexpected job")
+
+        raise RuntimeError("Unexpected job")
 
     def job_sorter(self, job):
         """Sort jobs."""
@@ -45,8 +48,8 @@ class ValidationDashboard(Dashboard):
                 job.sp.chi,
                 job.sp.replicate_idx,
             )
-        else:
-            return job.statepoint.num_particles
+
+        return job.statepoint.num_particles
 
 
 if __name__ == "__main__":
