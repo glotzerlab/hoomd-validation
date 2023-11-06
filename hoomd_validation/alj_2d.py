@@ -349,7 +349,6 @@ analysis_aggregator = aggregator.groupby(key=['kT', 'density', 'num_particles'],
                    aggregator=analysis_aggregator)
 def alj_2d_conservation_analyze(*jobs):
     """Analyze the output of NVE simulations and inspect conservation."""
-    import h5py
     import math
     import matplotlib
     import matplotlib.style
@@ -372,8 +371,7 @@ def alj_2d_conservation_analyze(*jobs):
         job_linear_momentum = {}
 
         for sim_mode in sim_modes:
-            log_traj = h5py.File(mode='r',
-                                 name=job.fn(sim_mode + '_quantities.h5'))
+            log_traj = util.read_log(job.fn(sim_mode + '_quantities.h5'))
 
             job_timesteps[sim_mode] = log_traj['hoomd-data/Simulation/timestep']
 

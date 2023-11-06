@@ -890,7 +890,6 @@ if CONFIG['enable_llvm']:
                                    executable=CONFIG["executable"]))
 def lj_union_analyze(job):
     """Analyze the output of all simulation modes."""
-    import h5py
     import numpy
     import math
     import matplotlib
@@ -930,7 +929,7 @@ def lj_union_analyze(job):
     linear_momentum = {}
 
     for sim_mode in sim_modes:
-        log_traj = h5py.File(mode='r', name=job.fn(sim_mode + '_quantities.h5'))
+        log_traj = util.read_log(job.fn(sim_mode + '_quantities.h5'))
 
         timesteps[sim_mode] = log_traj['hoomd-data/Simulation/timestep']
 
@@ -1129,7 +1128,6 @@ def lj_union_compare_modes(*jobs):
                    aggregator=analysis_aggregator)
 def lj_union_distribution_analyze(*jobs):
     """Checks that MD follows the correct KE distribution."""
-    import h5py
     import numpy
     import matplotlib
     import matplotlib.style
@@ -1196,8 +1194,7 @@ def lj_union_distribution_analyze(*jobs):
             n_rotate_dof = num_particles * 3
 
             print('Reading' + job.fn(sim_mode + '_quantities.h5'))
-            log_traj = h5py.File(mode='r',
-                                 name=job.fn(sim_mode + '_quantities.h5'))
+            log_traj = util.read_log(job.fn(sim_mode + '_quantities.h5'))
 
             if 'md' in sim_mode:
                 # https://doi.org/10.1371/journal.pone.0202764
@@ -1453,7 +1450,6 @@ nve_analysis_aggregator = aggregator.groupby(
                    aggregator=nve_analysis_aggregator)
 def lj_union_conservation_analyze(*jobs):
     """Analyze the output of NVE simulations and inspect conservation."""
-    import h5py
     import math
     import matplotlib
     import matplotlib.style
@@ -1476,8 +1472,7 @@ def lj_union_conservation_analyze(*jobs):
         job_linear_momentum = {}
 
         for sim_mode in sim_modes:
-            log_traj = h5py.File(mode='r',
-                                 name=job.fn(sim_mode + '_quantities.h5'))
+            log_traj = util.read_log(job.fn(sim_mode + '_quantities.h5'))
 
             job_timesteps[sim_mode] = log_traj['hoomd-data/Simulation/timestep']
 

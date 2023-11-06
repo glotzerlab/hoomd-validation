@@ -594,7 +594,6 @@ for definition in job_definitions:
                                    executable=CONFIG["executable"]))
 def patchy_particle_pressure_analyze(job):
     """Analyze the output of all simulation modes."""
-    import h5py
     import numpy
     import matplotlib
     import matplotlib.style
@@ -615,7 +614,7 @@ def patchy_particle_pressure_analyze(job):
     densities = {}
 
     for sim_mode in sim_modes:
-        log_traj = h5py.File(mode='r', name=job.fn(sim_mode + '_quantities.h5'))
+        log_traj = util.read_log(job.fn(sim_mode + '_quantities.h5'))
 
         timesteps[sim_mode] = log_traj['hoomd-data/Simulation/timestep']
 

@@ -6,6 +6,7 @@
 import numpy
 import signac
 import os
+import h5py
 
 
 def true_all(*jobs, key):
@@ -333,3 +334,13 @@ def plot_timeseries(ax,
 def _sort_sim_modes(sim_modes):
     """Sort simulation modes for comparison."""
     sim_modes.sort(key=lambda x: ('nvt' in x or 'nec' in x, 'md' in x, x))
+
+
+def read_log(filename):
+    """Read a HDF5 log as a dictionary of logged quantities."""
+    with h5py.File(mode='r', name=filename) as f:
+        keys = []
+        f.visit(lambda name: keys.append(name))
+        result = {key: numpy.array(f[key]) for key in keys}
+
+    return result
