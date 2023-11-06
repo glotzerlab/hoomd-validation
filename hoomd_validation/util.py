@@ -28,7 +28,7 @@ def get_job_filename(sim_mode, device, name, file_type):
     if isinstance(device, hoomd.device.GPU):
         suffix = 'gpu'
 
-    return f"{sim_mode}_{suffix}_{name}.{file_type}"
+    return f'{sim_mode}_{suffix}_{name}.{file_type}'
 
 
 def get_message_filename(job, filename):
@@ -57,7 +57,7 @@ def run_up_to_walltime(sim, end_step, steps, walltime_stop):
                 writer.flush()
 
         next_walltime = sim.device.communicator.walltime + sim.walltime
-        if (next_walltime >= walltime_stop):
+        if next_walltime >= walltime_stop:
             break
 
 
@@ -118,21 +118,23 @@ def make_simulation(
     logger_table = hoomd.logging.Logger(categories=['scalar'])
     logger_table.add(sim, quantities=['timestep', 'final_timestep', 'tps'])
     logger_table[('walltime')] = (sim.device.communicator, 'walltime', 'scalar')
-    table_writer = hoomd.write.Table(hoomd.trigger.Periodic(table_write_period),
-                                     logger_table,
-                                     output=file)
+    table_writer = hoomd.write.Table(
+        hoomd.trigger.Periodic(table_write_period), logger_table, output=file
+    )
     sim.operations.add(table_writer)
 
     # write particle trajectory to a gsd file
     trajectory_writer = hoomd.write.GSD(
-        filename=job.fn(get_job_filename(sim_mode, device, 'trajectory',
-                                         'gsd')),
-        trigger=hoomd.trigger.And([
-            hoomd.trigger.Periodic(trajectory_write_period),
-            hoomd.trigger.After(log_start_step)
-        ]),
+        filename=job.fn(get_job_filename(sim_mode, device, 'trajectory', 'gsd')),
+        trigger=hoomd.trigger.And(
+            [
+                hoomd.trigger.Periodic(trajectory_write_period),
+                hoomd.trigger.After(log_start_step),
+            ]
+        ),
         logger=trajectory_logger,
-        mode='ab')
+        mode='ab',
+    )
     sim.operations.add(trajectory_writer)
 
     # write logged quantities to h5 file
@@ -140,12 +142,15 @@ def make_simulation(
 
     quantity_writer = hoomd.write.HDF5Log(
         filename=job.fn(get_job_filename(sim_mode, device, 'quantities', 'h5')),
-        trigger=hoomd.trigger.And([
-            hoomd.trigger.Periodic(log_write_period),
-            hoomd.trigger.After(log_start_step)
-        ]),
+        trigger=hoomd.trigger.And(
+            [
+                hoomd.trigger.Periodic(log_write_period),
+                hoomd.trigger.After(log_start_step),
+            ]
+        ),
         mode='w',
-        logger=logger)
+        logger=logger,
+    )
     sim.operations.add(quantity_writer)
 
     return sim
@@ -161,15 +166,12 @@ def make_seed(job, sim_mode=None):
     statepoint = job.statepoint()
     statepoint['sim_mode'] = sim_mode
 
-    return int(signac.job.calc_id(statepoint), 16) & 0xffff
+    return int(signac.job.calc_id(statepoint), 16) & 0xFFFF
 
 
-def plot_distribution(ax,
-                      data,
-                      independent_variable_label,
-                      expected=None,
-                      bins=100,
-                      plot_rotated=False):
+def plot_distribution(
+    ax, data, independent_variable_label, expected=None, bins=100, plot_rotated=False
+):
     """Plot distributions."""
     import numpy
 
@@ -181,10 +183,9 @@ def plot_distribution(ax,
 
     for mode in sim_modes:
         data_arr = numpy.asarray(data[mode])
-        histogram, bin_edges = numpy.histogram(data_arr,
-                                               bins=bins,
-                                               range=(range_min, range_max),
-                                               density=True)
+        histogram, bin_edges = numpy.histogram(
+            data_arr, bins=bins, range=(range_min, range_max), density=True
+        )
         bin_centers = 0.5 * (bin_edges[:-1] + bin_edges[1:])
 
         if numpy.all(data_arr == data_arr[0]):
@@ -203,39 +204,44 @@ def plot_distribution(ax,
 
     if callable(expected):
         if plot_rotated:
-            ax.plot(expected(bin_centers),
-                    bin_centers,
-                    linestyle='dashed',
-                    color='k',
-                    label='expected')
+            ax.plot(
+                expected(bin_centers),
+                bin_centers,
+                linestyle='dashed',
+                color='k',
+                label='expected',
+            )
         else:
-            ax.plot(bin_centers,
-                    expected(bin_centers),
-                    linestyle='dashed',
-                    color='k',
-                    label='expected')
+            ax.plot(
+                bin_centers,
+                expected(bin_centers),
+                linestyle='dashed',
+                color='k',
+                label='expected',
+            )
 
     elif expected is not None:
         if plot_rotated:
-            ax.hlines(y=expected,
-                      xmin=0,
-                      xmax=max_density_histogram,
-                      linestyles='dashed',
-                      colors='k')
+            ax.hlines(
+                y=expected,
+                xmin=0,
+                xmax=max_density_histogram,
+                linestyles='dashed',
+                colors='k',
+            )
         else:
-            ax.vlines(x=expected,
-                      ymin=0,
-                      ymax=max_density_histogram,
-                      linestyles='dashed',
-                      colors='k')
+            ax.vlines(
+                x=expected,
+                ymin=0,
+                ymax=max_density_histogram,
+                linestyles='dashed',
+                colors='k',
+            )
 
 
-def plot_vs_expected(ax,
-                     values,
-                     ylabel,
-                     expected=0,
-                     relative_scale=None,
-                     separate_nvt_npt=False):
+def plot_vs_expected(
+    ax, values, ylabel, expected=0, relative_scale=None, separate_nvt_npt=False
+):
     """Plot values vs an expected value."""
     sim_modes = values.keys()
 
@@ -247,8 +253,9 @@ def plot_vs_expected(ax,
             stderr_value[mode] = numpy.nan
         else:
             avg_value[mode] = numpy.mean(values[mode])
-            stderr_value[mode] = 2 * numpy.std(values[mode]) / numpy.sqrt(
-                len(values[mode]))
+            stderr_value[mode] = (
+                2 * numpy.std(values[mode]) / numpy.sqrt(len(values[mode]))
+            )
 
     # compute the energy differences
     value_list = [avg_value[mode] for mode in sim_modes]
@@ -257,14 +264,15 @@ def plot_vs_expected(ax,
     value_diff_list = numpy.array(value_list)
 
     if relative_scale is not None:
-        value_diff_list = (value_diff_list
-                           - expected) / expected * relative_scale
+        value_diff_list = (value_diff_list - expected) / expected * relative_scale
         stderr_list = stderr_list / expected * relative_scale
 
-    ax.errorbar(x=range(len(sim_modes)),
-                y=value_diff_list,
-                yerr=numpy.fabs(stderr_list),
-                fmt='s')
+    ax.errorbar(
+        x=range(len(sim_modes)),
+        y=value_diff_list,
+        yerr=numpy.fabs(stderr_list),
+        fmt='s',
+    )
     ax.set_xticks(range(len(sim_modes)), sim_modes, rotation=45)
     ax.set_ylabel(ylabel)
 
@@ -280,33 +288,26 @@ def plot_vs_expected(ax,
             nvt_mean = (nvt_mean - expected) / expected * relative_scale
 
         # _sort_sim_modes places npt modes first
-        ax.hlines(y=npt_mean,
-                  xmin=0,
-                  xmax=len(npt_modes) - 1,
-                  linestyles='dashed',
-                  colors='k')
+        ax.hlines(
+            y=npt_mean, xmin=0, xmax=len(npt_modes) - 1, linestyles='dashed', colors='k'
+        )
 
-        ax.hlines(y=nvt_mean,
-                  xmin=len(npt_modes),
-                  xmax=len(sim_modes) - 1,
-                  linestyles='dashed',
-                  colors='k')
+        ax.hlines(
+            y=nvt_mean,
+            xmin=len(npt_modes),
+            xmax=len(sim_modes) - 1,
+            linestyles='dashed',
+            colors='k',
+        )
     else:
-        ax.hlines(y=expected,
-                  xmin=0,
-                  xmax=len(sim_modes) - 1,
-                  linestyles='dashed',
-                  colors='k')
+        ax.hlines(
+            y=expected, xmin=0, xmax=len(sim_modes) - 1, linestyles='dashed', colors='k'
+        )
 
     return avg_value, stderr_value
 
 
-def plot_timeseries(ax,
-                    timesteps,
-                    data,
-                    ylabel,
-                    expected=None,
-                    max_points=None):
+def plot_timeseries(ax, timesteps, data, ylabel, expected=None, max_points=None):
     """Plot data as a time series."""
     provided_modes = list(data.keys())
 
@@ -321,15 +322,17 @@ def plot_timeseries(ax,
 
         ax.plot(plot_timestep, plot_data, label=mode)
 
-    ax.set_xlabel("time step")
+    ax.set_xlabel('time step')
     ax.set_ylabel(ylabel)
 
     if expected is not None:
-        ax.hlines(y=expected,
-                  xmin=0,
-                  xmax=timesteps[provided_modes[0]][-1],
-                  linestyles='dashed',
-                  colors='k')
+        ax.hlines(
+            y=expected,
+            xmin=0,
+            xmax=timesteps[provided_modes[0]][-1],
+            linestyles='dashed',
+            colors='k',
+        )
 
 
 def _sort_sim_modes(sim_modes):
@@ -343,4 +346,3 @@ def read_log(filename):
         keys = []
         f.visit(lambda name: keys.append(name))
         return {key: numpy.array(f[key]) for key in keys}
-

@@ -20,7 +20,7 @@ class ConfigFile(dict):
     instance.
     """
 
-    DEFAULT_CONFIG_PATH = str(Path(__file__).parent / "config.yaml")
+    DEFAULT_CONFIG_PATH = str(Path(__file__).parent / 'config.yaml')
 
     def __init__(self, config_file_path=DEFAULT_CONFIG_PATH):
         if not os.path.exists(config_file_path):
@@ -29,16 +29,15 @@ class ConfigFile(dict):
             with open(config_file_path) as file:
                 config = yaml.safe_load(file)
 
-        self["executable"] = self._parse_executable_string(config)
-        self["max_cores_sim"] = int(config.get("max_cores_sim", 16))
-        self["max_cores_submission"] = int(
-            config.get("max_cores_submission", 16))
-        self["max_gpus_submission"] = int(config.get("max_gpus_submission", 1))
-        self["max_walltime"] = float(config.get("max_walltime", 24))
-        self["short_walltime"] = float(config.get("short_walltime", 2))
-        self["replicates"] = int(config.get("replicates", 32))
-        self["enable_llvm"] = bool(config.get("enable_llvm", True))
-        self["enable_gpu"] = bool(config.get("enable_gpu", True))
+        self['executable'] = self._parse_executable_string(config)
+        self['max_cores_sim'] = int(config.get('max_cores_sim', 16))
+        self['max_cores_submission'] = int(config.get('max_cores_submission', 16))
+        self['max_gpus_submission'] = int(config.get('max_gpus_submission', 1))
+        self['max_walltime'] = float(config.get('max_walltime', 24))
+        self['short_walltime'] = float(config.get('short_walltime', 2))
+        self['replicates'] = int(config.get('replicates', 32))
+        self['enable_llvm'] = bool(config.get('enable_llvm', True))
+        self['enable_gpu'] = bool(config.get('enable_gpu', True))
 
     @staticmethod
     def _parse_executable_string(config_file):
@@ -48,17 +47,21 @@ class ConfigFile(dict):
         needed by flow's directives. If no config file is present, we use the
         python executable used to run this code.
         """
-        if "executable" not in config_file:
+        if 'executable' not in config_file:
             return sys.executable
 
-        return_string = ""
-        executable_options = config_file["executable"]
-        using_container = "singularity_container" in executable_options
+        return_string = ''
+        executable_options = config_file['executable']
+        using_container = 'singularity_container' in executable_options
         if using_container:
-            return_string += "singularity exec --nv " + executable_options.get(
-                "singularity_options", "") + " "
-            return_string += (executable_options["singularity_container"] + " ")
+            return_string += (
+                'singularity exec --nv '
+                + executable_options.get('singularity_options', '')
+                + ' '
+            )
+            return_string += executable_options['singularity_container'] + ' '
 
         return_string += executable_options.get(
-            "python_exec", "python" if using_container else sys.executable)
+            'python_exec', 'python' if using_container else sys.executable
+        )
         return return_string

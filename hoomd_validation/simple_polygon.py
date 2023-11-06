@@ -32,28 +32,30 @@ SHAPE_VERTICES = [
 
 WRITE_PERIOD = 1_000
 LOG_PERIOD = {'trajectory': 50_000, 'quantities': 100}
-NUM_CPU_RANKS = min(8, CONFIG["max_cores_sim"])
+NUM_CPU_RANKS = min(8, CONFIG['max_cores_sim'])
 
-WALLTIME_STOP_SECONDS = CONFIG["max_walltime"] * 3600 - 10 * 60
+WALLTIME_STOP_SECONDS = CONFIG['max_walltime'] * 3600 - 10 * 60
 
 
 def job_statepoints():
     """list(dict): A list of statepoints for this subproject."""
     num_particles = 64**2
-    replicate_indices = range(CONFIG["replicates"])
+    replicate_indices = range(CONFIG['replicates'])
     # statepoint chosen from initial tests: mean +- std_err_means =
     # 6.205344838518146 +- 0.0011239315686705335
     # based on nvt sims at density = 0.75 over 32 replicas
     params_list = [(0.75, 6.205)]  # mean +- st
     for density, pressure in params_list:
         for idx in replicate_indices:
-            yield ({
-                "subproject": "simple_polygon",
-                "density": density,
-                "pressure": pressure,
-                "num_particles": num_particles,
-                "replicate_idx": idx
-            })
+            yield (
+                {
+                    'subproject': 'simple_polygon',
+                    'density': density,
+                    'pressure': pressure,
+                    'num_particles': num_particles,
+                    'replicate_idx': idx,
+                }
+            )
 
 
 def is_simple_polygon(job):
@@ -61,23 +63,28 @@ def is_simple_polygon(job):
     return job.statepoint['subproject'] == 'simple_polygon'
 
 
-partition_jobs_cpu_serial = aggregator.groupsof(num=min(
-    CONFIG["replicates"], CONFIG["max_cores_submission"]),
-                                                sort_by='density',
-                                                select=is_simple_polygon)
+partition_jobs_cpu_serial = aggregator.groupsof(
+    num=min(CONFIG['replicates'], CONFIG['max_cores_submission']),
+    sort_by='density',
+    select=is_simple_polygon,
+)
 
-partition_jobs_cpu_mpi = aggregator.groupsof(num=min(
-    CONFIG["replicates"], CONFIG["max_cores_submission"] // NUM_CPU_RANKS),
-                                             sort_by='density',
-                                             select=is_simple_polygon)
+partition_jobs_cpu_mpi = aggregator.groupsof(
+    num=min(CONFIG['replicates'], CONFIG['max_cores_submission'] // NUM_CPU_RANKS),
+    sort_by='density',
+    select=is_simple_polygon,
+)
 
 
 @Project.post.isfile('simple_polygon_initial_state.gsd')
-@Project.operation(directives=dict(
-    executable=CONFIG["executable"],
-    nranks=util.total_ranks_function(NUM_CPU_RANKS),
-    walltime=1),
-                   aggregator=partition_jobs_cpu_mpi)
+@Project.operation(
+    directives=dict(
+        executable=CONFIG['executable'],
+        nranks=util.total_ranks_function(NUM_CPU_RANKS),
+        walltime=1,
+    ),
+    aggregator=partition_jobs_cpu_mpi,
+)
 def simple_polygon_create_initial_state(*jobs):
     """Create initial system configuration."""
     import itertools
@@ -85,8 +92,7 @@ def simple_polygon_create_initial_state(*jobs):
     import hoomd
     import numpy
 
-    communicator = hoomd.communicator.Communicator(
-        ranks_per_partition=NUM_CPU_RANKS)
+    communicator = hoomd.communicator.Communicator(ranks_per_partition=NUM_CPU_RANKS)
     job = jobs[communicator.partition]
 
     if communicator.rank == 0:
@@ -96,9 +102,9 @@ def simple_polygon_create_initial_state(*jobs):
     density = job.statepoint['density']
 
     box_volume = num_particles / density
-    L = box_volume**(1 / 2.)
+    L = box_volume ** (1 / 2.0)
 
-    N = int(numpy.ceil(num_particles**(1. / 2.)))
+    N = int(numpy.ceil(num_particles ** (1.0 / 2.0)))
     x = numpy.linspace(-L / 2, L / 2, N, endpoint=False)
 
     particle_spacing = 1.0
@@ -108,9 +114,10 @@ def simple_polygon_create_initial_state(*jobs):
     position_2d = list(itertools.product(x, repeat=2))[:num_particles]
 
     # create snapshot
-    device = hoomd.device.CPU(communicator=communicator,
-                              message_filename=util.get_message_filename(
-                                  job, 'create_initial_state.log'))
+    device = hoomd.device.CPU(
+        communicator=communicator,
+        message_filename=util.get_message_filename(job, 'create_initial_state.log'),
+    )
     snap = hoomd.Snapshot(communicator)
 
     if communicator.rank == 0:
@@ -138,7 +145,7 @@ def simple_polygon_create_initial_state(*jobs):
 
     hoomd.write.GSD.write(
         state=sim.state,
-        filename=job.fn("simple_polygon_initial_state.gsd"),
+        filename=job.fn('simple_polygon_initial_state.gsd'),
         mode='wb',
         logger=trajectory_logger,
     )
@@ -147,11 +154,7 @@ def simple_polygon_create_initial_state(*jobs):
         print(f'completed simple_polygon_create_initial_state: {job}')
 
 
-def make_mc_simulation(job,
-                       device,
-                       initial_state,
-                       sim_mode,
-                       extra_loggables=None):
+def make_mc_simulation(job, device, initial_state, sim_mode, extra_loggables=None):
     """Make a simple polygon MC Simulation.
 
     Args:
@@ -224,10 +227,13 @@ def make_mc_simulation(job,
         target=0.2,
         max_translation_move=0.5,
         max_rotation_move=2 * numpy.pi / 4,
-        trigger=hoomd.trigger.And([
-            hoomd.trigger.Periodic(100),
-            hoomd.trigger.Before(RANDOMIZE_STEPS + EQUILIBRATE_STEPS // 2)
-        ]))
+        trigger=hoomd.trigger.And(
+            [
+                hoomd.trigger.Periodic(100),
+                hoomd.trigger.Before(RANDOMIZE_STEPS + EQUILIBRATE_STEPS // 2),
+            ]
+        ),
+    )
     sim.operations.add(move_size_tuner)
 
     return sim
@@ -246,11 +252,7 @@ def run_nvt_sim(job, device, complete_filename):
         initial_state = job.fn('simple_polygon_initial_state.gsd')
         restart = False
 
-    sim = make_mc_simulation(job,
-                             device,
-                             initial_state,
-                             sim_mode,
-                             extra_loggables=[])
+    sim = make_mc_simulation(job, device, initial_state, sim_mode, extra_loggables=[])
 
     if not restart:
         # equilibrate
@@ -266,11 +268,9 @@ def run_nvt_sim(job, device, complete_filename):
         rotate_moves = sim.operations.integrator.rotate_moves
         rotate_acceptance = rotate_moves[0] / sum(rotate_moves)
         device.notice(f'Translate move acceptance: {translate_acceptance}')
-        device.notice(
-            f'Trial translate move size: {sim.operations.integrator.d["A"]}')
+        device.notice(f'Trial translate move size: {sim.operations.integrator.d["A"]}')
         device.notice(f'Rotate move acceptance: {rotate_acceptance}')
-        device.notice(
-            f'Trial rotate move size: {sim.operations.integrator.a["A"]}')
+        device.notice(f'Trial rotate move size: {sim.operations.integrator.a["A"]}')
 
         # save move size to a file
         if device.communicator.rank == 0:
@@ -278,9 +278,11 @@ def run_nvt_sim(job, device, complete_filename):
             with open(job.fn(name), 'w') as f:
                 json.dump(
                     dict(
-                        d_A=sim.operations.integrator.d["A"],
-                        a_A=sim.operations.integrator.a["A"],
-                    ), f)
+                        d_A=sim.operations.integrator.d['A'],
+                        a_A=sim.operations.integrator.a['A'],
+                    ),
+                    f,
+                )
     else:
         device.notice('Restarting...')
         # read move size from the file
@@ -288,31 +290,33 @@ def run_nvt_sim(job, device, complete_filename):
         with open(job.fn(name)) as f:
             data = json.load(f)
 
-        sim.operations.integrator.d["A"] = data['d_A']
-        sim.operations.integrator.a["A"] = data['a_A']
-        mcd = sim.operations.integrator.d["A"]
+        sim.operations.integrator.d['A'] = data['d_A']
+        sim.operations.integrator.a['A'] = data['a_A']
+        mcd = sim.operations.integrator.d['A']
         device.notice(f'Restored translate trial move size: {mcd}')
-        mca = sim.operations.integrator.a["A"]
+        mca = sim.operations.integrator.a['A']
         device.notice(f'Restored rotate trial move size: {mca}')
 
     # run
     device.notice('Running...')
 
-    util.run_up_to_walltime(sim=sim,
-                            end_step=TOTAL_STEPS,
-                            steps=RESTART_STEPS,
-                            walltime_stop=WALLTIME_STOP_SECONDS)
+    util.run_up_to_walltime(
+        sim=sim,
+        end_step=TOTAL_STEPS,
+        steps=RESTART_STEPS,
+        walltime_stop=WALLTIME_STOP_SECONDS,
+    )
 
-    hoomd.write.GSD.write(state=sim.state,
-                          filename=job.fn(restart_filename),
-                          mode='wb')
+    hoomd.write.GSD.write(state=sim.state, filename=job.fn(restart_filename), mode='wb')
 
     if sim.timestep == TOTAL_STEPS:
         pathlib.Path(job.fn(complete_filename)).touch()
         device.notice('Done.')
     else:
-        device.notice('Ending run early due to walltime limits at:'
-                      f'{device.communicator.walltime}')
+        device.notice(
+            'Ending run early due to walltime limits at:'
+            f'{device.communicator.walltime}'
+        )
 
 
 def run_npt_sim(job, device, complete_filename):
@@ -330,29 +334,35 @@ def run_npt_sim(job, device, complete_filename):
         restart = False
 
     # box updates
-    boxmc = hoomd.hpmc.update.BoxMC(betaP=job.statepoint.pressure,
-                                    trigger=hoomd.trigger.Periodic(1))
+    boxmc = hoomd.hpmc.update.BoxMC(
+        betaP=job.statepoint.pressure, trigger=hoomd.trigger.Periodic(1)
+    )
     boxmc.volume = dict(weight=1.0, mode='ln', delta=1e-6)
 
     # simulation
-    sim = make_mc_simulation(job,
-                             device,
-                             initial_state,
-                             sim_mode,
-                             extra_loggables=[
-                                 (boxmc, 'volume_moves'),
-                             ])
+    sim = make_mc_simulation(
+        job,
+        device,
+        initial_state,
+        sim_mode,
+        extra_loggables=[
+            (boxmc, 'volume_moves'),
+        ],
+    )
 
     sim.operations.add(boxmc)
 
     boxmc_tuner = hoomd.hpmc.tune.BoxMCMoveSize.scale_solver(
-        trigger=hoomd.trigger.And([
-            hoomd.trigger.Periodic(400),
-            hoomd.trigger.Before(RANDOMIZE_STEPS + EQUILIBRATE_STEPS // 2)
-        ]),
+        trigger=hoomd.trigger.And(
+            [
+                hoomd.trigger.Periodic(400),
+                hoomd.trigger.Before(RANDOMIZE_STEPS + EQUILIBRATE_STEPS // 2),
+            ]
+        ),
         boxmc=boxmc,
         moves=['volume'],
-        target=0.5)
+        target=0.5,
+    )
     sim.operations.add(boxmc_tuner)
 
     if not restart:
@@ -367,13 +377,11 @@ def run_npt_sim(job, device, complete_filename):
         translate_moves = sim.operations.integrator.translate_moves
         translate_acceptance = translate_moves[0] / sum(translate_moves)
         device.notice(f'Translate move acceptance: {translate_acceptance}')
-        device.notice(
-            f'Translate trial move size: {sim.operations.integrator.d["A"]}')
+        device.notice(f'Translate trial move size: {sim.operations.integrator.d["A"]}')
         rotate_moves = sim.operations.integrator.rotate_moves
         rotate_acceptance = rotate_moves[0] / sum(rotate_moves)
         device.notice(f'Rotate move acceptance: {rotate_acceptance}')
-        device.notice(
-            f'Rotate trial move size: {sim.operations.integrator.a["A"]}')
+        device.notice(f'Rotate trial move size: {sim.operations.integrator.a["A"]}')
 
         volume_moves = boxmc.volume_moves
         volume_acceptance = volume_moves[0] / sum(volume_moves)
@@ -385,9 +393,13 @@ def run_npt_sim(job, device, complete_filename):
             name = util.get_job_filename(sim_mode, device, 'move_size', 'json')
             with open(job.fn(name), 'w') as f:
                 json.dump(
-                    dict(d_A=sim.operations.integrator.d["A"],
-                         a_A=sim.operations.integrator.a["A"],
-                         volume_delta=boxmc.volume['delta']), f)
+                    dict(
+                        d_A=sim.operations.integrator.d['A'],
+                        a_A=sim.operations.integrator.a['A'],
+                        volume_delta=boxmc.volume['delta'],
+                    ),
+                    f,
+                )
     else:
         device.notice('Restarting...')
         # read move size from the file
@@ -395,32 +407,34 @@ def run_npt_sim(job, device, complete_filename):
         with open(job.fn(name)) as f:
             data = json.load(f)
 
-        sim.operations.integrator.d["A"] = data['d_A']
-        sim.operations.integrator.a["A"] = data['a_A']
-        mcd = sim.operations.integrator.d["A"]
+        sim.operations.integrator.d['A'] = data['d_A']
+        sim.operations.integrator.a['A'] = data['a_A']
+        mcd = sim.operations.integrator.d['A']
         device.notice(f'Restored translate trial move size: {mcd}')
-        mca = sim.operations.integrator.a["A"]
+        mca = sim.operations.integrator.a['A']
         device.notice(f'Restored rotate trial move size: {mca}')
         boxmc.volume = dict(weight=1.0, mode='ln', delta=data['volume_delta'])
         device.notice(f'Restored volume move size: {boxmc.volume["delta"]}')
 
     # run
     device.notice('Running...')
-    util.run_up_to_walltime(sim=sim,
-                            end_step=TOTAL_STEPS,
-                            steps=100_000,
-                            walltime_stop=WALLTIME_STOP_SECONDS)
+    util.run_up_to_walltime(
+        sim=sim,
+        end_step=TOTAL_STEPS,
+        steps=100_000,
+        walltime_stop=WALLTIME_STOP_SECONDS,
+    )
 
-    hoomd.write.GSD.write(state=sim.state,
-                          filename=job.fn(restart_filename),
-                          mode='wb')
+    hoomd.write.GSD.write(state=sim.state, filename=job.fn(restart_filename), mode='wb')
 
     if sim.timestep == TOTAL_STEPS:
         pathlib.Path(job.fn(complete_filename)).touch()
         device.notice('Done.')
     else:
-        device.notice('Ending run early due to walltime limits at:'
-                      f'{device.communicator.walltime}')
+        device.notice(
+            'Ending run early due to walltime limits at:'
+            f'{device.communicator.walltime}'
+        )
 
 
 sampling_jobs = []
@@ -429,45 +443,54 @@ job_definitions = [
         'mode': 'nvt',
         'device_name': 'cpu',
         'ranks_per_partition': NUM_CPU_RANKS,
-        'aggregator': partition_jobs_cpu_mpi
+        'aggregator': partition_jobs_cpu_mpi,
     },
     {
         'mode': 'npt',
         'device_name': 'cpu',
         'ranks_per_partition': NUM_CPU_RANKS,
-        'aggregator': partition_jobs_cpu_mpi
+        'aggregator': partition_jobs_cpu_mpi,
     },
 ]
 
 
 def add_sampling_job(mode, device_name, ranks_per_partition, aggregator):
     """Add a sampling job to the workflow."""
-    directives = dict(walltime=CONFIG["max_walltime"],
-                      executable=CONFIG["executable"],
-                      nranks=util.total_ranks_function(ranks_per_partition))
+    directives = dict(
+        walltime=CONFIG['max_walltime'],
+        executable=CONFIG['executable'],
+        nranks=util.total_ranks_function(ranks_per_partition),
+    )
 
     @Project.pre.after(simple_polygon_create_initial_state)
     @Project.post.isfile(f'{mode}_{device_name}_complete')
-    @Project.operation(name=f'simple_polygon_{mode}_{device_name}',
-                       directives=directives,
-                       aggregator=aggregator)
+    @Project.operation(
+        name=f'simple_polygon_{mode}_{device_name}',
+        directives=directives,
+        aggregator=aggregator,
+    )
     def sampling_operation(*jobs):
         """Perform sampling simulation given the definition."""
         import hoomd
 
         communicator = hoomd.communicator.Communicator(
-            ranks_per_partition=ranks_per_partition)
+            ranks_per_partition=ranks_per_partition
+        )
         job = jobs[communicator.partition]
 
         if communicator.rank == 0:
             print(f'starting simple_polygon_{mode}_{device_name}:', job)
 
-        device = hoomd.device.CPU(communicator=communicator,
-                                  message_filename=util.get_message_filename(
-                                      job, f'{mode}_{device_name}.log'))
+        device = hoomd.device.CPU(
+            communicator=communicator,
+            message_filename=util.get_message_filename(
+                job, f'{mode}_{device_name}.log'
+            ),
+        )
 
         globals().get(f'run_{mode}_sim')(
-            job, device, complete_filename=f'{mode}_{device_name}_complete')
+            job, device, complete_filename=f'{mode}_{device_name}_complete'
+        )
 
         if communicator.rank == 0:
             print(f'completed simple_polygon_{mode}_{device_name} {job}')
@@ -482,14 +505,16 @@ for definition in job_definitions:
 @Project.pre(is_simple_polygon)
 @Project.pre.after(*sampling_jobs)
 @Project.post.true('simple_polygon_analysis_complete')
-@Project.operation(directives=dict(walltime=CONFIG['short_walltime'],
-                                   executable=CONFIG["executable"]))
+@Project.operation(
+    directives=dict(walltime=CONFIG['short_walltime'], executable=CONFIG['executable'])
+)
 def simple_polygon_analyze(job):
     """Analyze the output of all simulation modes."""
     import matplotlib
     import matplotlib.figure
     import matplotlib.style
     import numpy
+
     matplotlib.style.use('fivethirtyeight')
 
     print('starting simple_polygon_analyze:', job)
@@ -513,55 +538,68 @@ def simple_polygon_analyze(job):
         pressures[sim_mode] = log_traj['hoomd-data/hpmc/compute/SDF/betaP']
 
         densities[sim_mode] = log_traj[
-            'hoomd-data/custom_actions/ComputeDensity/density']
+            'hoomd-data/custom_actions/ComputeDensity/density'
+        ]
 
     # save averages
     for mode in sim_modes:
-        job.document[mode] = dict(pressure=float(numpy.mean(pressures[mode])),
-                                  density=float(numpy.mean(densities[mode])))
+        job.document[mode] = dict(
+            pressure=float(numpy.mean(pressures[mode])),
+            density=float(numpy.mean(densities[mode])),
+        )
 
     # Plot results
     fig = matplotlib.figure.Figure(figsize=(10, 10 / 1.618 * 2), layout='tight')
     ax = fig.add_subplot(2, 1, 1)
-    util.plot_timeseries(ax=ax,
-                         timesteps=timesteps,
-                         data=densities,
-                         ylabel=r"$\rho$",
-                         expected=job.sp.density,
-                         max_points=500)
+    util.plot_timeseries(
+        ax=ax,
+        timesteps=timesteps,
+        data=densities,
+        ylabel=r'$\rho$',
+        expected=job.sp.density,
+        max_points=500,
+    )
     ax.legend()
 
     ax = fig.add_subplot(2, 1, 2)
-    util.plot_timeseries(ax=ax,
-                         timesteps=timesteps,
-                         data=pressures,
-                         ylabel=r"$\beta P$",
-                         expected=job.sp.pressure,
-                         max_points=500)
+    util.plot_timeseries(
+        ax=ax,
+        timesteps=timesteps,
+        data=pressures,
+        ylabel=r'$\beta P$',
+        expected=job.sp.pressure,
+        max_points=500,
+    )
 
-    fig.suptitle(f"$\\rho={job.statepoint.density}$, "
-                 f"$N={job.statepoint.num_particles}$, "
-                 f"replicate={job.statepoint.replicate_idx}")
+    fig.suptitle(
+        f'$\\rho={job.statepoint.density}$, '
+        f'$N={job.statepoint.num_particles}$, '
+        f'replicate={job.statepoint.replicate_idx}'
+    )
     fig.savefig(job.fn('nvt_npt_plots.svg'), bbox_inches='tight')
 
     job.document['simple_polygon_analysis_complete'] = True
 
 
-@Project.pre(
-    lambda *jobs: util.true_all(*jobs, key='simple_polygon_analysis_complete'))
-@Project.post(lambda *jobs: util.true_all(
-    *jobs, key='simple_polygon_compare_modes_complete'))
-@Project.operation(directives=dict(executable=CONFIG["executable"]),
-                   aggregator=aggregator.groupby(
-                       key=['density', 'num_particles'],
-                       sort_by='replicate_idx',
-                       select=is_simple_polygon))
+@Project.pre(lambda *jobs: util.true_all(*jobs, key='simple_polygon_analysis_complete'))
+@Project.post(
+    lambda *jobs: util.true_all(*jobs, key='simple_polygon_compare_modes_complete')
+)
+@Project.operation(
+    directives=dict(executable=CONFIG['executable']),
+    aggregator=aggregator.groupby(
+        key=['density', 'num_particles'],
+        sort_by='replicate_idx',
+        select=is_simple_polygon,
+    ),
+)
 def simple_polygon_compare_modes(*jobs):
     """Compares the tested simulation modes."""
     import matplotlib
     import matplotlib.figure
     import matplotlib.style
     import numpy
+
     matplotlib.style.use('fivethirtyeight')
 
     print('starting simple_polygon_compare_modes:', jobs[0])
@@ -588,7 +626,7 @@ def simple_polygon_compare_modes(*jobs):
     quantity_reference = dict(density=set_density, pressure=set_pressure)
 
     fig = matplotlib.figure.Figure(figsize=(10, 10 / 1.618 * 2), layout='tight')
-    fig.suptitle(f"$\\rho={set_density}$, $N={num_particles}$")
+    fig.suptitle(f'$\\rho={set_density}$, $N={num_particles}$')
 
     for i, quantity_name in enumerate(quantity_names):
         ax = fig.add_subplot(2, 1, i + 1)
@@ -597,15 +635,12 @@ def simple_polygon_compare_modes(*jobs):
         quantities = {mode: [] for mode in sim_modes}
         for jb in jobs:
             for mode in sim_modes:
-                quantities[mode].append(
-                    getattr(getattr(jb.doc, mode), quantity_name))
+                quantities[mode].append(getattr(getattr(jb.doc, mode), quantity_name))
 
         if quantity_reference[quantity_name] is not None:
             reference = quantity_reference[quantity_name]
         else:
-            avg_value = {
-                mode: numpy.mean(quantities[mode]) for mode in sim_modes
-            }
+            avg_value = {mode: numpy.mean(quantities[mode]) for mode in sim_modes}
             reference = numpy.mean([avg_value[mode] for mode in sim_modes])
 
         avg_quantity, stderr_quantity = util.plot_vs_expected(
@@ -614,11 +649,11 @@ def simple_polygon_compare_modes(*jobs):
             ylabel=labels[quantity_name],
             expected=reference,
             relative_scale=1000,
-            separate_nvt_npt=True)
+            separate_nvt_npt=True,
+        )
 
     filename = f'simple_polygon_compare_density{round(set_density, 2)}.svg'
-    fig.savefig(os.path.join(jobs[0]._project.path, filename),
-                bbox_inches='tight')
+    fig.savefig(os.path.join(jobs[0]._project.path, filename), bbox_inches='tight')
 
     for job in jobs:
         job.document['simple_polygon_compare_modes_complete'] = True
