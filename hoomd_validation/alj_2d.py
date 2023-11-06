@@ -360,7 +360,7 @@ def alj_2d_conservation_analyze(*jobs):
     print('starting alj_2d_conservation_analyze:', jobs[0])
 
     sim_modes = ['nve_md_cpu']
-    if os.path.exists(jobs[0].fn('nve_md_gpu_quantities.gsd')):
+    if os.path.exists(jobs[0].fn('nve_md_gpu_quantities.h5')):
         sim_modes.extend(['nve_md_gpu'])
 
     timesteps = []
@@ -373,9 +373,9 @@ def alj_2d_conservation_analyze(*jobs):
         job_linear_momentum = {}
 
         for sim_mode in sim_modes:
-            log_traj = h5py.File(mode='r', name=job.fn(sim_mode + '_quantities.gsd'))
+            log_traj = h5py.File(mode='r', name=job.fn(sim_mode + '_quantities.h5'))
 
-            job_timesteps[sim_mode] = log_traj['configuration/step']
+            job_timesteps[sim_mode] = log_traj['hoomd-data/Simulation/timestep']
 
             job_energies[sim_mode] = (
                 log_traj[

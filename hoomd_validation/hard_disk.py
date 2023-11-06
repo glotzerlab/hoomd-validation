@@ -604,7 +604,7 @@ def hard_disk_analyze(job):
         'npt_cpu',
     ]
 
-    if os.path.exists(job.fn('nvt_gpu_quantities.gsd')):
+    if os.path.exists(job.fn('nvt_gpu_quantities.h5')):
         sim_modes.extend(['nvt_gpu'])
 
     util._sort_sim_modes(sim_modes)
@@ -614,9 +614,9 @@ def hard_disk_analyze(job):
     densities = {}
 
     for sim_mode in sim_modes:
-        log_traj = h5py.File(mode='r', name=job.fn(sim_mode + '_quantities.gsd'))
+        log_traj = h5py.File(mode='r', name=job.fn(sim_mode + '_quantities.h5'))
 
-        timesteps[sim_mode] = log_traj['configuration/step']
+        timesteps[sim_mode] = log_traj['hoomd-data/Simulation/timestep']
 
         if 'nec' in sim_mode:
             pressures[sim_mode] = log_traj[
@@ -684,7 +684,7 @@ def hard_disk_compare_modes(*jobs):
         'npt_cpu',
     ]
 
-    if os.path.exists(jobs[0].fn('nvt_gpu_quantities.gsd')):
+    if os.path.exists(jobs[0].fn('nvt_gpu_quantities.h5')):
         sim_modes.extend(['nvt_gpu'])
 
     util._sort_sim_modes(sim_modes)

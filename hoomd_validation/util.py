@@ -134,6 +134,8 @@ def make_simulation(
     sim.operations.add(trajectory_writer)
 
     # write logged quantities to h5 file
+    logger.add(sim, quantities=['timestep'])
+
     quantity_writer = hoomd.write.HDF5Log(
         filename=job.fn(get_job_filename(sim_mode, device, 'quantities',
                                          'h5')),

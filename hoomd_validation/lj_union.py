@@ -908,7 +908,7 @@ def lj_union_analyze(job):
         'npt_bussi_md_cpu',
     ]
 
-    if os.path.exists(job.fn('nvt_langevin_md_gpu_quantities.gsd')):
+    if os.path.exists(job.fn('nvt_langevin_md_gpu_quantities.h5')):
         sim_modes.extend([
             'nvt_langevin_md_gpu',
             'nvt_mttk_md_gpu',
@@ -916,10 +916,10 @@ def lj_union_analyze(job):
             'npt_bussi_md_gpu',
         ])
 
-    if os.path.exists(job.fn('nvt_mc_cpu_quantities.gsd')):
+    if os.path.exists(job.fn('nvt_mc_cpu_quantities.h5')):
         sim_modes.extend(['nvt_mc_cpu', 'npt_mc_cpu'])
 
-    if os.path.exists(job.fn('nvt_mc_gpu_quantities.gsd')):
+    if os.path.exists(job.fn('nvt_mc_gpu_quantities.h5')):
         sim_modes.extend(['nvt_mc_gpu'])
 
     util._sort_sim_modes(sim_modes)
@@ -931,9 +931,9 @@ def lj_union_analyze(job):
     linear_momentum = {}
 
     for sim_mode in sim_modes:
-        log_traj = h5py.File(mode='r', name=job.fn(sim_mode + '_quantities.gsd'))
+        log_traj = h5py.File(mode='r', name=job.fn(sim_mode + '_quantities.h5'))
 
-        timesteps[sim_mode] = log_traj['configuration/step']
+        timesteps[sim_mode] = log_traj['hoomd-data/Simulation/timestep']
 
         if 'md' in sim_mode:
             energies[sim_mode] = log_traj[
@@ -1041,7 +1041,7 @@ def lj_union_compare_modes(*jobs):
         'npt_bussi_md_cpu',
     ]
 
-    if os.path.exists(jobs[0].fn('nvt_langevin_md_gpu_quantities.gsd')):
+    if os.path.exists(jobs[0].fn('nvt_langevin_md_gpu_quantities.h5')):
         sim_modes.extend([
             'nvt_langevin_md_gpu',
             'nvt_mttk_md_gpu',
@@ -1049,10 +1049,10 @@ def lj_union_compare_modes(*jobs):
             'npt_bussi_md_gpu',
         ])
 
-    if os.path.exists(jobs[0].fn('nvt_mc_cpu_quantities.gsd')):
+    if os.path.exists(jobs[0].fn('nvt_mc_cpu_quantities.h5')):
         sim_modes.extend(['nvt_mc_cpu', 'npt_mc_cpu'])
 
-    if os.path.exists(jobs[0].fn('nvt_mc_gpu_quantities.gsd')):
+    if os.path.exists(jobs[0].fn('nvt_mc_gpu_quantities.h5')):
         sim_modes.extend(['nvt_mc_gpu'])
 
     util._sort_sim_modes(sim_modes)
@@ -1146,7 +1146,7 @@ def lj_union_distribution_analyze(*jobs):
         'npt_bussi_md_cpu',
     ]
 
-    if os.path.exists(jobs[0].fn('nvt_langevin_md_gpu_quantities.gsd')):
+    if os.path.exists(jobs[0].fn('nvt_langevin_md_gpu_quantities.h5')):
         sim_modes.extend([
             'nvt_langevin_md_gpu',
             'nvt_mttk_md_gpu',
@@ -1154,10 +1154,10 @@ def lj_union_distribution_analyze(*jobs):
             'npt_bussi_md_gpu',
         ])
 
-    if os.path.exists(jobs[0].fn('nvt_mc_cpu_quantities.gsd')):
+    if os.path.exists(jobs[0].fn('nvt_mc_cpu_quantities.h5')):
         sim_modes.extend(['nvt_mc_cpu', 'npt_mc_cpu'])
 
-    if os.path.exists(jobs[0].fn('nvt_mc_gpu_quantities.gsd')):
+    if os.path.exists(jobs[0].fn('nvt_mc_gpu_quantities.h5')):
         sim_modes.extend(['nvt_mc_gpu'])
 
     util._sort_sim_modes(sim_modes)
@@ -1195,8 +1195,8 @@ def lj_union_distribution_analyze(*jobs):
 
             n_rotate_dof = num_particles * 3
 
-            print('Reading' + job.fn(sim_mode + '_quantities.gsd'))
-            log_traj = h5py.File(mode='r', name=job.fn(sim_mode + '_quantities.gsd'))
+            print('Reading' + job.fn(sim_mode + '_quantities.h5'))
+            log_traj = h5py.File(mode='r', name=job.fn(sim_mode + '_quantities.h5'))
 
             if 'md' in sim_mode:
                 # https://doi.org/10.1371/journal.pone.0202764
@@ -1461,7 +1461,7 @@ def lj_union_conservation_analyze(*jobs):
     print('starting lj_union_conservation_analyze:', jobs[0])
 
     sim_modes = ['nve_md_cpu']
-    if os.path.exists(jobs[0].fn('nve_md_gpu_quantities.gsd')):
+    if os.path.exists(jobs[0].fn('nve_md_gpu_quantities.h5')):
         sim_modes.extend(['nve_md_gpu'])
 
     timesteps = []
@@ -1474,9 +1474,9 @@ def lj_union_conservation_analyze(*jobs):
         job_linear_momentum = {}
 
         for sim_mode in sim_modes:
-            log_traj = h5py.File(mode='r', name=job.fn(sim_mode + '_quantities.gsd'))
+            log_traj = h5py.File(mode='r', name=job.fn(sim_mode + '_quantities.h5'))
 
-            job_timesteps[sim_mode] = log_traj['configuration/step']
+            job_timesteps[sim_mode] = log_traj['hoomd-data/Simulation/timestep']
 
             job_energies[sim_mode] = (
                 log_traj[

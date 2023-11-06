@@ -606,7 +606,7 @@ def patchy_particle_pressure_analyze(job):
 
     sim_modes = []
     for _ensemble in ['nvt', 'npt']:
-        if job.isfile(f'{_ensemble}_cpu_quantities.gsd'):
+        if job.isfile(f'{_ensemble}_cpu_quantities.h5'):
             sim_modes.append(f'{_ensemble}_cpu')
 
     util._sort_sim_modes(sim_modes)
@@ -616,9 +616,9 @@ def patchy_particle_pressure_analyze(job):
     densities = {}
 
     for sim_mode in sim_modes:
-        log_traj = h5py.File(mode='r', name=job.fn(sim_mode + '_quantities.gsd'))
+        log_traj = h5py.File(mode='r', name=job.fn(sim_mode + '_quantities.h5'))
 
-        timesteps[sim_mode] = log_traj['configuration/step']
+        timesteps[sim_mode] = log_traj['hoomd-data/Simulation/timestep']
 
         pressures[sim_mode] = log_traj['hoomd-data/hpmc/compute/SDF/betaP']
 
@@ -712,7 +712,7 @@ def patchy_particle_pressure_compare_modes(*jobs):
 
     sim_modes = []
     for _ensemble in ['nvt', 'npt']:
-        if jobs[0].isfile(f'{_ensemble}_cpu_quantities.gsd'):
+        if jobs[0].isfile(f'{_ensemble}_cpu_quantities.h5'):
             sim_modes.append(f'{_ensemble}_cpu')
 
     util._sort_sim_modes(sim_modes)
