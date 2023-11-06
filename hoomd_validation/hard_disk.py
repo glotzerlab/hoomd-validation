@@ -10,6 +10,7 @@ import util
 import os
 import json
 import pathlib
+import h5py
 
 # Run parameters shared between simulations.
 # Step counts must be even and a multiple of the log quantity period.
@@ -165,12 +166,12 @@ def make_mc_simulation(job,
     sdf = hoomd.hpmc.compute.SDF(xmax=0.02, dx=1e-4)
 
     # log to gsd
-    logger_gsd = hoomd.logging.Logger(categories=['scalar', 'sequence'])
-    logger_gsd.add(mc, quantities=['translate_moves'])
-    logger_gsd.add(sdf, quantities=['betaP'])
-    logger_gsd.add(compute_density, quantities=['density'])
+    logger = hoomd.logging.Logger(categories=['scalar', 'sequence'])
+    logger.add(mc, quantities=['translate_moves'])
+    logger.add(sdf, quantities=['betaP'])
+    logger.add(compute_density, quantities=['density'])
     for loggable, quantity in extra_loggables:
-        logger_gsd.add(loggable, quantities=[quantity])
+        logger.add(loggable, quantities=[quantity])
 
     # make simulation
     sim = util.make_simulation(job=job,
@@ -178,7 +179,7 @@ def make_mc_simulation(job,
                                initial_state=initial_state,
                                integrator=mc,
                                sim_mode=sim_mode,
-                               logger=logger_gsd,
+                               logger=logger,
                                table_write_period=WRITE_PERIOD,
                                trajectory_write_period=LOG_PERIOD['trajectory'],
                                log_write_period=LOG_PERIOD['quantities'],
@@ -399,13 +400,13 @@ def run_nec_sim(job, device, complete_filename):
     compute_density = ComputeDensity()
 
     # log to gsd
-    logger_gsd = hoomd.logging.Logger(categories=['scalar', 'sequence'])
-    logger_gsd.add(mc,
+    logger = hoomd.logging.Logger(categories=['scalar', 'sequence'])
+    logger.add(mc,
                    quantities=[
                        'translate_moves', 'particles_per_chain',
                        'virial_pressure'
                    ])
-    logger_gsd.add(compute_density, quantities=['density'])
+    logger.add(compute_density, quantities=['density'])
 
     # make simulation
     sim = util.make_simulation(job=job,
@@ -413,7 +414,7 @@ def run_nec_sim(job, device, complete_filename):
                                initial_state=initial_state,
                                integrator=mc,
                                sim_mode=sim_mode,
-                               logger=logger_gsd,
+                               logger=logger,
                                table_write_period=WRITE_PERIOD,
                                trajectory_write_period=LOG_PERIOD['trajectory'],
                                log_write_period=LOG_PERIOD['quantities'],
@@ -613,18 +614,18 @@ def hard_disk_analyze(job):
     densities = {}
 
     for sim_mode in sim_modes:
-        log_traj = gsd.hoomd.read_log(job.fn(sim_mode + '_quantities.gsd'))
+        log_traj = h5py.File(mode='r', name=job.fn(sim_mode + '_quantities.gsd'))
 
         timesteps[sim_mode] = log_traj['configuration/step']
 
         if 'nec' in sim_mode:
             pressures[sim_mode] = log_traj[
-                'log/hpmc/nec/integrate/Sphere/virial_pressure']
+                'hoomd-data/hpmc/nec/integrate/Sphere/virial_pressure']
         else:
-            pressures[sim_mode] = log_traj['log/hpmc/compute/SDF/betaP']
+            pressures[sim_mode] = log_traj['hoomd-data/hpmc/compute/SDF/betaP']
 
         densities[sim_mode] = log_traj[
-            'log/custom_actions/ComputeDensity/density']
+            'hoomd-data/custom_actions/ComputeDensity/density']
 
     # save averages
     for mode in sim_modes:

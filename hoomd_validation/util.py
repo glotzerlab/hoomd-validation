@@ -121,16 +121,16 @@ def make_simulation(
                                      output=file)
     sim.operations.add(table_writer)
 
-    # write particle trajectory to gsd file
-    trajectory_writer = hoomd.write.GSD(
+    # write particle trajectory to a h5 file
+    trajectory_writer = hoomd.write.HDF5Log(
         filename=job.fn(get_job_filename(sim_mode, device, 'trajectory',
-                                         'gsd')),
+                                         'h5')),
         trigger=hoomd.trigger.And([
             hoomd.trigger.Periodic(trajectory_write_period),
             hoomd.trigger.After(log_start_step)
         ]),
         logger=trajectory_logger,
-        mode='ab')
+        mode='w')
     sim.operations.add(trajectory_writer)
 
     # write logged quantities to gsd file

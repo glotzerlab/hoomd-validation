@@ -9,6 +9,7 @@ from flow import aggregator
 import util
 import os
 import pathlib
+import h5py
 
 # Run parameters shared between simulations.
 # Step counts must be even and a multiple of the log quantity period.
@@ -372,20 +373,20 @@ def alj_2d_conservation_analyze(*jobs):
         job_linear_momentum = {}
 
         for sim_mode in sim_modes:
-            log_traj = gsd.hoomd.read_log(job.fn(sim_mode + '_quantities.gsd'))
+            log_traj = h5py.File(mode='r', name=job.fn(sim_mode + '_quantities.gsd'))
 
             job_timesteps[sim_mode] = log_traj['configuration/step']
 
             job_energies[sim_mode] = (
                 log_traj[
-                    'log/md/compute/ThermodynamicQuantities/potential_energy']
+                    'hoomd-data/md/compute/ThermodynamicQuantities/potential_energy']
                 + log_traj[
-                    'log/md/compute/ThermodynamicQuantities/kinetic_energy'])
+                    'hoomd-data/md/compute/ThermodynamicQuantities/kinetic_energy'])
             job_energies[sim_mode] = (
                 job_energies[sim_mode]
                 - job_energies[sim_mode][0]) / job.statepoint["num_particles"]
 
-            momentum_vector = log_traj['log/md/Integrator/linear_momentum']
+            momentum_vector = log_traj['hoomd-data/md/Integrator/linear_momentum']
             job_linear_momentum[sim_mode] = [
                 math.sqrt(v[0]**2 + v[1]**2 + v[2]**2)
                 / job.statepoint["num_particles"] for v in momentum_vector
