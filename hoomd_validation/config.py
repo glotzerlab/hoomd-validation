@@ -3,8 +3,9 @@
 
 """Initialize signac projects and create global variables."""
 
-from config_parser import ConfigFile
 from pathlib import Path
+
+from config_parser import ConfigFile
 
 # path to container image for simulations
 CONFIG = ConfigFile()

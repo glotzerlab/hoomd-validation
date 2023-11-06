@@ -3,15 +3,16 @@
 
 """Lennard Jones phase behavior validation test (union particles)."""
 
-from config import CONFIG
-from project_class import Project
-from flow import aggregator
-import util
-import os
-import math
 import collections
 import json
+import math
+import os
 import pathlib
+
+import util
+from config import CONFIG
+from flow import aggregator
+from project_class import Project
 
 # Run parameters shared between simulations.
 # Step counts must be even and a multiple of the log quantity period.
@@ -83,9 +84,10 @@ partition_jobs_gpu = aggregator.groupsof(num=min(CONFIG["replicates"],
                    aggregator=partition_jobs_cpu_mpi)
 def lj_union_create_initial_state(*jobs):
     """Create initial system configuration."""
+    import itertools
+
     import hoomd
     import numpy
-    import itertools
 
     min_spacing = math.sqrt(3) + 1
 
@@ -271,8 +273,8 @@ def make_md_simulation(job,
 def run_md_sim(job, device, ensemble, thermostat, complete_filename):
     """Run the MD simulation with the given ensemble and thermostat."""
     import hoomd
-    from hoomd import md
     from custom_actions import ComputeDensity
+    from hoomd import md
 
     initial_state = job.fn('lj_union_initial_state_md.gsd')
 
@@ -320,8 +322,7 @@ def run_md_sim(job, device, ensemble, thermostat, complete_filename):
                                           job.sp.kT)
 
     # thermalize the thermostat (if applicable)
-    if ((isinstance(method, md.methods.ConstantVolume)
-         or isinstance(method, md.methods.ConstantPressure))
+    if ((isinstance(method, (md.methods.ConstantPressure, md.methods.ConstantVolume)))
             and hasattr(method.thermostat, 'thermalize_dof')):
         sim.run(0)
         method.thermostat.thermalize_dof()
@@ -478,8 +479,8 @@ def make_mc_simulation(job,
         Patch energies are logged by default.
     """
     import hoomd
-    from hoomd import hpmc
     from custom_actions import ComputeDensity
+    from hoomd import hpmc
 
     # integrator
     mc = hpmc.integrate.Sphere(nselect=1)
@@ -493,7 +494,7 @@ def make_mc_simulation(job,
     r_cut = LJ_PARAMS['r_cut']
 
     # the potential will have xplor smoothing with r_on=2
-    lj_str = """// standard lj energy with sigma set to 1
+    lj_str = f"""// standard lj energy with sigma set to 1
                 float rsq = dot(r_ij, r_ij);
                 float r_cut = {r_cut};
                 float r_cutsq = r_cut * r_cut;
@@ -535,7 +536,7 @@ def make_mc_simulation(job,
                     energy = energy * smoothing;
                 }}
                 return energy;
-            """.format(epsilon=epsilon, sigma=sigma, r_on=r_on, r_cut=r_cut)
+            """
 
     if isinstance(device, hoomd.device.CPU):
         code_isotropic = 'return 0.0f;'
@@ -666,7 +667,7 @@ def run_nvt_mc_sim(job, device, complete_filename):
         device.notice('Restarting...')
         # read move size from the file
         name = util.get_job_filename(sim_mode, device, 'move_size', 'json')
-        with open(job.fn(name), 'r') as f:
+        with open(job.fn(name)) as f:
             data = json.load(f)
 
         sim.operations.integrator.d["R"] = data['d_R']
@@ -776,7 +777,7 @@ def run_npt_mc_sim(job, device, complete_filename):
         device.notice('Restarting...')
         # read move size from the file
         name = util.get_job_filename(sim_mode, device, 'move_size', 'json')
-        with open(job.fn(name), 'r') as f:
+        with open(job.fn(name)) as f:
             data = json.load(f)
 
         sim.operations.integrator.d["R"] = data['d_R']
@@ -890,11 +891,12 @@ if CONFIG['enable_llvm']:
                                    executable=CONFIG["executable"]))
 def lj_union_analyze(job):
     """Analyze the output of all simulation modes."""
-    import numpy
     import math
+
     import matplotlib
-    import matplotlib.style
     import matplotlib.figure
+    import matplotlib.style
+    import numpy
     matplotlib.style.use('fivethirtyeight')
 
     print('starting lj_union_analyze:', job)
@@ -1025,10 +1027,10 @@ analysis_aggregator = aggregator.groupby(key=['kT', 'density', 'num_particles'],
                    aggregator=analysis_aggregator)
 def lj_union_compare_modes(*jobs):
     """Compares the tested simulation modes."""
-    import numpy
     import matplotlib
-    import matplotlib.style
     import matplotlib.figure
+    import matplotlib.style
+    import numpy
     matplotlib.style.use('fivethirtyeight')
 
     print('starting lj_union_compare_modes:', jobs[0])
@@ -1128,10 +1130,10 @@ def lj_union_compare_modes(*jobs):
                    aggregator=analysis_aggregator)
 def lj_union_distribution_analyze(*jobs):
     """Checks that MD follows the correct KE distribution."""
-    import numpy
     import matplotlib
-    import matplotlib.style
     import matplotlib.figure
+    import matplotlib.style
+    import numpy
     import scipy
     matplotlib.style.use('fivethirtyeight')
 
@@ -1451,9 +1453,10 @@ nve_analysis_aggregator = aggregator.groupby(
 def lj_union_conservation_analyze(*jobs):
     """Analyze the output of NVE simulations and inspect conservation."""
     import math
+
     import matplotlib
-    import matplotlib.style
     import matplotlib.figure
+    import matplotlib.style
     matplotlib.style.use('fivethirtyeight')
 
     print('starting lj_union_conservation_analyze:', jobs[0])

@@ -3,10 +3,11 @@
 
 """Helper functions for grabbing data and plotting."""
 
+import os
+
+import h5py
 import numpy
 import signac
-import os
-import h5py
 
 
 def true_all(*jobs, key):

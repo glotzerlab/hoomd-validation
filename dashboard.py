@@ -4,7 +4,7 @@
 """Dashboard."""
 
 from signac_dashboard import Dashboard
-from signac_dashboard.modules import StatepointList, ImageViewer
+from signac_dashboard.modules import ImageViewer, StatepointList
 
 modules = [
     StatepointList(),

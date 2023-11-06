@@ -3,18 +3,16 @@
 
 """Populate the signac project with jobs and job document parameters."""
 
-import signac
-
-import config
-
 # import subprojects
 import alj_2d
-import lj_fluid
-import lj_union
+import config
 import hard_disk
 import hard_sphere
-import simple_polygon
+import lj_fluid
+import lj_union
 import patchy_particle_pressure
+import signac
+import simple_polygon
 
 subprojects = [
     alj_2d,

@@ -3,12 +3,13 @@
 
 """ALJ 2D energy conservation validation test."""
 
-from config import CONFIG
-from project_class import Project
-from flow import aggregator
-import util
 import os
 import pathlib
+
+import util
+from config import CONFIG
+from flow import aggregator
+from project_class import Project
 
 # Run parameters shared between simulations.
 # Step counts must be even and a multiple of the log quantity period.
@@ -76,9 +77,10 @@ partition_jobs_gpu = aggregator.groupsof(num=min(NUM_REPLICATES,
                    aggregator=partition_jobs_cpu)
 def alj_2d_create_initial_state(*jobs):
     """Create initial system configuration."""
+    import itertools
+
     import hoomd
     import numpy
-    import itertools
 
     communicator = hoomd.communicator.Communicator(
         ranks_per_partition=NUM_CPU_RANKS)
@@ -350,9 +352,10 @@ analysis_aggregator = aggregator.groupby(key=['kT', 'density', 'num_particles'],
 def alj_2d_conservation_analyze(*jobs):
     """Analyze the output of NVE simulations and inspect conservation."""
     import math
+
     import matplotlib
-    import matplotlib.style
     import matplotlib.figure
+    import matplotlib.style
     matplotlib.style.use('fivethirtyeight')
 
     print('starting alj_2d_conservation_analyze:', jobs[0])

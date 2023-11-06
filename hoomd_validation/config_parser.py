@@ -5,8 +5,9 @@
 
 import os
 import sys
-import yaml
 from pathlib import Path
+
+import yaml
 
 
 class ConfigFile(dict):
@@ -25,7 +26,7 @@ class ConfigFile(dict):
         if not os.path.exists(config_file_path):
             config = dict()
         else:
-            with open(config_file_path, 'r') as file:
+            with open(config_file_path) as file:
                 config = yaml.safe_load(file)
 
         self["executable"] = self._parse_executable_string(config)

@@ -3,13 +3,14 @@
 
 """Hard disk equation of state validation test."""
 
-from config import CONFIG
-from project_class import Project
-from flow import aggregator
-import util
-import os
 import json
+import os
 import pathlib
+
+import util
+from config import CONFIG
+from flow import aggregator
+from project_class import Project
 
 # Run parameters shared between simulations.
 # Step counts must be even and a multiple of the log quantity period.
@@ -73,9 +74,10 @@ partition_jobs_gpu = aggregator.groupsof(num=min(CONFIG["replicates"],
                    aggregator=partition_jobs_cpu_mpi)
 def hard_disk_create_initial_state(*jobs):
     """Create initial system configuration."""
+    import itertools
+
     import hoomd
     import numpy
-    import itertools
 
     communicator = hoomd.communicator.Communicator(
         ranks_per_partition=NUM_CPU_RANKS)
@@ -250,7 +252,7 @@ def run_nvt_sim(job, device, complete_filename):
         device.notice('Restarting...')
         # read move size from the file
         name = util.get_job_filename(sim_mode, device, 'move_size', 'json')
-        with open(job.fn(name), 'r') as f:
+        with open(job.fn(name)) as f:
             data = json.load(f)
 
         sim.operations.integrator.d["A"] = data['d_A']
@@ -347,7 +349,7 @@ def run_npt_sim(job, device, complete_filename):
         device.notice('Restarting...')
         # read move size from the file
         name = util.get_job_filename(sim_mode, device, 'move_size', 'json')
-        with open(job.fn(name), 'r') as f:
+        with open(job.fn(name)) as f:
             data = json.load(f)
 
         sim.operations.integrator.d["A"] = data['d_A']
@@ -470,7 +472,7 @@ def run_nec_sim(job, device, complete_filename):
         device.notice('Restarting...')
         # read move size from the file
         name = util.get_job_filename(sim_mode, device, 'move_size', 'json')
-        with open(job.fn(name), 'r') as f:
+        with open(job.fn(name)) as f:
             data = json.load(f)
 
         sim.operations.integrator.d["A"] = data['d_A']
@@ -587,10 +589,10 @@ for definition in job_definitions:
                                    executable=CONFIG["executable"]))
 def hard_disk_analyze(job):
     """Analyze the output of all simulation modes."""
-    import numpy
     import matplotlib
-    import matplotlib.style
     import matplotlib.figure
+    import matplotlib.style
+    import numpy
     matplotlib.style.use('fivethirtyeight')
 
     print('starting hard_disk_analyze:', job)
@@ -667,10 +669,10 @@ def hard_disk_analyze(job):
                        select=is_hard_disk))
 def hard_disk_compare_modes(*jobs):
     """Compares the tested simulation modes."""
-    import numpy
     import matplotlib
-    import matplotlib.style
     import matplotlib.figure
+    import matplotlib.style
+    import numpy
     matplotlib.style.use('fivethirtyeight')
 
     print('starting hard_disk_compare_modes:', jobs[0])
