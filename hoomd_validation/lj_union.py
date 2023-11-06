@@ -12,7 +12,6 @@ import math
 import collections
 import json
 import pathlib
-import h5py
 
 # Run parameters shared between simulations.
 # Step counts must be even and a multiple of the log quantity period.
@@ -891,7 +890,7 @@ if CONFIG['enable_llvm']:
                                    executable=CONFIG["executable"]))
 def lj_union_analyze(job):
     """Analyze the output of all simulation modes."""
-    import gsd.hoomd
+    import h5py
     import numpy
     import math
     import matplotlib
@@ -955,7 +954,8 @@ def lj_union_analyze(job):
             'hoomd-data/custom_actions/ComputeDensity/density']
 
         if 'md' in sim_mode and 'langevin' not in sim_mode:
-            momentum_vector = log_traj['hoomd-data/md/Integrator/linear_momentum']
+            momentum_vector = log_traj[
+                'hoomd-data/md/Integrator/linear_momentum']
             linear_momentum[sim_mode] = [
                 math.sqrt(v[0]**2 + v[1]**2 + v[2]**2) for v in momentum_vector
             ]
@@ -1129,7 +1129,7 @@ def lj_union_compare_modes(*jobs):
                    aggregator=analysis_aggregator)
 def lj_union_distribution_analyze(*jobs):
     """Checks that MD follows the correct KE distribution."""
-    import gsd.hoomd
+    import h5py
     import numpy
     import matplotlib
     import matplotlib.style
@@ -1196,7 +1196,8 @@ def lj_union_distribution_analyze(*jobs):
             n_rotate_dof = num_particles * 3
 
             print('Reading' + job.fn(sim_mode + '_quantities.h5'))
-            log_traj = h5py.File(mode='r', name=job.fn(sim_mode + '_quantities.h5'))
+            log_traj = h5py.File(mode='r',
+                                 name=job.fn(sim_mode + '_quantities.h5'))
 
             if 'md' in sim_mode:
                 # https://doi.org/10.1371/journal.pone.0202764
@@ -1210,8 +1211,9 @@ def lj_union_distribution_analyze(*jobs):
                     - 1 / math.sqrt(2) * math.sqrt(n_translate_dof) * kT)
                 ke_translate_samples[sim_mode].extend(ke_translate)
 
-                ke_rotate = log_traj['hoomd-data/md/compute/ThermodynamicQuantities/'
-                                     'rotational_kinetic_energy']
+                ke_rotate = log_traj[
+                    'hoomd-data/md/compute/ThermodynamicQuantities/'
+                    'rotational_kinetic_energy']
                 ke_rotate_means_expected[sim_mode].append(
                     numpy.mean(ke_rotate) - 1 / 2 * n_rotate_dof * kT)
                 ke_rotate_sigmas_expected[sim_mode].append(
@@ -1229,13 +1231,13 @@ def lj_union_distribution_analyze(*jobs):
                     log_traj['hoomd-data/md/compute/ThermodynamicQuantities'
                              '/potential_energy'])
             else:
-                potential_energy_samples[sim_mode].extend(
-                    log_traj['hoomd-data/hpmc/pair/user/CPPPotentialUnion/energy']
-                    * job.statepoint.kT)
+                potential_energy_samples[sim_mode].extend(log_traj[
+                    'hoomd-data/hpmc/pair/user/CPPPotentialUnion/energy']
+                                                          * job.statepoint.kT)
 
             if 'md' in sim_mode:
-                pressure_samples[sim_mode].extend(
-                    log_traj['hoomd-data/md/compute/ThermodynamicQuantities/pressure'])
+                pressure_samples[sim_mode].extend(log_traj[
+                    'hoomd-data/md/compute/ThermodynamicQuantities/pressure'])
             else:
                 pressure_samples[sim_mode].extend([job.statepoint.pressure])
 
@@ -1451,7 +1453,7 @@ nve_analysis_aggregator = aggregator.groupby(
                    aggregator=nve_analysis_aggregator)
 def lj_union_conservation_analyze(*jobs):
     """Analyze the output of NVE simulations and inspect conservation."""
-    import gsd.hoomd
+    import h5py
     import math
     import matplotlib
     import matplotlib.style
@@ -1474,7 +1476,8 @@ def lj_union_conservation_analyze(*jobs):
         job_linear_momentum = {}
 
         for sim_mode in sim_modes:
-            log_traj = h5py.File(mode='r', name=job.fn(sim_mode + '_quantities.h5'))
+            log_traj = h5py.File(mode='r',
+                                 name=job.fn(sim_mode + '_quantities.h5'))
 
             job_timesteps[sim_mode] = log_traj['hoomd-data/Simulation/timestep']
 
@@ -1482,12 +1485,14 @@ def lj_union_conservation_analyze(*jobs):
                 log_traj[
                     'hoomd-data/md/compute/ThermodynamicQuantities/potential_energy']
                 + log_traj[
-                    'hoomd-data/md/compute/ThermodynamicQuantities/kinetic_energy'])
+                    'hoomd-data/md/compute/ThermodynamicQuantities/kinetic_energy']
+            )
             job_energies[sim_mode] = (
                 job_energies[sim_mode]
                 - job_energies[sim_mode][0]) / job.statepoint["num_particles"]
 
-            momentum_vector = log_traj['hoomd-data/md/Integrator/linear_momentum']
+            momentum_vector = log_traj[
+                'hoomd-data/md/Integrator/linear_momentum']
             job_linear_momentum[sim_mode] = [
                 math.sqrt(v[0]**2 + v[1]**2 + v[2]**2)
                 / job.statepoint["num_particles"] for v in momentum_vector

@@ -9,7 +9,6 @@ from flow import aggregator
 import util
 import os
 import pathlib
-import h5py
 
 # Run parameters shared between simulations.
 # Step counts must be even and a multiple of the log quantity period.
@@ -350,7 +349,7 @@ analysis_aggregator = aggregator.groupby(key=['kT', 'density', 'num_particles'],
                    aggregator=analysis_aggregator)
 def alj_2d_conservation_analyze(*jobs):
     """Analyze the output of NVE simulations and inspect conservation."""
-    import gsd.hoomd
+    import h5py
     import math
     import matplotlib
     import matplotlib.style
@@ -373,7 +372,8 @@ def alj_2d_conservation_analyze(*jobs):
         job_linear_momentum = {}
 
         for sim_mode in sim_modes:
-            log_traj = h5py.File(mode='r', name=job.fn(sim_mode + '_quantities.h5'))
+            log_traj = h5py.File(mode='r',
+                                 name=job.fn(sim_mode + '_quantities.h5'))
 
             job_timesteps[sim_mode] = log_traj['hoomd-data/Simulation/timestep']
 
@@ -381,12 +381,14 @@ def alj_2d_conservation_analyze(*jobs):
                 log_traj[
                     'hoomd-data/md/compute/ThermodynamicQuantities/potential_energy']
                 + log_traj[
-                    'hoomd-data/md/compute/ThermodynamicQuantities/kinetic_energy'])
+                    'hoomd-data/md/compute/ThermodynamicQuantities/kinetic_energy']
+            )
             job_energies[sim_mode] = (
                 job_energies[sim_mode]
                 - job_energies[sim_mode][0]) / job.statepoint["num_particles"]
 
-            momentum_vector = log_traj['hoomd-data/md/Integrator/linear_momentum']
+            momentum_vector = log_traj[
+                'hoomd-data/md/Integrator/linear_momentum']
             job_linear_momentum[sim_mode] = [
                 math.sqrt(v[0]**2 + v[1]**2 + v[2]**2)
                 / job.statepoint["num_particles"] for v in momentum_vector

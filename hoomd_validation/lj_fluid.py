@@ -12,7 +12,6 @@ import math
 import collections
 import json
 import pathlib
-import h5py
 
 # Run parameters shared between simulations.
 # Step counts must be even and a multiple of the log quantity period.
@@ -562,8 +561,7 @@ def make_mc_simulation(job,
         return job.statepoint.num_particles * job.statepoint.kT / V + w / (3
                                                                            * V)
 
-    logger[('custom', 'virial_pressure')] = (_compute_virial_pressure,
-                                                 'scalar')
+    logger[('custom', 'virial_pressure')] = (_compute_virial_pressure, 'scalar')
 
     # move size tuner
     mstuner = hpmc.tune.MoveSize.scale_solver(
@@ -833,7 +831,7 @@ if CONFIG['enable_llvm']:
                                    executable=CONFIG["executable"]))
 def lj_fluid_analyze(job):
     """Analyze the output of all simulation modes."""
-    import gsd.hoomd
+    import h5py
     import numpy
     import math
     import matplotlib
@@ -896,7 +894,8 @@ def lj_fluid_analyze(job):
             'hoomd-data/custom_actions/ComputeDensity/density']
 
         if 'md' in sim_mode and 'langevin' not in sim_mode:
-            momentum_vector = log_traj['hoomd-data/md/Integrator/linear_momentum']
+            momentum_vector = log_traj[
+                'hoomd-data/md/Integrator/linear_momentum']
             linear_momentum[sim_mode] = [
                 math.sqrt(v[0]**2 + v[1]**2 + v[2]**2) for v in momentum_vector
             ]
@@ -1086,7 +1085,7 @@ def lj_fluid_compare_modes(*jobs):
                    aggregator=analysis_aggregator)
 def lj_fluid_distribution_analyze(*jobs):
     """Checks that MD follows the correct KE distribution."""
-    import gsd.hoomd
+    import h5py
     import numpy
     import matplotlib
     import matplotlib.style
@@ -1145,7 +1144,8 @@ def lj_fluid_distribution_analyze(*jobs):
                 n_dof = num_particles * 3 - 3
 
             print('Reading' + job.fn(sim_mode + '_quantities.h5'))
-            log_traj = h5py.File(mode='r', name=job.fn(sim_mode + '_quantities.h5'))
+            log_traj = h5py.File(mode='r',
+                                 name=job.fn(sim_mode + '_quantities.h5'))
 
             if 'md' in sim_mode:
                 ke = log_traj[
@@ -1162,23 +1162,28 @@ def lj_fluid_distribution_analyze(*jobs):
 
             if 'md' in sim_mode:
                 potential_energy_samples[sim_mode].extend(
-                    list(log_traj['hoomd-data/md/compute/ThermodynamicQuantities'
-                                  '/potential_energy']))
+                    list(
+                        log_traj['hoomd-data/md/compute/ThermodynamicQuantities'
+                                 '/potential_energy']))
             else:
                 potential_energy_samples[sim_mode].extend(
-                    list(log_traj['hoomd-data/hpmc/pair/user/CPPPotential/energy']
-                         * job.statepoint.kT))
+                    list(
+                        log_traj['hoomd-data/hpmc/pair/user/CPPPotential/energy']
+                        * job.statepoint.kT))
 
             if 'md' in sim_mode:
                 pressure_samples[sim_mode].extend(
                     list(log_traj[
-                        'hoomd-data/md/compute/ThermodynamicQuantities/pressure']))
+                        'hoomd-data/md/compute/ThermodynamicQuantities/pressure']
+                         ))
             else:
                 pressure_samples[sim_mode].extend(
                     list(log_traj['hoomd-data/custom/virial_pressure']))
 
             density_samples[sim_mode].extend(
-                list(log_traj['hoomd-data/custom_actions/ComputeDensity/density']))
+                list(
+                    log_traj['hoomd-data/custom_actions/ComputeDensity/density']
+                ))
 
     ax = fig.add_subplot(2, 2, 1)
     util.plot_vs_expected(ax, ke_means_expected, '$<K> - 1/2 N_{dof} k T$')
@@ -1371,7 +1376,7 @@ nve_analysis_aggregator = aggregator.groupby(
                    aggregator=nve_analysis_aggregator)
 def lj_fluid_conservation_analyze(*jobs):
     """Analyze the output of NVE simulations and inspect conservation."""
-    import gsd.hoomd
+    import h5py
     import numpy
     import math
     import matplotlib
@@ -1395,7 +1400,8 @@ def lj_fluid_conservation_analyze(*jobs):
         job_linear_momentum = {}
 
         for sim_mode in sim_modes:
-            log_traj = h5py.File(mode='r', name=job.fn(sim_mode + '_quantities.h5'))
+            log_traj = h5py.File(mode='r',
+                                 name=job.fn(sim_mode + '_quantities.h5'))
 
             job_timesteps[sim_mode] = log_traj['hoomd-data/Simulation/timestep']
 
@@ -1403,12 +1409,14 @@ def lj_fluid_conservation_analyze(*jobs):
                 log_traj[
                     'hoomd-data/md/compute/ThermodynamicQuantities/potential_energy']
                 + log_traj[
-                    'hoomd-data/md/compute/ThermodynamicQuantities/kinetic_energy'])
+                    'hoomd-data/md/compute/ThermodynamicQuantities/kinetic_energy']
+            )
             job_energies[sim_mode] = (
                 job_energies[sim_mode]
                 - job_energies[sim_mode][0]) / job.statepoint["num_particles"]
 
-            momentum_vector = log_traj['hoomd-data/md/Integrator/linear_momentum']
+            momentum_vector = log_traj[
+                'hoomd-data/md/Integrator/linear_momentum']
             job_linear_momentum[sim_mode] = [
                 math.sqrt(v[0]**2 + v[1]**2 + v[2]**2)
                 / job.statepoint["num_particles"] for v in momentum_vector

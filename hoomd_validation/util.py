@@ -137,8 +137,7 @@ def make_simulation(
     logger.add(sim, quantities=['timestep'])
 
     quantity_writer = hoomd.write.HDF5Log(
-        filename=job.fn(get_job_filename(sim_mode, device, 'quantities',
-                                         'h5')),
+        filename=job.fn(get_job_filename(sim_mode, device, 'quantities', 'h5')),
         trigger=hoomd.trigger.And([
             hoomd.trigger.Periodic(log_write_period),
             hoomd.trigger.After(log_start_step)

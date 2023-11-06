@@ -10,7 +10,6 @@ import util
 import os
 import json
 import pathlib
-import h5py
 
 # Run parameters shared between simulations.
 # Step counts must be even and a multiple of the log quantity period.
@@ -595,7 +594,7 @@ for definition in job_definitions:
                                    executable=CONFIG["executable"]))
 def patchy_particle_pressure_analyze(job):
     """Analyze the output of all simulation modes."""
-    import gsd.hoomd
+    import h5py
     import numpy
     import matplotlib
     import matplotlib.style

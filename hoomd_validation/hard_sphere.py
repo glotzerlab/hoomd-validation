@@ -9,7 +9,6 @@ from flow import aggregator
 import util
 import os
 import pathlib
-import h5py
 
 # Run parameters shared between simulations.
 # Step counts must be even and a multiple of the log quantity period.
@@ -314,10 +313,9 @@ def run_nec_sim(job, device, complete_filename):
     # log to gsd
     logger = hoomd.logging.Logger(categories=['scalar', 'sequence'])
     logger.add(mc,
-                   quantities=[
-                       'translate_moves', 'particles_per_chain',
-                       'virial_pressure'
-                   ])
+               quantities=[
+                   'translate_moves', 'particles_per_chain', 'virial_pressure'
+               ])
     logger.add(compute_density, quantities=['density'])
 
     # make simulation
@@ -468,7 +466,7 @@ for definition in job_definitions:
                                    executable=CONFIG["executable"]))
 def hard_sphere_analyze(job):
     """Analyze the output of all simulation modes."""
-    import gsd.hoomd
+    import h5py
     import numpy
     import matplotlib
     import matplotlib.style
