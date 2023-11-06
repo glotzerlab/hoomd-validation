@@ -167,7 +167,7 @@ def make_md_simulation(job,
                        initial_state,
                        method,
                        sim_mode,
-                       extra_loggables=[],
+                       extra_loggables=None,
                        period_multiplier=1):
     """Make an MD simulation.
 
@@ -194,6 +194,8 @@ def make_md_simulation(job,
     from hoomd import md
 
     # pair force
+    if extra_loggables is None:
+        extra_loggables = []
     nlist = md.nlist.Cell(buffer=0.4)
     lj = md.pair.LJ(default_r_cut=job.statepoint.r_cut,
                     default_r_on=job.statepoint.r_on,
@@ -436,7 +438,7 @@ def make_mc_simulation(job,
                        device,
                        initial_state,
                        sim_mode,
-                       extra_loggables=[]):
+                       extra_loggables=None):
     """Make an MC Simulation.
 
     Args:
@@ -452,6 +454,9 @@ def make_mc_simulation(job,
     import numpy
     from custom_actions import ComputeDensity
     from hoomd import hpmc
+
+    if extra_loggables is None:
+        extra_loggables = []
 
     # integrator
     mc = hpmc.integrate.Sphere(nselect=1)

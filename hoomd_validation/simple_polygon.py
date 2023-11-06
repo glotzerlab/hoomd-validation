@@ -150,7 +150,7 @@ def make_mc_simulation(job,
                        device,
                        initial_state,
                        sim_mode,
-                       extra_loggables=[]):
+                       extra_loggables=None):
     """Make a simple polygon MC Simulation.
 
     Args:
@@ -170,6 +170,9 @@ def make_mc_simulation(job,
     import hoomd
     import numpy
     from custom_actions import ComputeDensity
+
+    if extra_loggables is None:
+        extra_loggables = []
 
     # integrator
     mc = hoomd.hpmc.integrate.SimplePolygon(default_d=0.05, default_a=0.1)

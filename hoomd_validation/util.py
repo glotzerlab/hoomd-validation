@@ -342,6 +342,5 @@ def read_log(filename):
     with h5py.File(mode='r', name=filename) as f:
         keys = []
         f.visit(lambda name: keys.append(name))
-        result = {key: numpy.array(f[key]) for key in keys}
+        return {key: numpy.array(f[key]) for key in keys}
 
-    return result

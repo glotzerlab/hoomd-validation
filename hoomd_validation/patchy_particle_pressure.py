@@ -107,7 +107,7 @@ def _single_patch_kern_frenkel_code(delta_rad, sq_well_lambda, sigma, kT,
     HOOMD-blue tutorial.
 
     """
-    patch_code = f"""
+    return f"""
     const float delta = {delta_rad};
     const float lambda = {sq_well_lambda:f};
     const float sigma = {sigma:f};  // hard core diameter
@@ -141,7 +141,6 @@ def _single_patch_kern_frenkel_code(delta_rad, sq_well_lambda, sigma, kT,
         return 0.0;
         }}
     """
-    return patch_code
 
 
 @Project.pre(lambda *jobs: CONFIG['enable_llvm'])
@@ -244,7 +243,7 @@ def make_mc_simulation(job,
                        device,
                        initial_state,
                        sim_mode,
-                       extra_loggables=[]):
+                       extra_loggables=None):
     """Make a patchy sphere MC Simulation.
 
     Args:
@@ -264,6 +263,9 @@ def make_mc_simulation(job,
     import hoomd
     import numpy
     from custom_actions import ComputeDensity
+
+    if extra_loggables is None:
+        extra_loggables = []
 
     # integrator and patchy potential
     temperature = job.statepoint['temperature']

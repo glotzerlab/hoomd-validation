@@ -138,7 +138,7 @@ def make_mc_simulation(job,
                        device,
                        initial_state,
                        sim_mode,
-                       extra_loggables=[]):
+                       extra_loggables=None):
     """Make a hard sphere MC Simulation.
 
     Args:
@@ -157,6 +157,10 @@ def make_mc_simulation(job,
     """
     import hoomd
     from custom_actions import ComputeDensity
+
+    if extra_loggables is None:
+        extra_loggables = []
+
 
     # integrator
     mc = hoomd.hpmc.integrate.Sphere(nselect=4)

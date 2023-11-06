@@ -30,10 +30,7 @@ class ValidationDashboard(Dashboard):
         elif job.statepoint.subproject == 'alj_2d':
             return f"alj_2d: kT={job.statepoint.kT}, " \
                    f"rho={job.statepoint.density}"
-        elif (job.statepoint.subproject == 'hard_disk'
-              or job.statepoint.subproject == 'hard_sphere'
-              or job.statepoint.subproject == 'simple_polygon'
-              or job.statepoint.subproject == 'patchy_particle_pressure'):
+        elif (job.statepoint.subproject in ("hard_disk", "hard_sphere", "simple_polygon", "patchy_particle_pressure")):
             return f"{job.statepoint.subproject}: rho={job.statepoint.density}"
         else:
             raise RuntimeError("Unexpected job")
