@@ -1,14 +1,14 @@
 target-version = "py38"
 
-select = [
+extend-select = [
     "A",
     "B",
     "D",
-    "E",
-    "F",
+    "E501",
     "I",
     "N",
     "NPY",
+    "PL",
     "PT",
     "RET",
     "UP",
@@ -16,9 +16,13 @@ select = [
 ]
 
 ignore = [
-  "N806", "N803",  # allow occasional use of uppercase variable and argument names (e.g. N)
-  "D107", # do not document __init__ separately from the class
+  "N806", "N803",  # Allow occasional use of uppercase variable and argument names (e.g. N).
+  "D107", # Do not document __init__ separately from the class.
+  "PLR09", # Allow "too many" statements/arguments/etc...
 ]
 
 [pydocstyle]
 convention = "google"
+
+[format]
+quote-style = "single"
