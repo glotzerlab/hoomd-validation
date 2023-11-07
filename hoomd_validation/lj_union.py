@@ -909,7 +909,7 @@ def add_mc_sampling_job(mode, device_name, ranks_per_partition, aggregator):
         device = device_cls(
             communicator=communicator,
             message_filename=util.get_message_filename(
-                job, f'{mode}_mc_{device_name}.log'
+                job, f'{mode}_mc_{device_name}.log', num_cpu_threads=1
             ),
         )
 
