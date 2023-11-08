@@ -55,7 +55,10 @@ class ValidationDashboard(Dashboard):
                 job.statepoint.replicate_idx,
             )
 
-        return (job.statepoint.subproject, job.statepoint.num_particles,)
+        return (
+            job.statepoint.subproject,
+            job.statepoint.num_particles,
+        )
 
 
 if __name__ == '__main__':
