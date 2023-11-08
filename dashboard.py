@@ -47,14 +47,15 @@ class ValidationDashboard(Dashboard):
         """Sort jobs."""
         if job.statepoint.subproject == 'patchy_particle_pressure':
             return (
-                job.sp.density,
-                job.sp.pressure,
-                job.sp.temperature,
-                job.sp.chi,
-                job.sp.replicate_idx,
+                job.statepoint.subproject,
+                job.statepoint.density,
+                job.statepoint.pressure,
+                job.statepoint.temperature,
+                job.statepoint.chi,
+                job.statepoint.replicate_idx,
             )
 
-        return job.statepoint.num_particles
+        return (job.statepoint.subproject, job.statepoint.num_particles,)
 
 
 if __name__ == '__main__':
