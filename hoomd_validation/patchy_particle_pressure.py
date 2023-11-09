@@ -3,13 +3,14 @@
 
 """Test for consistency between NVT and NPT simulations of patchy particles."""
 
-from config import CONFIG
-from project_class import Project
-from flow import aggregator
-import util
-import os
 import json
+import os
 import pathlib
+
+import util
+from config import CONFIG
+from flow import aggregator
+from project_class import Project
 
 # Run parameters shared between simulations.
 # Step counts must be even and a multiple of the log quantity period.
@@ -21,15 +22,15 @@ TOTAL_STEPS = RANDOMIZE_STEPS + EQUILIBRATE_STEPS + RUN_STEPS
 
 WRITE_PERIOD = 1_000
 LOG_PERIOD = {'trajectory': 50_000, 'quantities': 500}
-NUM_CPU_RANKS = min(16, CONFIG["max_cores_sim"])
+NUM_CPU_RANKS = min(16, CONFIG['max_cores_sim'])
 
-WALLTIME_STOP_SECONDS = CONFIG["max_walltime"] * 3600 - 10 * 60
+WALLTIME_STOP_SECONDS = CONFIG['max_walltime'] * 3600 - 10 * 60
 
 
 def job_statepoints():
     """list(dict): A list of statepoints for this subproject."""
     num_particles = 16**3
-    replicate_indices = range(CONFIG["replicates"])
+    replicate_indices = range(CONFIG['replicates'])
     params_list = [
         # kern-frenkel. density and temperature chosen to produce
         # a dense liquid. pressure measured from NVT simulations on CPU.
@@ -44,17 +45,19 @@ def job_statepoints():
     ]  # kT, rho, pressure, chi, lambda_, long_range_interaction_scale_factor
     for temperature, density, pressure, chi, lambda_, lrisf in params_list:
         for idx in replicate_indices:
-            yield ({
-                "subproject": "patchy_particle_pressure",
-                "density": density,
-                "pressure": pressure,
-                "chi": chi,
-                "lambda_": lambda_,
-                "num_particles": num_particles,
-                "replicate_idx": idx,
-                "temperature": temperature,
-                "long_range_interaction_scale_factor": lrisf,
-            })
+            yield (
+                {
+                    'subproject': 'patchy_particle_pressure',
+                    'density': density,
+                    'pressure': pressure,
+                    'chi': chi,
+                    'lambda_': lambda_,
+                    'num_particles': num_particles,
+                    'replicate_idx': idx,
+                    'temperature': temperature,
+                    'long_range_interaction_scale_factor': lrisf,
+                }
+            )
 
 
 def is_patchy_particle_pressure(job):
@@ -64,28 +67,28 @@ def is_patchy_particle_pressure(job):
 
 def is_patchy_particle_pressure_positive_pressure(job):
     """Test if a job is part of the patchy_particle_pressure subproject."""
-    return job.statepoint[
-        'subproject'] == 'patchy_particle_pressure' and job.statepoint[
-            'pressure'] > 0.0
+    return (
+        job.statepoint['subproject'] == 'patchy_particle_pressure'
+        and job.statepoint['pressure'] > 0
+    )
 
 
 partition_jobs_cpu_mpi_nvt = aggregator.groupsof(
-    num=min(CONFIG["replicates"],
-            CONFIG["max_cores_submission"] // NUM_CPU_RANKS),
+    num=min(CONFIG['replicates'], CONFIG['max_cores_submission'] // NUM_CPU_RANKS),
     sort_by='density',
     select=is_patchy_particle_pressure,
 )
 
 partition_jobs_cpu_mpi_npt = aggregator.groupsof(
-    num=min(CONFIG["replicates"],
-            CONFIG["max_cores_submission"] // NUM_CPU_RANKS),
+    num=min(CONFIG['replicates'], CONFIG['max_cores_submission'] // NUM_CPU_RANKS),
     sort_by='density',
     select=is_patchy_particle_pressure_positive_pressure,
 )
 
 
-def _single_patch_kern_frenkel_code(delta_rad, sq_well_lambda, sigma, kT,
-                                    long_range_interaction_scale_factor):
+def _single_patch_kern_frenkel_code(
+    delta_rad, sq_well_lambda, sigma, kT, long_range_interaction_scale_factor
+):
     """Generate code for JIT compilation of Kern-Frenkel potential.
 
     Args:
@@ -106,7 +109,7 @@ def _single_patch_kern_frenkel_code(delta_rad, sq_well_lambda, sigma, kT,
     HOOMD-blue tutorial.
 
     """
-    patch_code = f"""
+    return f"""
     const float delta = {delta_rad};
     const float lambda = {sq_well_lambda:f};
     const float sigma = {sigma:f};  // hard core diameter
@@ -140,25 +143,26 @@ def _single_patch_kern_frenkel_code(delta_rad, sq_well_lambda, sigma, kT,
         return 0.0;
         }}
     """
-    return patch_code
 
 
 @Project.pre(lambda *jobs: CONFIG['enable_llvm'])
 @Project.post.isfile('patchy_particle_pressure_initial_state.gsd')
 @Project.operation(
-    directives=dict(executable=CONFIG["executable"],
-                    nranks=util.total_ranks_function(NUM_CPU_RANKS),
-                    walltime=1),
+    directives=dict(
+        executable=CONFIG['executable'],
+        nranks=util.total_ranks_function(NUM_CPU_RANKS),
+        walltime=1,
+    ),
     aggregator=partition_jobs_cpu_mpi_nvt,
 )
 def patchy_particle_pressure_create_initial_state(*jobs):
     """Create initial system configuration."""
-    import hoomd
-    import numpy
     import itertools
 
-    communicator = hoomd.communicator.Communicator(
-        ranks_per_partition=NUM_CPU_RANKS)
+    import hoomd
+    import numpy
+
+    communicator = hoomd.communicator.Communicator(ranks_per_partition=NUM_CPU_RANKS)
     job = jobs[communicator.partition]
 
     if communicator.rank == 0:
@@ -170,23 +174,26 @@ def patchy_particle_pressure_create_initial_state(*jobs):
     chi = job.statepoint['chi']
     lambda_ = job.statepoint['lambda_']
     long_range_interaction_scale_factor = job.statepoint[
-        'long_range_interaction_scale_factor']
+        'long_range_interaction_scale_factor'
+    ]
 
     box_volume = num_particles / density
-    L = box_volume**(1 / 3.)
+    L = box_volume ** (1 / 3.0)
 
-    N = int(numpy.ceil(num_particles**(1. / 3.)))
+    N = int(numpy.ceil(num_particles ** (1.0 / 3.0)))
     x = numpy.linspace(-L / 2, L / 2, N, endpoint=False)
 
-    if x[1] - x[0] < 1.0:
+    particle_spacing = 1.0
+    if x[1] - x[0] < particle_spacing:
         raise RuntimeError('density too high to initialize on square lattice')
 
     position = list(itertools.product(x, repeat=3))[:num_particles]
 
     # create snapshot
-    device = hoomd.device.CPU(communicator=communicator,
-                              message_filename=util.get_message_filename(
-                                  job, 'create_initial_state.log'))
+    device = hoomd.device.CPU(
+        communicator=communicator,
+        message_filename=util.get_message_filename(job, 'create_initial_state.log'),
+    )
     snap = hoomd.Snapshot(communicator)
 
     if communicator.rank == 0:
@@ -210,9 +217,9 @@ def patchy_particle_pressure_create_initial_state(*jobs):
         long_range_interaction_scale_factor,
     )
     r_cut = diameter + diameter * (lambda_ - 1)
-    patches = hoomd.hpmc.pair.user.CPPPotential(r_cut=r_cut,
-                                                code=patch_code,
-                                                param_array=[])
+    patches = hoomd.hpmc.pair.user.CPPPotential(
+        r_cut=r_cut, code=patch_code, param_array=[]
+    )
     mc.pair_potential = patches
 
     sim = hoomd.Simulation(device=device, seed=util.make_seed(job))
@@ -229,7 +236,7 @@ def patchy_particle_pressure_create_initial_state(*jobs):
 
     hoomd.write.GSD.write(
         state=sim.state,
-        filename=job.fn("patchy_particle_pressure_initial_state.gsd"),
+        filename=job.fn('patchy_particle_pressure_initial_state.gsd'),
         mode='wb',
         logger=trajectory_logger,
     )
@@ -238,11 +245,7 @@ def patchy_particle_pressure_create_initial_state(*jobs):
         print(f'completed patchy_particle_pressure_create_initial_state: {job}')
 
 
-def make_mc_simulation(job,
-                       device,
-                       initial_state,
-                       sim_mode,
-                       extra_loggables=[]):
+def make_mc_simulation(job, device, initial_state, sim_mode, extra_loggables=None):
     """Make a patchy sphere MC Simulation.
 
     Args:
@@ -263,12 +266,16 @@ def make_mc_simulation(job,
     import numpy
     from custom_actions import ComputeDensity
 
+    if extra_loggables is None:
+        extra_loggables = []
+
     # integrator and patchy potential
     temperature = job.statepoint['temperature']
     chi = job.statepoint['chi']
     lambda_ = job.statepoint['lambda_']
     long_range_interaction_scale_factor = job.statepoint[
-        'long_range_interaction_scale_factor']
+        'long_range_interaction_scale_factor'
+    ]
     diameter = 1.0
     mc = hoomd.hpmc.integrate.Sphere(default_d=0.05, default_a=0.1)
     mc.shape['A'] = dict(diameter=diameter, orientable=True)
@@ -281,9 +288,9 @@ def make_mc_simulation(job,
         long_range_interaction_scale_factor,
     )
     r_cut = diameter + diameter * (lambda_ - 1)
-    patches = hoomd.hpmc.pair.user.CPPPotential(r_cut=r_cut,
-                                                code=patch_code,
-                                                param_array=[])
+    patches = hoomd.hpmc.pair.user.CPPPotential(
+        r_cut=r_cut, code=patch_code, param_array=[]
+    )
     mc.pair_potential = patches
 
     # compute the density and pressure
@@ -331,10 +338,13 @@ def make_mc_simulation(job,
         target=0.2,
         max_translation_move=0.5,
         max_rotation_move=2 * numpy.pi / 4,
-        trigger=hoomd.trigger.And([
-            hoomd.trigger.Periodic(100),
-            hoomd.trigger.Before(RANDOMIZE_STEPS + EQUILIBRATE_STEPS // 2)
-        ]))
+        trigger=hoomd.trigger.And(
+            [
+                hoomd.trigger.Periodic(100),
+                hoomd.trigger.Before(RANDOMIZE_STEPS + EQUILIBRATE_STEPS // 2),
+            ]
+        ),
+    )
     sim.operations.add(move_size_tuner)
 
     return sim
@@ -353,11 +363,7 @@ def run_nvt_sim(job, device, complete_filename):
         initial_state = job.fn('patchy_particle_pressure_initial_state.gsd')
         restart = False
 
-    sim = make_mc_simulation(job,
-                             device,
-                             initial_state,
-                             sim_mode,
-                             extra_loggables=[])
+    sim = make_mc_simulation(job, device, initial_state, sim_mode, extra_loggables=[])
 
     if not restart:
         # equilibrate
@@ -373,11 +379,9 @@ def run_nvt_sim(job, device, complete_filename):
         rotate_moves = sim.operations.integrator.rotate_moves
         rotate_acceptance = rotate_moves[0] / sum(rotate_moves)
         device.notice(f'Translate move acceptance: {translate_acceptance}')
-        device.notice(
-            f'Trial translate move size: {sim.operations.integrator.d["A"]}')
+        device.notice(f'Trial translate move size: {sim.operations.integrator.d["A"]}')
         device.notice(f'Rotate move acceptance: {rotate_acceptance}')
-        device.notice(
-            f'Trial rotate move size: {sim.operations.integrator.a["A"]}')
+        device.notice(f'Trial rotate move size: {sim.operations.integrator.a["A"]}')
 
         # save move size to a file
         if device.communicator.rank == 0:
@@ -385,34 +389,36 @@ def run_nvt_sim(job, device, complete_filename):
             with open(job.fn(name), 'w') as f:
                 json.dump(
                     dict(
-                        d_A=sim.operations.integrator.d["A"],
-                        a_A=sim.operations.integrator.a["A"],
-                    ), f)
+                        d_A=sim.operations.integrator.d['A'],
+                        a_A=sim.operations.integrator.a['A'],
+                    ),
+                    f,
+                )
     else:
         device.notice('Restarting...')
         # read move size from the file
         name = util.get_job_filename(sim_mode, device, 'move_size', 'json')
-        with open(job.fn(name), 'r') as f:
+        with open(job.fn(name)) as f:
             data = json.load(f)
 
-        sim.operations.integrator.d["A"] = data['d_A']
-        sim.operations.integrator.a["A"] = data['a_A']
-        mcd = sim.operations.integrator.d["A"]
+        sim.operations.integrator.d['A'] = data['d_A']
+        sim.operations.integrator.a['A'] = data['a_A']
+        mcd = sim.operations.integrator.d['A']
         device.notice(f'Restored translate trial move size: {mcd}')
-        mca = sim.operations.integrator.a["A"]
+        mca = sim.operations.integrator.a['A']
         device.notice(f'Restored rotate trial move size: {mca}')
 
     # run
     device.notice('Running...')
 
-    util.run_up_to_walltime(sim=sim,
-                            end_step=TOTAL_STEPS,
-                            steps=RESTART_STEPS,
-                            walltime_stop=WALLTIME_STOP_SECONDS)
+    util.run_up_to_walltime(
+        sim=sim,
+        end_step=TOTAL_STEPS,
+        steps=RESTART_STEPS,
+        walltime_stop=WALLTIME_STOP_SECONDS,
+    )
 
-    hoomd.write.GSD.write(state=sim.state,
-                          filename=job.fn(restart_filename),
-                          mode='wb')
+    hoomd.write.GSD.write(state=sim.state, filename=job.fn(restart_filename), mode='wb')
 
     if sim.timestep == TOTAL_STEPS:
         pathlib.Path(job.fn(complete_filename)).touch()
@@ -436,29 +442,35 @@ def run_npt_sim(job, device, complete_filename):
         restart = False
 
     # box updates
-    boxmc = hoomd.hpmc.update.BoxMC(betaP=job.statepoint.pressure,
-                                    trigger=hoomd.trigger.Periodic(1))
+    boxmc = hoomd.hpmc.update.BoxMC(
+        betaP=job.statepoint.pressure, trigger=hoomd.trigger.Periodic(1)
+    )
     boxmc.volume = dict(weight=1.0, mode='ln', delta=1e-6)
 
     # simulation
-    sim = make_mc_simulation(job,
-                             device,
-                             initial_state,
-                             sim_mode,
-                             extra_loggables=[
-                                 (boxmc, 'volume_moves'),
-                             ])
+    sim = make_mc_simulation(
+        job,
+        device,
+        initial_state,
+        sim_mode,
+        extra_loggables=[
+            (boxmc, 'volume_moves'),
+        ],
+    )
 
     sim.operations.add(boxmc)
 
     boxmc_tuner = hoomd.hpmc.tune.BoxMCMoveSize.scale_solver(
-        trigger=hoomd.trigger.And([
-            hoomd.trigger.Periodic(400),
-            hoomd.trigger.Before(RANDOMIZE_STEPS + EQUILIBRATE_STEPS // 2)
-        ]),
+        trigger=hoomd.trigger.And(
+            [
+                hoomd.trigger.Periodic(400),
+                hoomd.trigger.Before(RANDOMIZE_STEPS + EQUILIBRATE_STEPS // 2),
+            ]
+        ),
         boxmc=boxmc,
         moves=['volume'],
-        target=0.5)
+        target=0.5,
+    )
     sim.operations.add(boxmc_tuner)
 
     if not restart:
@@ -473,13 +485,11 @@ def run_npt_sim(job, device, complete_filename):
         translate_moves = sim.operations.integrator.translate_moves
         translate_acceptance = translate_moves[0] / sum(translate_moves)
         device.notice(f'Translate move acceptance: {translate_acceptance}')
-        device.notice(
-            f'Translate trial move size: {sim.operations.integrator.d["A"]}')
+        device.notice(f'Translate trial move size: {sim.operations.integrator.d["A"]}')
         rotate_moves = sim.operations.integrator.rotate_moves
         rotate_acceptance = rotate_moves[0] / sum(rotate_moves)
         device.notice(f'Rotate move acceptance: {rotate_acceptance}')
-        device.notice(
-            f'Rotate trial move size: {sim.operations.integrator.a["A"]}')
+        device.notice(f'Rotate trial move size: {sim.operations.integrator.a["A"]}')
 
         volume_moves = boxmc.volume_moves
         volume_acceptance = volume_moves[0] / sum(volume_moves)
@@ -491,35 +501,39 @@ def run_npt_sim(job, device, complete_filename):
             name = util.get_job_filename(sim_mode, device, 'move_size', 'json')
             with open(job.fn(name), 'w') as f:
                 json.dump(
-                    dict(d_A=sim.operations.integrator.d["A"],
-                         a_A=sim.operations.integrator.a["A"],
-                         volume_delta=boxmc.volume['delta']), f)
+                    dict(
+                        d_A=sim.operations.integrator.d['A'],
+                        a_A=sim.operations.integrator.a['A'],
+                        volume_delta=boxmc.volume['delta'],
+                    ),
+                    f,
+                )
     else:
         device.notice('Restarting...')
         # read move size from the file
         name = util.get_job_filename(sim_mode, device, 'move_size', 'json')
-        with open(job.fn(name), 'r') as f:
+        with open(job.fn(name)) as f:
             data = json.load(f)
 
-        sim.operations.integrator.d["A"] = data['d_A']
-        sim.operations.integrator.a["A"] = data['a_A']
-        mcd = sim.operations.integrator.d["A"]
+        sim.operations.integrator.d['A'] = data['d_A']
+        sim.operations.integrator.a['A'] = data['a_A']
+        mcd = sim.operations.integrator.d['A']
         device.notice(f'Restored translate trial move size: {mcd}')
-        mca = sim.operations.integrator.a["A"]
+        mca = sim.operations.integrator.a['A']
         device.notice(f'Restored rotate trial move size: {mca}')
         boxmc.volume = dict(weight=1.0, mode='ln', delta=data['volume_delta'])
         device.notice(f'Restored volume move size: {boxmc.volume["delta"]}')
 
     # run
     device.notice('Running...')
-    util.run_up_to_walltime(sim=sim,
-                            end_step=TOTAL_STEPS,
-                            steps=100_000,
-                            walltime_stop=WALLTIME_STOP_SECONDS)
+    util.run_up_to_walltime(
+        sim=sim,
+        end_step=TOTAL_STEPS,
+        steps=100_000,
+        walltime_stop=WALLTIME_STOP_SECONDS,
+    )
 
-    hoomd.write.GSD.write(state=sim.state,
-                          filename=job.fn(restart_filename),
-                          mode='wb')
+    hoomd.write.GSD.write(state=sim.state, filename=job.fn(restart_filename), mode='wb')
 
     if sim.timestep == TOTAL_STEPS:
         pathlib.Path(job.fn(complete_filename)).touch()
@@ -534,50 +548,57 @@ job_definitions = [
         'mode': 'nvt',
         'device_name': 'cpu',
         'ranks_per_partition': NUM_CPU_RANKS,
-        'aggregator': partition_jobs_cpu_mpi_nvt
+        'aggregator': partition_jobs_cpu_mpi_nvt,
     },
     {
         'mode': 'npt',
         'device_name': 'cpu',
         'ranks_per_partition': NUM_CPU_RANKS,
-        'aggregator': partition_jobs_cpu_mpi_npt
+        'aggregator': partition_jobs_cpu_mpi_npt,
     },
 ]
 
 
 def add_sampling_job(mode, device_name, ranks_per_partition, aggregator):
     """Add a sampling job to the workflow."""
-    directives = dict(walltime=CONFIG["max_walltime"],
-                      executable=CONFIG["executable"],
-                      nranks=util.total_ranks_function(ranks_per_partition))
+    directives = dict(
+        walltime=CONFIG['max_walltime'],
+        executable=CONFIG['executable'],
+        nranks=util.total_ranks_function(ranks_per_partition),
+    )
 
     @Project.pre.after(patchy_particle_pressure_create_initial_state)
     @Project.post.isfile(f'{mode}_{device_name}_complete')
-    @Project.operation(name=f'patchy_particle_pressure_{mode}_{device_name}',
-                       directives=directives,
-                       aggregator=aggregator)
+    @Project.operation(
+        name=f'patchy_particle_pressure_{mode}_{device_name}',
+        directives=directives,
+        aggregator=aggregator,
+    )
     def sampling_operation(*jobs):
         """Perform sampling simulation given the definition."""
         import hoomd
 
         communicator = hoomd.communicator.Communicator(
-            ranks_per_partition=ranks_per_partition)
+            ranks_per_partition=ranks_per_partition
+        )
         job = jobs[communicator.partition]
 
         if communicator.rank == 0:
-            print(f'starting patchy_particle_pressure_{mode}_{device_name}:',
-                  job)
+            print(f'starting patchy_particle_pressure_{mode}_{device_name}:', job)
 
-        device = hoomd.device.CPU(communicator=communicator,
-                                  message_filename=util.get_message_filename(
-                                      job, f'{mode}_{device_name}.log'))
+        device = hoomd.device.CPU(
+            communicator=communicator,
+            message_filename=util.get_message_filename(
+                job, f'{mode}_{device_name}.log'
+            ),
+        )
 
         globals().get(f'run_{mode}_sim')(
-            job, device, complete_filename=f'{mode}_{device_name}_complete')
+            job, device, complete_filename=f'{mode}_{device_name}_complete'
+        )
 
         if communicator.rank == 0:
-            print(f'completed patchy_particle_pressure_{mode}_{device_name} '
-                  f'{job}')
+            print(f'completed patchy_particle_pressure_{mode}_{device_name} ' f'{job}')
 
     sampling_jobs.append(sampling_operation)
 
@@ -589,14 +610,16 @@ for definition in job_definitions:
 @Project.pre(is_patchy_particle_pressure)
 @Project.pre.after(*sampling_jobs)
 @Project.post.true('patchy_particle_pressure_analysis_complete')
-@Project.operation(directives=dict(walltime=CONFIG['short_walltime'],
-                                   executable=CONFIG["executable"]))
+@Project.operation(
+    directives=dict(walltime=CONFIG['short_walltime'], executable=CONFIG['executable'])
+)
 def patchy_particle_pressure_analyze(job):
     """Analyze the output of all simulation modes."""
-    import numpy
     import matplotlib
-    import matplotlib.style
     import matplotlib.figure
+    import matplotlib.style
+    import numpy
+
     matplotlib.style.use('fivethirtyeight')
 
     print('starting patchy_particle_pressure_analyze:', job)
@@ -620,22 +643,27 @@ def patchy_particle_pressure_analyze(job):
         pressures[sim_mode] = log_traj['hoomd-data/hpmc/compute/SDF/betaP']
 
         densities[sim_mode] = log_traj[
-            'hoomd-data/custom_actions/ComputeDensity/density']
+            'hoomd-data/custom_actions/ComputeDensity/density'
+        ]
 
     # save averages
     for mode in sim_modes:
-        job.document[mode] = dict(pressure=float(numpy.mean(pressures[mode])),
-                                  density=float(numpy.mean(densities[mode])))
+        job.document[mode] = dict(
+            pressure=float(numpy.mean(pressures[mode])),
+            density=float(numpy.mean(densities[mode])),
+        )
 
     # Plot results
     fig = matplotlib.figure.Figure(figsize=(10, 10 / 1.618 * 2), layout='tight')
     ax = fig.add_subplot(2, 2, 1)
-    util.plot_timeseries(ax=ax,
-                         timesteps=timesteps,
-                         data=densities,
-                         ylabel=r"$\rho$",
-                         expected=job.sp.density,
-                         max_points=500)
+    util.plot_timeseries(
+        ax=ax,
+        timesteps=timesteps,
+        data=densities,
+        ylabel=r'$\rho$',
+        expected=job.sp.density,
+        max_points=500,
+    )
     ax.legend()
 
     ax_distribution = fig.add_subplot(2, 2, 2, sharey=ax)
@@ -653,7 +681,7 @@ def patchy_particle_pressure_analyze(job):
         ax=ax,
         timesteps=timesteps,
         data=pressures,
-        ylabel=r"$\beta P$",
+        ylabel=r'$\beta P$',
         expected=job.sp.pressure,
         max_points=500,
     )
@@ -667,42 +695,50 @@ def patchy_particle_pressure_analyze(job):
         plot_rotated=True,
     )
 
-    fig.suptitle(f"$\\rho={job.sp.density}$, "
-                 f"$N={job.sp.num_particles}$, "
-                 f"T={job.sp.temperature}, "
-                 f"$\\chi={job.sp.chi}$, "
-                 f"replicate={job.statepoint.replicate_idx}, "
-                 "$\\varepsilon_{\\mathrm{rep}}/\\varepsilon_{\\mathrm{att}}$"
-                 f"$={job.sp.long_range_interaction_scale_factor}$")
-    fig.savefig(job.fn('nvt_npt_plots.svg'),
-                bbox_inches='tight',
-                transparent=False)
+    fig.suptitle(
+        f'$\\rho={job.sp.density}$, '
+        f'$N={job.sp.num_particles}$, '
+        f'T={job.sp.temperature}, '
+        f'$\\chi={job.sp.chi}$, '
+        f'replicate={job.statepoint.replicate_idx}, '
+        '$\\varepsilon_{\\mathrm{rep}}/\\varepsilon_{\\mathrm{att}}$'
+        f'$={job.sp.long_range_interaction_scale_factor}$'
+    )
+    fig.savefig(job.fn('nvt_npt_plots.svg'), bbox_inches='tight', transparent=False)
 
     job.document['patchy_particle_pressure_analysis_complete'] = True
 
 
-@Project.pre(lambda *jobs: util.true_all(
-    *jobs, key='patchy_particle_pressure_analysis_complete'))
-@Project.post(lambda *jobs: util.true_all(
-    *jobs, key='patchy_particle_pressure_compare_modes_complete'))
-@Project.operation(directives=dict(executable=CONFIG["executable"]),
-                   aggregator=aggregator.groupby(
-                       key=[
-                           'pressure',
-                           'density',
-                           'temperature',
-                           'chi',
-                           'num_particles',
-                           'long_range_interaction_scale_factor',
-                       ],
-                       sort_by='replicate_idx',
-                       select=is_patchy_particle_pressure))
+@Project.pre(
+    lambda *jobs: util.true_all(*jobs, key='patchy_particle_pressure_analysis_complete')
+)
+@Project.post(
+    lambda *jobs: util.true_all(
+        *jobs, key='patchy_particle_pressure_compare_modes_complete'
+    )
+)
+@Project.operation(
+    directives=dict(executable=CONFIG['executable']),
+    aggregator=aggregator.groupby(
+        key=[
+            'pressure',
+            'density',
+            'temperature',
+            'chi',
+            'num_particles',
+            'long_range_interaction_scale_factor',
+        ],
+        sort_by='replicate_idx',
+        select=is_patchy_particle_pressure,
+    ),
+)
 def patchy_particle_pressure_compare_modes(*jobs):
     """Compares the tested simulation modes."""
-    import numpy
     import matplotlib
-    import matplotlib.style
     import matplotlib.figure
+    import matplotlib.style
+    import numpy
+
     matplotlib.style.use('fivethirtyeight')
 
     print('starting patchy_particle_pressure_compare_modes:', jobs[0])
@@ -732,12 +768,14 @@ def patchy_particle_pressure_compare_modes(*jobs):
     quantity_reference = dict(density=set_density, pressure=set_pressure)
 
     fig = matplotlib.figure.Figure(figsize=(10, 10 / 1.618 * 2), layout='tight')
-    fig.suptitle(f"$\\rho={set_density}$, "
-                 f"$N={num_particles}$, "
-                 f"T={set_temperature}, "
-                 f"$\\chi={set_chi}$, "
-                 "$\\varepsilon_{\\mathrm{rep}}/\\varepsilon_{\\mathrm{att}}$"
-                 f"$={lrisf}$")
+    fig.suptitle(
+        f'$\\rho={set_density}$, '
+        f'$N={num_particles}$, '
+        f'T={set_temperature}, '
+        f'$\\chi={set_chi}$, '
+        '$\\varepsilon_{\\mathrm{rep}}/\\varepsilon_{\\mathrm{att}}$'
+        f'$={lrisf}$'
+    )
 
     for i, quantity_name in enumerate(quantity_names):
         ax = fig.add_subplot(2, 1, i + 1)
@@ -746,15 +784,12 @@ def patchy_particle_pressure_compare_modes(*jobs):
         quantities = {mode: [] for mode in sim_modes}
         for jb in jobs:
             for mode in sim_modes:
-                quantities[mode].append(
-                    getattr(getattr(jb.doc, mode), quantity_name))
+                quantities[mode].append(getattr(getattr(jb.doc, mode), quantity_name))
 
         if quantity_reference[quantity_name] is not None:
             reference = quantity_reference[quantity_name]
         else:
-            avg_value = {
-                mode: numpy.mean(quantities[mode]) for mode in sim_modes
-            }
+            avg_value = {mode: numpy.mean(quantities[mode]) for mode in sim_modes}
             reference = numpy.mean([avg_value[mode] for mode in sim_modes])
 
         avg_quantity, stderr_quantity = util.plot_vs_expected(
@@ -763,7 +798,8 @@ def patchy_particle_pressure_compare_modes(*jobs):
             ylabel=labels[quantity_name],
             expected=reference,
             relative_scale=1000,
-            separate_nvt_npt=True)
+            separate_nvt_npt=True,
+        )
         ax.axhline(0.0, c='k', ls='--')
 
     filename = 'patchy_particle_pressure_compare_'
@@ -772,10 +808,12 @@ def patchy_particle_pressure_compare_modes(*jobs):
     filename += f'pressure{round(set_pressure, 3)}_'
     filename += f'chi{round(set_chi, 2)}_'
     filename += f'{num_particles}particles_'
-    filename += f"epsilonrepulsive{lrisf}.svg"
-    fig.savefig(os.path.join(jobs[0]._project.path, filename),
-                bbox_inches='tight',
-                transparent=False)
+    filename += f'epsilonrepulsive{lrisf}.svg'
+    fig.savefig(
+        os.path.join(jobs[0]._project.path, filename),
+        bbox_inches='tight',
+        transparent=False,
+    )
 
     for job in jobs:
         job.document['patchy_particle_pressure_compare_modes_complete'] = True

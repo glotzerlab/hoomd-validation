@@ -8,4 +8,5 @@ from flow import FlowProject
 
 class Project(FlowProject):
     """Validation test projet."""
+
     pass
