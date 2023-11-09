@@ -524,7 +524,6 @@ def make_mc_simulation(job,
     # compute the density
     compute_density = ComputeDensity()
 
-    # log to gsd
     logger = hoomd.logging.Logger(categories=['scalar', 'sequence'])
     logger.add(lj_jit_potential, quantities=['energy'])
     logger.add(mc, quantities=['translate_moves'])

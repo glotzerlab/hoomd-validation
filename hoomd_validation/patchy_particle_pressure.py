@@ -290,7 +290,6 @@ def make_mc_simulation(job,
     compute_density = ComputeDensity()
     sdf = hoomd.hpmc.compute.SDF(xmax=0.02, dx=1e-4)
 
-    # log to gsd
     logger = hoomd.logging.Logger(categories=['scalar', 'sequence'])
     logger.add(mc, quantities=['translate_moves'])
     logger.add(sdf, quantities=['betaP'])
