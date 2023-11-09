@@ -290,14 +290,13 @@ def make_mc_simulation(job,
     compute_density = ComputeDensity()
     sdf = hoomd.hpmc.compute.SDF(xmax=0.02, dx=1e-4)
 
-    # log to gsd
-    logger_gsd = hoomd.logging.Logger(categories=['scalar', 'sequence'])
-    logger_gsd.add(mc, quantities=['translate_moves'])
-    logger_gsd.add(sdf, quantities=['betaP'])
-    logger_gsd.add(compute_density, quantities=['density'])
-    logger_gsd.add(patches, quantities=['energy'])
+    logger = hoomd.logging.Logger(categories=['scalar', 'sequence'])
+    logger.add(mc, quantities=['translate_moves'])
+    logger.add(sdf, quantities=['betaP'])
+    logger.add(compute_density, quantities=['density'])
+    logger.add(patches, quantities=['energy'])
     for loggable, quantity in extra_loggables:
-        logger_gsd.add(loggable, quantities=[quantity])
+        logger.add(loggable, quantities=[quantity])
 
     trajectory_logger = hoomd.logging.Logger(categories=['object'])
     trajectory_logger.add(mc, quantities=['type_shapes'])
@@ -309,7 +308,7 @@ def make_mc_simulation(job,
         initial_state=initial_state,
         integrator=mc,
         sim_mode=sim_mode,
-        logger=logger_gsd,
+        logger=logger,
         table_write_period=WRITE_PERIOD,
         trajectory_write_period=LOG_PERIOD['trajectory'],
         log_write_period=LOG_PERIOD['quantities'],
@@ -594,7 +593,6 @@ for definition in job_definitions:
                                    executable=CONFIG["executable"]))
 def patchy_particle_pressure_analyze(job):
     """Analyze the output of all simulation modes."""
-    import gsd.hoomd
     import numpy
     import matplotlib
     import matplotlib.style
@@ -605,7 +603,7 @@ def patchy_particle_pressure_analyze(job):
 
     sim_modes = []
     for _ensemble in ['nvt', 'npt']:
-        if job.isfile(f'{_ensemble}_cpu_quantities.gsd'):
+        if job.isfile(f'{_ensemble}_cpu_quantities.h5'):
             sim_modes.append(f'{_ensemble}_cpu')
 
     util._sort_sim_modes(sim_modes)
@@ -615,14 +613,14 @@ def patchy_particle_pressure_analyze(job):
     densities = {}
 
     for sim_mode in sim_modes:
-        log_traj = gsd.hoomd.read_log(job.fn(sim_mode + '_quantities.gsd'))
+        log_traj = util.read_log(job.fn(sim_mode + '_quantities.h5'))
 
-        timesteps[sim_mode] = log_traj['configuration/step']
+        timesteps[sim_mode] = log_traj['hoomd-data/Simulation/timestep']
 
-        pressures[sim_mode] = log_traj['log/hpmc/compute/SDF/betaP']
+        pressures[sim_mode] = log_traj['hoomd-data/hpmc/compute/SDF/betaP']
 
         densities[sim_mode] = log_traj[
-            'log/custom_actions/ComputeDensity/density']
+            'hoomd-data/custom_actions/ComputeDensity/density']
 
     # save averages
     for mode in sim_modes:
@@ -711,7 +709,7 @@ def patchy_particle_pressure_compare_modes(*jobs):
 
     sim_modes = []
     for _ensemble in ['nvt', 'npt']:
-        if jobs[0].isfile(f'{_ensemble}_cpu_quantities.gsd'):
+        if jobs[0].isfile(f'{_ensemble}_cpu_quantities.h5'):
             sim_modes.append(f'{_ensemble}_cpu')
 
     util._sort_sim_modes(sim_modes)

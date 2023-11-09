@@ -6,6 +6,7 @@
 import numpy
 import signac
 import os
+import h5py
 
 
 def true_all(*jobs, key):
@@ -121,7 +122,7 @@ def make_simulation(
                                      output=file)
     sim.operations.add(table_writer)
 
-    # write particle trajectory to gsd file
+    # write particle trajectory to a gsd file
     trajectory_writer = hoomd.write.GSD(
         filename=job.fn(get_job_filename(sim_mode, device, 'trajectory',
                                          'gsd')),
@@ -133,16 +134,16 @@ def make_simulation(
         mode='ab')
     sim.operations.add(trajectory_writer)
 
-    # write logged quantities to gsd file
-    quantity_writer = hoomd.write.GSD(
-        filter=hoomd.filter.Null(),
-        filename=job.fn(get_job_filename(sim_mode, device, 'quantities',
-                                         'gsd')),
+    # write logged quantities to h5 file
+    logger.add(sim, quantities=['timestep'])
+
+    quantity_writer = hoomd.write.HDF5Log(
+        filename=job.fn(get_job_filename(sim_mode, device, 'quantities', 'h5')),
         trigger=hoomd.trigger.And([
             hoomd.trigger.Periodic(log_write_period),
             hoomd.trigger.After(log_start_step)
         ]),
-        mode='ab',
+        mode='w',
         logger=logger)
     sim.operations.add(quantity_writer)
 
@@ -333,3 +334,13 @@ def plot_timeseries(ax,
 def _sort_sim_modes(sim_modes):
     """Sort simulation modes for comparison."""
     sim_modes.sort(key=lambda x: ('nvt' in x or 'nec' in x, 'md' in x, x))
+
+
+def read_log(filename):
+    """Read a HDF5 log as a dictionary of logged quantities."""
+    with h5py.File(mode='r', name=filename) as f:
+        keys = []
+        f.visit(lambda name: keys.append(name))
+        result = {key: numpy.array(f[key]) for key in keys}
+
+    return result

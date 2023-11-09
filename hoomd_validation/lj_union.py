@@ -567,13 +567,12 @@ def make_mc_simulation(job,
     # compute the density
     compute_density = ComputeDensity()
 
-    # log to gsd
-    logger_gsd = hoomd.logging.Logger(categories=['scalar', 'sequence'])
-    logger_gsd.add(lj_jit_potential, quantities=['energy'])
-    logger_gsd.add(mc, quantities=['translate_moves', 'rotate_moves'])
-    logger_gsd.add(compute_density)
+    logger = hoomd.logging.Logger(categories=['scalar', 'sequence'])
+    logger.add(lj_jit_potential, quantities=['energy'])
+    logger.add(mc, quantities=['translate_moves', 'rotate_moves'])
+    logger.add(compute_density)
     for loggable in extra_loggables:
-        logger_gsd.add(loggable)
+        logger.add(loggable)
 
     # make simulation
     sim = util.make_simulation(job=job,
@@ -581,7 +580,7 @@ def make_mc_simulation(job,
                                initial_state=initial_state,
                                integrator=mc,
                                sim_mode=sim_mode,
-                               logger=logger_gsd,
+                               logger=logger,
                                table_write_period=WRITE_PERIOD,
                                trajectory_write_period=LOG_PERIOD['trajectory'],
                                log_write_period=LOG_PERIOD['quantities'],
@@ -866,7 +865,8 @@ def add_mc_sampling_job(mode, device_name, ranks_per_partition, aggregator):
 
         device = device_cls(communicator=communicator,
                             message_filename=util.get_message_filename(
-                                job, f'{mode}_mc_{device_name}.log'))
+                                job, f'{mode}_mc_{device_name}.log'),
+                            num_cpu_threads=1)
 
         globals().get(f'run_{mode}_mc_sim')(
             job, device, complete_filename=f'{mode}_mc_{device_name}_complete')
@@ -890,7 +890,6 @@ if CONFIG['enable_llvm']:
                                    executable=CONFIG["executable"]))
 def lj_union_analyze(job):
     """Analyze the output of all simulation modes."""
-    import gsd.hoomd
     import numpy
     import math
     import matplotlib
@@ -907,7 +906,7 @@ def lj_union_analyze(job):
         'npt_bussi_md_cpu',
     ]
 
-    if os.path.exists(job.fn('nvt_langevin_md_gpu_quantities.gsd')):
+    if os.path.exists(job.fn('nvt_langevin_md_gpu_quantities.h5')):
         sim_modes.extend([
             'nvt_langevin_md_gpu',
             'nvt_mttk_md_gpu',
@@ -915,10 +914,10 @@ def lj_union_analyze(job):
             'npt_bussi_md_gpu',
         ])
 
-    if os.path.exists(job.fn('nvt_mc_cpu_quantities.gsd')):
+    if os.path.exists(job.fn('nvt_mc_cpu_quantities.h5')):
         sim_modes.extend(['nvt_mc_cpu', 'npt_mc_cpu'])
 
-    if os.path.exists(job.fn('nvt_mc_gpu_quantities.gsd')):
+    if os.path.exists(job.fn('nvt_mc_gpu_quantities.h5')):
         sim_modes.extend(['nvt_mc_gpu'])
 
     util._sort_sim_modes(sim_modes)
@@ -930,31 +929,32 @@ def lj_union_analyze(job):
     linear_momentum = {}
 
     for sim_mode in sim_modes:
-        log_traj = gsd.hoomd.read_log(job.fn(sim_mode + '_quantities.gsd'))
+        log_traj = util.read_log(job.fn(sim_mode + '_quantities.h5'))
 
-        timesteps[sim_mode] = log_traj['configuration/step']
+        timesteps[sim_mode] = log_traj['hoomd-data/Simulation/timestep']
 
         if 'md' in sim_mode:
             energies[sim_mode] = log_traj[
-                'log/md/compute/ThermodynamicQuantities/potential_energy']
+                'hoomd-data/md/compute/ThermodynamicQuantities/potential_energy']
         else:
             energies[sim_mode] = (
-                log_traj['log/hpmc/pair/user/CPPPotentialUnion/energy']
+                log_traj['hoomd-data/hpmc/pair/user/CPPPotentialUnion/energy']
                 * job.statepoint.kT)
 
         energies[sim_mode] /= job.statepoint.num_particles
 
         if 'md' in sim_mode:
             pressures[sim_mode] = log_traj[
-                'log/md/compute/ThermodynamicQuantities/pressure']
+                'hoomd-data/md/compute/ThermodynamicQuantities/pressure']
         else:
             pressures[sim_mode] = numpy.full(len(energies[sim_mode]), numpy.nan)
 
         densities[sim_mode] = log_traj[
-            'log/custom_actions/ComputeDensity/density']
+            'hoomd-data/custom_actions/ComputeDensity/density']
 
         if 'md' in sim_mode and 'langevin' not in sim_mode:
-            momentum_vector = log_traj['log/md/Integrator/linear_momentum']
+            momentum_vector = log_traj[
+                'hoomd-data/md/Integrator/linear_momentum']
             linear_momentum[sim_mode] = [
                 math.sqrt(v[0]**2 + v[1]**2 + v[2]**2) for v in momentum_vector
             ]
@@ -1040,7 +1040,7 @@ def lj_union_compare_modes(*jobs):
         'npt_bussi_md_cpu',
     ]
 
-    if os.path.exists(jobs[0].fn('nvt_langevin_md_gpu_quantities.gsd')):
+    if os.path.exists(jobs[0].fn('nvt_langevin_md_gpu_quantities.h5')):
         sim_modes.extend([
             'nvt_langevin_md_gpu',
             'nvt_mttk_md_gpu',
@@ -1048,10 +1048,10 @@ def lj_union_compare_modes(*jobs):
             'npt_bussi_md_gpu',
         ])
 
-    if os.path.exists(jobs[0].fn('nvt_mc_cpu_quantities.gsd')):
+    if os.path.exists(jobs[0].fn('nvt_mc_cpu_quantities.h5')):
         sim_modes.extend(['nvt_mc_cpu', 'npt_mc_cpu'])
 
-    if os.path.exists(jobs[0].fn('nvt_mc_gpu_quantities.gsd')):
+    if os.path.exists(jobs[0].fn('nvt_mc_gpu_quantities.h5')):
         sim_modes.extend(['nvt_mc_gpu'])
 
     util._sort_sim_modes(sim_modes)
@@ -1128,7 +1128,6 @@ def lj_union_compare_modes(*jobs):
                    aggregator=analysis_aggregator)
 def lj_union_distribution_analyze(*jobs):
     """Checks that MD follows the correct KE distribution."""
-    import gsd.hoomd
     import numpy
     import matplotlib
     import matplotlib.style
@@ -1145,7 +1144,7 @@ def lj_union_distribution_analyze(*jobs):
         'npt_bussi_md_cpu',
     ]
 
-    if os.path.exists(jobs[0].fn('nvt_langevin_md_gpu_quantities.gsd')):
+    if os.path.exists(jobs[0].fn('nvt_langevin_md_gpu_quantities.h5')):
         sim_modes.extend([
             'nvt_langevin_md_gpu',
             'nvt_mttk_md_gpu',
@@ -1153,10 +1152,10 @@ def lj_union_distribution_analyze(*jobs):
             'npt_bussi_md_gpu',
         ])
 
-    if os.path.exists(jobs[0].fn('nvt_mc_cpu_quantities.gsd')):
+    if os.path.exists(jobs[0].fn('nvt_mc_cpu_quantities.h5')):
         sim_modes.extend(['nvt_mc_cpu', 'npt_mc_cpu'])
 
-    if os.path.exists(jobs[0].fn('nvt_mc_gpu_quantities.gsd')):
+    if os.path.exists(jobs[0].fn('nvt_mc_gpu_quantities.h5')):
         sim_modes.extend(['nvt_mc_gpu'])
 
     util._sort_sim_modes(sim_modes)
@@ -1194,13 +1193,13 @@ def lj_union_distribution_analyze(*jobs):
 
             n_rotate_dof = num_particles * 3
 
-            print('Reading' + job.fn(sim_mode + '_quantities.gsd'))
-            log_traj = gsd.hoomd.read_log(job.fn(sim_mode + '_quantities.gsd'))
+            print('Reading' + job.fn(sim_mode + '_quantities.h5'))
+            log_traj = util.read_log(job.fn(sim_mode + '_quantities.h5'))
 
             if 'md' in sim_mode:
                 # https://doi.org/10.1371/journal.pone.0202764
                 ke_translate = log_traj[
-                    'log/md/compute/ThermodynamicQuantities/'
+                    'hoomd-data/md/compute/ThermodynamicQuantities/'
                     'translational_kinetic_energy']
                 ke_translate_means_expected[sim_mode].append(
                     numpy.mean(ke_translate) - 1 / 2 * n_translate_dof * kT)
@@ -1209,8 +1208,9 @@ def lj_union_distribution_analyze(*jobs):
                     - 1 / math.sqrt(2) * math.sqrt(n_translate_dof) * kT)
                 ke_translate_samples[sim_mode].extend(ke_translate)
 
-                ke_rotate = log_traj['log/md/compute/ThermodynamicQuantities/'
-                                     'rotational_kinetic_energy']
+                ke_rotate = log_traj[
+                    'hoomd-data/md/compute/ThermodynamicQuantities/'
+                    'rotational_kinetic_energy']
                 ke_rotate_means_expected[sim_mode].append(
                     numpy.mean(ke_rotate) - 1 / 2 * n_rotate_dof * kT)
                 ke_rotate_sigmas_expected[sim_mode].append(
@@ -1225,21 +1225,21 @@ def lj_union_distribution_analyze(*jobs):
 
             if 'md' in sim_mode:
                 potential_energy_samples[sim_mode].extend(
-                    log_traj['log/md/compute/ThermodynamicQuantities'
+                    log_traj['hoomd-data/md/compute/ThermodynamicQuantities'
                              '/potential_energy'])
             else:
-                potential_energy_samples[sim_mode].extend(
-                    log_traj['log/hpmc/pair/user/CPPPotentialUnion/energy']
-                    * job.statepoint.kT)
+                potential_energy_samples[sim_mode].extend(log_traj[
+                    'hoomd-data/hpmc/pair/user/CPPPotentialUnion/energy']
+                                                          * job.statepoint.kT)
 
             if 'md' in sim_mode:
-                pressure_samples[sim_mode].extend(
-                    log_traj['log/md/compute/ThermodynamicQuantities/pressure'])
+                pressure_samples[sim_mode].extend(log_traj[
+                    'hoomd-data/md/compute/ThermodynamicQuantities/pressure'])
             else:
                 pressure_samples[sim_mode].extend([job.statepoint.pressure])
 
             density_samples[sim_mode].extend(
-                log_traj['log/custom_actions/ComputeDensity/density'])
+                log_traj['hoomd-data/custom_actions/ComputeDensity/density'])
 
     ax = fig.add_subplot(4, 2, 1)
     util.plot_vs_expected(ax, ke_translate_means_expected,
@@ -1450,7 +1450,6 @@ nve_analysis_aggregator = aggregator.groupby(
                    aggregator=nve_analysis_aggregator)
 def lj_union_conservation_analyze(*jobs):
     """Analyze the output of NVE simulations and inspect conservation."""
-    import gsd.hoomd
     import math
     import matplotlib
     import matplotlib.style
@@ -1460,7 +1459,7 @@ def lj_union_conservation_analyze(*jobs):
     print('starting lj_union_conservation_analyze:', jobs[0])
 
     sim_modes = ['nve_md_cpu']
-    if os.path.exists(jobs[0].fn('nve_md_gpu_quantities.gsd')):
+    if os.path.exists(jobs[0].fn('nve_md_gpu_quantities.h5')):
         sim_modes.extend(['nve_md_gpu'])
 
     timesteps = []
@@ -1473,20 +1472,22 @@ def lj_union_conservation_analyze(*jobs):
         job_linear_momentum = {}
 
         for sim_mode in sim_modes:
-            log_traj = gsd.hoomd.read_log(job.fn(sim_mode + '_quantities.gsd'))
+            log_traj = util.read_log(job.fn(sim_mode + '_quantities.h5'))
 
-            job_timesteps[sim_mode] = log_traj['configuration/step']
+            job_timesteps[sim_mode] = log_traj['hoomd-data/Simulation/timestep']
 
             job_energies[sim_mode] = (
                 log_traj[
-                    'log/md/compute/ThermodynamicQuantities/potential_energy']
+                    'hoomd-data/md/compute/ThermodynamicQuantities/potential_energy']
                 + log_traj[
-                    'log/md/compute/ThermodynamicQuantities/kinetic_energy'])
+                    'hoomd-data/md/compute/ThermodynamicQuantities/kinetic_energy']
+            )
             job_energies[sim_mode] = (
                 job_energies[sim_mode]
                 - job_energies[sim_mode][0]) / job.statepoint["num_particles"]
 
-            momentum_vector = log_traj['log/md/Integrator/linear_momentum']
+            momentum_vector = log_traj[
+                'hoomd-data/md/Integrator/linear_momentum']
             job_linear_momentum[sim_mode] = [
                 math.sqrt(v[0]**2 + v[1]**2 + v[2]**2)
                 / job.statepoint["num_particles"] for v in momentum_vector
