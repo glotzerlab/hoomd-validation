@@ -174,7 +174,6 @@ def make_mc_simulation(job, device, initial_state, sim_mode, extra_loggables=Non
     compute_density = ComputeDensity()
     sdf = hoomd.hpmc.compute.SDF(xmax=0.02, dx=1e-4)
 
-    # log to gsd
     logger = hoomd.logging.Logger(categories=['scalar', 'sequence'])
     logger.add(mc, quantities=['translate_moves'])
     logger.add(sdf, quantities=['betaP'])
@@ -420,7 +419,6 @@ def run_nec_sim(job, device, complete_filename):
     # compute the density
     compute_density = ComputeDensity()
 
-    # log to gsd
     logger = hoomd.logging.Logger(categories=['scalar', 'sequence'])
     logger.add(
         mc, quantities=['translate_moves', 'particles_per_chain', 'virial_pressure']
