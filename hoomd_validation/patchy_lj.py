@@ -39,8 +39,8 @@ def job_statepoints():
             kT=1.0,
             density=0.9193740949934834,
             pressure=11.0,
-            num_particles=12**3,
-            r_cut=4.0,
+            num_particles=7**3,
+            r_cut=3.0,
             patch_vector=(1,0,0), # make sure it is normalized here
             alpha=numpy.deg2rad(20),
             omega=20,
@@ -206,7 +206,8 @@ def make_md_simulation(job,
                                                          omega = job.statepoint.omega))
 
     # integrator
-    integrator = md.Integrator(dt=0.001, methods=[method], forces=[wca, patch])
+    integrator = md.Integrator(dt=0.001, methods=[method], forces=[wca, patch],
+                               integrate_rotational_dof=True)
 
     # compute thermo
     thermo = md.compute.ThermodynamicQuantities(hoomd.filter.All())
@@ -460,7 +461,7 @@ def make_mc_simulation(job,
 
     # integrator
     mc = hpmc.integrate.Sphere(nselect=1)
-    mc.shape['A'] = dict(diameter=0.0)
+    mc.shape['A'] = dict(diameter=0.0, orientable=True)
 
     # pair potential
     epsilon = job.statepoint.patch_epsilon / job.sp.kT
@@ -624,9 +625,10 @@ def make_mc_simulation(job,
 
     # move size tuner
     mstuner = hpmc.tune.MoveSize.scale_solver(
-        moves=['d'],
+        moves=['d', 'a'],
         target=0.2,
         max_translation_move=0.5,
+        max_rotation_move=1.0,
         trigger=hoomd.trigger.And([
             hoomd.trigger.Periodic(100),
             hoomd.trigger.Before(RANDOMIZE_STEPS | EQUILIBRATE_STEPS // 2)
@@ -672,11 +674,20 @@ def run_nvt_mc_sim(job, device, complete_filename):
         device.notice(f'Translate move acceptance: {translate_acceptance}')
         device.notice(f'Trial move size: {sim.operations.integrator.d["A"]}')
 
+        rotate_moves = sim.operations.integrator.rotate_moves
+        rotate_acceptance = rotate_moves[0] / sum(rotate_moves)
+        device.notice(f'Rotate move acceptance: {rotate_acceptance}')
+        device.notice(
+            f'Rotate move size: {sim.operations.integrator.a["A"]}')
+
         # save move size to a file
         if device.communicator.rank == 0:
             name = util.get_job_filename(sim_mode, device, 'move_size', 'json')
             with open(job.fn(name), 'w') as f:
-                json.dump(dict(d_A=sim.operations.integrator.d["A"]), f)
+                json.dump(
+                    dict(d_A=sim.operations.integrator.d["A"],
+                         a_A=sim.operations.integrator.a["A"],
+                    ), f)
     else:
         device.notice('Restarting...')
         # read move size from the file
@@ -685,8 +696,11 @@ def run_nvt_mc_sim(job, device, complete_filename):
             data = json.load(f)
 
         sim.operations.integrator.d["A"] = data['d_A']
+        sim.operations.integrator.a["A"] = data['a_A']
         device.notice(
             f'Restored trial move size: {sim.operations.integrator.d["A"]}')
+        device.notice(
+            f'Restored rotate move size: {sim.operations.integrator.a["A"]}')
 
     # run
     device.notice('Running...')
@@ -764,6 +778,12 @@ def run_npt_mc_sim(job, device, complete_filename):
         device.notice(f'Translate move acceptance: {translate_acceptance}')
         device.notice(f'Trial move size: {sim.operations.integrator.d["A"]}')
 
+        rotate_moves = sim.operations.integrator.rotate_moves
+        rotate_acceptance = rotate_moves[0] / sum(rotate_moves)
+        device.notice(f'Rotate move acceptance: {rotate_acceptance}')
+        device.notice(
+            f'Rotate move size: {sim.operations.integrator.a["A"]}')
+
         volume_moves = boxmc.volume_moves
         volume_acceptance = volume_moves[0] / sum(volume_moves)
         device.notice(f'Volume move acceptance: {volume_acceptance}')
@@ -775,7 +795,9 @@ def run_npt_mc_sim(job, device, complete_filename):
             with open(job.fn(name), 'w') as f:
                 json.dump(
                     dict(d_A=sim.operations.integrator.d["A"],
-                         volume_delta=boxmc.volume['delta']), f)
+                         a_A=sim.operations.integrator.a["A"],
+                         volume_delta=boxmc.volume['delta']
+                    ), f)
     else:
         device.notice('Restarting...')
         # read move size from the file
@@ -784,9 +806,12 @@ def run_npt_mc_sim(job, device, complete_filename):
             data = json.load(f)
 
         sim.operations.integrator.d["A"] = data['d_A']
+        sim.operations.integrator.a["A"] = data['a_A']
+        boxmc.volume = dict(weight=1.0, mode='ln', delta=data['volume_delta'])
         device.notice(
             f'Restored trial move size: {sim.operations.integrator.d["A"]}')
-        boxmc.volume = dict(weight=1.0, mode='ln', delta=data['volume_delta'])
+        device.notice(
+            f'Restored rotate move size: {sim.operations.integrator.a["A"]}')
         device.notice(f'Restored volume move size: {boxmc.volume["delta"]}')
 
     # run
