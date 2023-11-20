@@ -563,13 +563,13 @@ def make_mc_simulation(job,
     # pair forces to compute virial pressure
     nlist = hoomd.md.nlist.Cell(buffer=0.4)
     wca = hoomd.md.pair.LJ(default_r_cut=sigma * 2**(1/6),
-                          nlist=nlist)
+                           nlist=nlist)
     wca.params[('A', 'A')] = dict(sigma=WCA_PARAMS['sigma'],
-                                 epsilon=WCA_PARAMS['epsilon']) # TODO: why not /kt
+                                  epsilon=wca_epsilon) # TODO: why not /kt WCA_PARAMS['epsilon']
     wca.mode = 'shift'
 
     patch = md.pair.aniso.PatchyLJ(nlist=nlist,
-                             default_r_cut = job.statepoint.r_cut)
+                                   default_r_cut = job.statepoint.r_cut)
     patch.patches['A'] = [job.statepoint.patch_vector]
     patch.params[('A', 'A')] = dict(pair_params=dict(epsilon=job.statepoint.patch_epsilon,
                                                      sigma=job.statepoint.patch_sigma),
