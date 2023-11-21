@@ -198,7 +198,8 @@ def make_md_simulation(job,
     wca.mode = 'shift'
 
     patch = md.pair.aniso.PatchyLJ(nlist=nlist,
-                                   default_r_cut=job.statepoint.r_cut)
+                                   default_r_cut=job.statepoint.r_cut,
+                                   mode='shift')
     patch.patches['A'] = [job.statepoint.patch_vector]
     patch.params[('A', 'A')] = dict(pair_params=dict(epsilon=job.statepoint.patch_epsilon,
                                                      sigma=job.statepoint.patch_sigma),
@@ -566,11 +567,12 @@ def make_mc_simulation(job,
     wca = hoomd.md.pair.LJ(default_r_cut=wca_sigma * 2**(1/6),
                            nlist=nlist)
     wca.params[('A', 'A')] = dict(sigma=WCA_PARAMS['sigma'],
-                                  epsilon=wca_epsilon) # TODO: why not /kt WCA_PARAMS['epsilon']
+                                  epsilon=WCA_PARAMS['epsilon'])
     wca.mode = 'shift'
 
     patch = md.pair.aniso.PatchyLJ(nlist=nlist,
-                                   default_r_cut = job.statepoint.r_cut)
+                                   default_r_cut = job.statepoint.r_cut,
+                                   mode='shift')
     patch.patches['A'] = [job.statepoint.patch_vector]
     patch.params[('A', 'A')] = dict(pair_params=dict(epsilon=job.statepoint.patch_epsilon,
                                                      sigma=job.statepoint.patch_sigma),
