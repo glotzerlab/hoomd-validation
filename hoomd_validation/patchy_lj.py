@@ -14,9 +14,9 @@ import pathlib
 
 # Run parameters shared between simulations.
 # Step counts must be even and a multiple of the log quantity period.
-RANDOMIZE_STEPS = 1_000
-EQUILIBRATE_STEPS = 0
-RUN_STEPS = 0
+RANDOMIZE_STEPS = 20_000
+EQUILIBRATE_STEPS = 100_000
+RUN_STEPS = 500_000
 RESTART_STEPS = RUN_STEPS // 10
 TOTAL_STEPS = RANDOMIZE_STEPS + EQUILIBRATE_STEPS + RUN_STEPS
 
@@ -74,7 +74,7 @@ def is_patchy_lj_fluid(job):
 def sort_key(job):
     """Aggregator sort key."""
     return (job.statepoint.density, job.statepoint.num_particles)
-print(CONFIG)
+
 partition_jobs_cpu_mpi = aggregator.groupsof(num=min(
     CONFIG["replicates"], CONFIG["max_cores_submission"] // NUM_CPU_RANKS),
                                              sort_by=sort_key,
@@ -98,8 +98,8 @@ def patchy_lj_fluid_create_initial_state(*jobs):
     import numpy
     import itertools
 
-    communicator = hoomd.communicator.Communicator()
-        # ranks_per_partition=NUM_CPU_RANKS)
+    communicator = hoomd.communicator.Communicator(
+        ranks_per_partition=NUM_CPU_RANKS)
     job = jobs[communicator.partition]
 
     if communicator.rank == 0:
@@ -223,8 +223,6 @@ def make_md_simulation(job,
                    'kinetic_energy',
                ])
     logger.add(integrator, quantities=['linear_momentum'])
-    logger.add(patch)
-    logger.add(wca)
     for loggable in extra_loggables:
         logger.add(loggable)
 
@@ -247,7 +245,7 @@ def make_md_simulation(job,
         if hasattr(loggable, 'attach'):
             loggable.attach(sim)
 
-    return sim, (patch, wca)
+    return sim
 
 
 def run_md_sim(job, device, ensemble, thermostat, complete_filename):
@@ -288,7 +286,7 @@ def run_md_sim(job, device, ensemble, thermostat, complete_filename):
     sim_mode = f'{ensemble}_{thermostat}_md'
 
     density_compute = ComputeDensity()
-    sim, (patch, wca) = make_md_simulation(job,
+    sim = make_md_simulation(job,
                              device,
                              initial_state,
                              method,
@@ -305,10 +303,6 @@ def run_md_sim(job, device, ensemble, thermostat, complete_filename):
         sim.run(0)
         method.thermostat.thermalize_dof()
 
-
-    # add loggables
-
-        
     # equilibrate
     device.notice('Equilibrating...')
     sim.run(EQUILIBRATE_STEPS)
@@ -318,10 +312,6 @@ def run_md_sim(job, device, ensemble, thermostat, complete_filename):
     device.notice('Running...')
     sim.run(RUN_STEPS)
 
-    # get stuff from sim
-    print(f"patch energy {patch.energy}")
-    print(f"wca energy {wca.energy}")
-    
     pathlib.Path(job.fn(complete_filename)).touch()
     device.notice('Done.')
 
@@ -410,8 +400,8 @@ def add_md_sampling_job(ensemble, thermostat, device_name, ranks_per_partition,
         """Perform sampling simulation given the definition."""
         import hoomd
 
-        communicator = hoomd.communicator.Communicator()
-            # ranks_per_partition=ranks_per_partition)
+        communicator = hoomd.communicator.Communicator(
+            ranks_per_partition=ranks_per_partition)
         job = jobs[communicator.partition]
 
         if communicator.rank == 0:
@@ -649,7 +639,7 @@ def make_mc_simulation(job,
     sim.operations.computes.append(wca)
     sim.operations.computes.append(patch)
 
-    return sim, (jit_potential, wca)
+    return sim
 
 
 def run_nvt_mc_sim(job, device, complete_filename):
@@ -670,7 +660,7 @@ def run_nvt_mc_sim(job, device, complete_filename):
         initial_state = job.fn('patchy_lj_fluid_initial_state.gsd')
         restart = False
 
-    sim, (jit_potential, wca) = make_mc_simulation(job, device, initial_state, sim_mode)
+    sim = make_mc_simulation(job, device, initial_state, sim_mode)
 
     if not restart:
         # equilibrate
@@ -725,10 +715,6 @@ def run_nvt_mc_sim(job, device, complete_filename):
                           filename=job.fn(restart_filename),
                           mode='wb')
 
-    breakpoint()
-    print(f"mc jit energy {jit_potential.energy}")
-    print(f"mc wca for calc energy {wca.energy}")
-    
     if sim.timestep == TOTAL_STEPS:
         pathlib.Path(job.fn(complete_filename)).touch()
         device.notice('Done.')
@@ -894,8 +880,8 @@ def add_mc_sampling_job(mode, device_name, ranks_per_partition, aggregator):
         """Perform sampling simulation given the definition."""
         import hoomd
 
-        communicator = hoomd.communicator.Communicator()
-            # ranks_per_partition=ranks_per_partition)
+        communicator = hoomd.communicator.Communicator(
+            ranks_per_partition=ranks_per_partition)
         job = jobs[communicator.partition]
 
         if communicator.rank == 0:
