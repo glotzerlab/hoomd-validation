@@ -514,7 +514,10 @@ def make_mc_simulation(job,
                 vec3<float> nj_world = rotate(q_j, n_j);
 
                 float magdr = sqrt(rsq);
-                vec3<float> rhat = r_ij / magdr;
+                // dr(dx) (md) is for position i - position j
+                // r_ij (hpmc) is for position j - position i
+                // so r_ij gets a negative sign because we use the math derived for the MD code
+                vec3<float> rhat = -r_ij / magdr;
 
                 float costhetai = -dot(rhat, ni_world);
                 float costhetaj = dot(rhat, nj_world);
