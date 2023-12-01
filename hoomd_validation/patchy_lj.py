@@ -37,8 +37,8 @@ def job_statepoints():
     params_list = [
         dict(
             kT=1.0,
-            density=0.9193740949934834,
-            pressure=11.0,
+            density=0.6,
+            pressure=11.0, # TODO update this to match density
             num_particles=7**3,
             r_cut=3.0,
             patch_vector=(1,0,0), # make sure it is normalized here
