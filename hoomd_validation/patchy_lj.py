@@ -130,6 +130,7 @@ def patchy_lj_fluid_create_initial_state(*jobs):
         snap.configuration.box = [L, L, L, 0, 0, 0]
         snap.particles.position[:] = position
         snap.particles.typeid[:] = [0] * sp["num_particles"]
+        snap.particles.moment_inertia[:] = [1, 1, 1]
 
     # Use hard sphere Monte-Carlo to randomize the initial configuration
     mc = hoomd.hpmc.integrate.Sphere()
