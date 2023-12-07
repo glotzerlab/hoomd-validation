@@ -1222,14 +1222,15 @@ def patchy_lj_fluid_distribution_analyze(*jobs):
     potential_energy_samples = collections.defaultdict(list)
     density_samples = collections.defaultdict(list)
     pressure_samples = collections.defaultdict(list)
+    dof_per_particle = 5
 
     for job in jobs:
         for sim_mode in sim_modes:
 
             if sim_mode.startswith('nvt_langevin'):
-                n_dof = num_particles * 5
+                n_dof = num_particles * dof_per_particle
             else:
-                n_dof = num_particles * 5 - 3
+                n_dof = num_particles * dof_per_particle - 3
 
             print('Reading' + job.fn(sim_mode + '_quantities.gsd'))
             log_traj = gsd.hoomd.read_log(job.fn(sim_mode + '_quantities.gsd'))
@@ -1276,7 +1277,7 @@ def patchy_lj_fluid_distribution_analyze(*jobs):
                           r'$\Delta K - 1/\sqrt{2} \sqrt{N_{dof}} k T$')
 
     ax = fig.add_subplot(2, 4, 5)
-    rv = scipy.stats.gamma(3 * job.statepoint.num_particles / 2,
+    rv = scipy.stats.gamma(dof_per_particle * job.statepoint.num_particles / 2,
                            scale=job.statepoint.kT)
     util.plot_distribution(ax, ke_samples, 'K', expected=rv.pdf)
     ax.legend(loc='upper right', fontsize='xx-small')
