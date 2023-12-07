@@ -1227,9 +1227,9 @@ def patchy_lj_fluid_distribution_analyze(*jobs):
         for sim_mode in sim_modes:
 
             if sim_mode.startswith('nvt_langevin'):
-                n_dof = num_particles * 3
+                n_dof = num_particles * 5
             else:
-                n_dof = num_particles * 3 - 3
+                n_dof = num_particles * 5 - 3
 
             print('Reading' + job.fn(sim_mode + '_quantities.gsd'))
             log_traj = gsd.hoomd.read_log(job.fn(sim_mode + '_quantities.gsd'))
