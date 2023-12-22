@@ -486,55 +486,9 @@ def make_mc_simulation(job, device, initial_state, sim_mode, extra_loggables=Non
     r_on = job.statepoint.r_on
     r_cut = job.statepoint.r_cut
 
-    # the potential will have xplor smoothing with r_on=2
-    lj_str = f"""// standard lj energy with sigma set to 1
-                float rsq = dot(r_ij, r_ij);
-                float r_cut = {r_cut};
-                float r_cutsq = r_cut * r_cut;
-
-                if (rsq >= r_cutsq)
-                    return 0.0f;
-
-                float sigma = {sigma};
-                float sigsq = sigma * sigma;
-                float rsqinv = sigsq / rsq;
-                float r6inv = rsqinv * rsqinv * rsqinv;
-                float r12inv = r6inv * r6inv;
-                float energy = 4 * {epsilon} * (r12inv - r6inv);
-
-                float r_on = {r_on};
-                float r_onsq = r_on * r_on;
-
-                // energy shift for WCA
-                if (r_onsq > r_cutsq)
-                {{
-                    energy += {epsilon};
-                }}
-
-                // apply xplor smoothing
-                if (rsq > r_onsq)
-                {{
-                    // computing denominator for the shifting factor
-                    float diff = r_cutsq - r_onsq;
-                    float denom = diff * diff * diff;
-
-                    // compute second term for the shift
-                    float second_term = diff - r_onsq - r_onsq;
-                    second_term += (2 * rsq);
-
-                    // compute first term for the shift
-                    float first_term = r_cutsq - rsq;
-                    first_term = first_term * first_term;
-                    float smoothing = first_term * second_term / denom;
-                    energy = energy * smoothing;
-                }}
-                return energy;
-            """
-
-    lj_jit_potential = hpmc.pair.user.CPPPotential(
-        r_cut=r_cut, code=lj_str, param_array=[]
-    )
-    mc.pair_potential = lj_jit_potential
+    lennard_jones_mc = hoomd.hpmc.pair.LennardJones()
+    lennard_jones_mc.params[('A', 'A')] = dict(epsilon=epsilon, sigma=sigma, r_cut=r_cut, r_on=r_on, mode='xplor')
+    mc.pair_potentials = [lennard_jones_mc]
 
     # pair force to compute virial pressure
     nlist = hoomd.md.nlist.Cell(buffer=0.4)
@@ -550,7 +504,7 @@ def make_mc_simulation(job, device, initial_state, sim_mode, extra_loggables=Non
     compute_density = ComputeDensity()
 
     logger = hoomd.logging.Logger(categories=['scalar', 'sequence'])
-    logger.add(lj_jit_potential, quantities=['energy'])
+    logger.add(lennard_jones_mc, quantities=['energy'])
     logger.add(mc, quantities=['translate_moves'])
     logger.add(compute_density)
     for loggable in extra_loggables:
@@ -608,10 +562,6 @@ def make_mc_simulation(job, device, initial_state, sim_mode, extra_loggables=Non
 def run_nvt_mc_sim(job, device, complete_filename):
     """Run MC sim in NVT."""
     import hoomd
-
-    if not hoomd.version.llvm_enabled:
-        device.notice('LLVM disabled, skipping MC simulations.')
-        return
 
     # simulation
     sim_mode = 'nvt_mc'
@@ -679,10 +629,6 @@ def run_npt_mc_sim(job, device, complete_filename):
     """Run MC sim in NPT."""
     import hoomd
     from hoomd import hpmc
-
-    if not hoomd.version.llvm_enabled:
-        device.notice('LLVM disabled, skipping MC simulations.')
-        return
 
     # device
     sim_mode = 'npt_mc'
@@ -799,19 +745,6 @@ mc_job_definitions = [
     },
 ]
 
-if CONFIG['enable_gpu']:
-    mc_job_definitions.extend(
-        [
-            {
-                'mode': 'nvt',
-                'device_name': 'gpu',
-                'ranks_per_partition': 1,
-                'aggregator': partition_jobs_gpu,
-            },
-        ]
-    )
-
-
 def add_mc_sampling_job(mode, device_name, ranks_per_partition, aggregator):
     """Add a MC sampling job to the workflow."""
     directives = dict(
@@ -864,9 +797,8 @@ def add_mc_sampling_job(mode, device_name, ranks_per_partition, aggregator):
     mc_sampling_jobs.append(sampling_operation)
 
 
-if CONFIG['enable_llvm']:
-    for definition in mc_job_definitions:
-        add_mc_sampling_job(**definition)
+for definition in mc_job_definitions:
+    add_mc_sampling_job(**definition)
 
 
 @Project.pre(is_lj_fluid)
@@ -908,9 +840,6 @@ def lj_fluid_analyze(job):
 
     if os.path.exists(job.fn('nvt_mc_cpu_quantities.h5')):
         sim_modes.extend(['nvt_mc_cpu', 'npt_mc_cpu'])
-
-    if os.path.exists(job.fn('nvt_mc_gpu_quantities.h5')):
-        sim_modes.extend(['nvt_mc_gpu'])
 
     util._sort_sim_modes(sim_modes)
 
@@ -1059,9 +988,6 @@ def lj_fluid_compare_modes(*jobs):
     if os.path.exists(jobs[0].fn('nvt_mc_cpu_quantities.h5')):
         sim_modes.extend(['nvt_mc_cpu', 'npt_mc_cpu'])
 
-    if os.path.exists(jobs[0].fn('nvt_mc_gpu_quantities.h5')):
-        sim_modes.extend(['nvt_mc_gpu'])
-
     util._sort_sim_modes(sim_modes)
 
     quantity_names = ['density', 'pressure', 'potential_energy']
@@ -1193,9 +1119,6 @@ def lj_fluid_distribution_analyze(*jobs):
 
     if os.path.exists(jobs[0].fn('nvt_mc_cpu_quantities.h5')):
         sim_modes.extend(['nvt_mc_cpu', 'npt_mc_cpu'])
-
-    if os.path.exists(jobs[0].fn('nvt_mc_gpu_quantities.h5')):
-        sim_modes.extend(['nvt_mc_gpu'])
 
     util._sort_sim_modes(sim_modes)
 
