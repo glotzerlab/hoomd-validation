@@ -860,7 +860,7 @@ def lj_fluid_analyze(job):
             ]
         else:
             energies[sim_mode] = (
-                log_traj['hoomd-data/hpmc/pair/user/CPPPotential/energy']
+                log_traj['hoomd-data/hpmc/pair/LennardJones/energy']
                 * job.statepoint.kT
             )
 
@@ -1178,7 +1178,7 @@ def lj_fluid_distribution_analyze(*jobs):
             else:
                 potential_energy_samples[sim_mode].extend(
                     list(
-                        log_traj['hoomd-data/hpmc/pair/user/CPPPotential/energy']
+                        log_traj['hoomd-data/hpmc/pair/LennardJones/energy']
                         * job.statepoint.kT
                     )
                 )
