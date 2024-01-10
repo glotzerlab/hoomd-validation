@@ -487,7 +487,9 @@ def make_mc_simulation(job, device, initial_state, sim_mode, extra_loggables=Non
     r_cut = job.statepoint.r_cut
 
     lennard_jones_mc = hoomd.hpmc.pair.LennardJones()
-    lennard_jones_mc.params[('A', 'A')] = dict(epsilon=epsilon, sigma=sigma, r_cut=r_cut, r_on=r_on, mode='xplor')
+    lennard_jones_mc.params[('A', 'A')] = dict(
+        epsilon=epsilon, sigma=sigma, r_cut=r_cut, r_on=r_on, mode='xplor'
+    )
     mc.pair_potentials = [lennard_jones_mc]
 
     # pair force to compute virial pressure
@@ -745,6 +747,7 @@ mc_job_definitions = [
     },
 ]
 
+
 def add_mc_sampling_job(mode, device_name, ranks_per_partition, aggregator):
     """Add a MC sampling job to the workflow."""
     directives = dict(
@@ -860,8 +863,7 @@ def lj_fluid_analyze(job):
             ]
         else:
             energies[sim_mode] = (
-                log_traj['hoomd-data/hpmc/pair/LennardJones/energy']
-                * job.statepoint.kT
+                log_traj['hoomd-data/hpmc/pair/LennardJones/energy'] * job.statepoint.kT
             )
 
         energies[sim_mode] /= job.statepoint.num_particles
