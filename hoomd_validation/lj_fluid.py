@@ -488,8 +488,9 @@ def make_mc_simulation(job, device, initial_state, sim_mode, extra_loggables=Non
 
     lennard_jones_mc = hoomd.hpmc.pair.LennardJones()
     lennard_jones_mc.params[('A', 'A')] = dict(
-        epsilon=epsilon, sigma=sigma, r_cut=r_cut, r_on=r_on, mode='xplor'
+        epsilon=epsilon, sigma=sigma, r_cut=r_cut, r_on=r_on
     )
+    lennard_jones_mc.mode = 'xplor'
     mc.pair_potentials = [lennard_jones_mc]
 
     # pair force to compute virial pressure
