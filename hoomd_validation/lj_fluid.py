@@ -937,10 +937,10 @@ def lj_fluid_analyze(job):
     )
 
     fig.suptitle(
-        f'$kT={job.cached_statepoint['kT']}$, $\\rho={job.cached_statepoint['density']}$, '
-        f'$N={job.cached_statepoint['num_particles']}$, '
-        f'$r_\\mathrm{{cut}}={job.cached_statepoint['r_cut']}$, '
-        f'replicate={job.cached_statepoint['replicate_idx']}'
+        f'$kT={job.cached_statepoint["kT"]}$, $\\rho={job.cached_statepoint["density"]}$, '
+        f'$N={job.cached_statepoint["num_particles"]}$, '
+        f'$r_\\mathrm{{cut}}={job.cached_statepoint["r_cut"]}$, '
+        f'replicate={job.cached_statepoint["replicate_idx"]}'
     )
     fig.savefig(job.fn('nvt_npt_plots.svg'), bbox_inches='tight')
 
@@ -1469,7 +1469,7 @@ def lj_fluid_conservation_analyze(*jobs):
                 ax.plot(
                     timesteps[i][mode],
                     numpy.asarray(data[i][mode]),
-                    label=f'{mode}_{job.cached_statepoint['replicate_idx']}',
+                    label=f'{mode}_{job.cached_statepoint["replicate_idx"]}',
                 )
         ax.set_xlabel('time step')
         ax.set_ylabel(quantity_name)
@@ -1486,15 +1486,15 @@ def lj_fluid_conservation_analyze(*jobs):
 
     fig.suptitle(
         'LJ conservation tests: '
-        f'$kT={job.cached_statepoint['kT']}$, $\\rho={job.cached_statepoint['density']}$, '
-        f'$r_\\mathrm{{cut}}={job.cached_statepoint['r_cut']}$, '
-        f'$N={job.cached_statepoint['num_particles']}$'
+        f'$kT={job.cached_statepoint["kT"]}$, $\\rho={job.cached_statepoint["density"]}$, '
+        f'$r_\\mathrm{{cut}}={job.cached_statepoint["r_cut"]}$, '
+        f'$N={job.cached_statepoint["num_particles"]}$'
     )
     filename = (
-        f'lj_fluid_conservation_kT{job.cached_statepoint['kT']}_'
-        f'density{round(job.cached_statepoint['density'], 2)}_'
+        f'lj_fluid_conservation_kT{job.cached_statepoint["kT"]}_'
+        f'density{round(job.cached_statepoint["density"], 2)}_'
         f'r_cut{round(jobs[0].statepoint.r_cut, 2)}_'
-        f'N{job.cached_statepoint['num_particles']}.svg'
+        f'N{job.cached_statepoint["num_particles"]}.svg'
     )
 
     fig.savefig(os.path.join(jobs[0]._project.path, filename), bbox_inches='tight')

@@ -696,13 +696,13 @@ def patchy_particle_pressure_analyze(job):
     )
 
     fig.suptitle(
-        f'$\\rho={job.cached_statepoint['density']}$, '
-        f'$N={job.cached_statepoint['num_particles']}$, '
-        f'T={job.cached_statepoint['temperature']}, '
-        f'$\\chi={job.cached_statepoint['chi']}$, '
-        f'replicate={job.cached_statepoint['replicate_idx']}, '
+        f'$\\rho={job.cached_statepoint["density"]}$, '
+        f'$N={job.cached_statepoint["num_particles"]}$, '
+        f'T={job.cached_statepoint["temperature"]}, '
+        f'$\\chi={job.cached_statepoint["chi"]}$, '
+        f'replicate={job.cached_statepoint["replicate_idx"]}, '
         '$\\varepsilon_{\\mathrm{rep}}/\\varepsilon_{\\mathrm{att}}$'
-        f'$={job.cached_statepoint['long_range_interaction_scale_factor']}$'
+        f'$={job.cached_statepoint["long_range_interaction_scale_factor"]}$'
     )
     fig.savefig(job.fn('nvt_npt_plots.svg'), bbox_inches='tight', transparent=False)
 

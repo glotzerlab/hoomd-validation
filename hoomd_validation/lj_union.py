@@ -1064,9 +1064,9 @@ def lj_union_analyze(job):
     )
 
     fig.suptitle(
-        f'$kT={job.cached_statepoint['kT']}$, $\\rho={job.cached_statepoint['density']}$, '
-        f'$N={job.cached_statepoint['num_particles']}$, '
-        f'replicate={job.cached_statepoint['replicate_idx']}'
+        f'$kT={job.cached_statepoint["kT"]}$, $\\rho={job.cached_statepoint["density"]}$, '
+        f'$N={job.cached_statepoint["num_particles"]}$, '
+        f'replicate={job.cached_statepoint["replicate_idx"]}'
     )
     fig.savefig(job.fn('nvt_npt_plots.svg'), bbox_inches='tight')
 
@@ -1613,7 +1613,7 @@ def lj_union_conservation_analyze(*jobs):
                 ax.plot(
                     timesteps[i][mode],
                     data[i][mode],
-                    label=f'{mode}_{job.cached_statepoint['replicate_idx']}',
+                    label=f'{mode}_{job.cached_statepoint["replicate_idx"]}',
                 )
         ax.set_xlabel('time step')
         ax.set_ylabel(quantity_name)
@@ -1630,13 +1630,13 @@ def lj_union_conservation_analyze(*jobs):
 
     fig.suptitle(
         'LJ union conservation tests: '
-        f'$kT={job.cached_statepoint['kT']}$, $\\rho={job.cached_statepoint['density']}$, '
-        f'$N={job.cached_statepoint['num_particles']}$'
+        f'$kT={job.cached_statepoint["kT"]}$, $\\rho={job.cached_statepoint["density"]}$, '
+        f'$N={job.cached_statepoint["num_particles"]}$'
     )
     filename = (
-        f'lj_union_conservation_kT{job.cached_statepoint['kT']}_'
-        f'density{round(job.cached_statepoint['density'], 2)}_'
-        f'N{job.cached_statepoint['num_particles']}.svg'
+        f'lj_union_conservation_kT{job.cached_statepoint["kT"]}_'
+        f'density{round(job.cached_statepoint["density"], 2)}_'
+        f'N{job.cached_statepoint["num_particles"]}.svg'
     )
 
     fig.savefig(os.path.join(jobs[0]._project.path, filename), bbox_inches='tight')

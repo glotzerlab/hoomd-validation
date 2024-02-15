@@ -425,7 +425,7 @@ def alj_2d_conservation_analyze(*jobs):
                 ax.plot(
                     timesteps[i][mode],
                     data[i][mode],
-                    label=f'{mode}_{job.cached_statepoint['replicate_idx']}',
+                    label=f'{mode}_{job.cached_statepoint["replicate_idx"]}',
                 )
         ax.set_xlabel('time step')
         ax.set_ylabel(quantity_name)
@@ -442,13 +442,13 @@ def alj_2d_conservation_analyze(*jobs):
 
     fig.suptitle(
         'ALJ 2D conservation tests: '
-        f'$kT={job.cached_statepoint['kT']}$, $\\rho={job.cached_statepoint['density']}$, '
-        f'$N={job.cached_statepoint['num_particles']}$'
+        f'$kT={job.cached_statepoint["kT"]}$, $\\rho={job.cached_statepoint["density"]}$, '
+        f'$N={job.cached_statepoint["num_particles"]}$'
     )
     filename = (
-        f'alj_2d_conservation_kT{job.cached_statepoint['kT']}_'
-        f'density{round(job.cached_statepoint['density'], 2)}_'
-        f'N{job.cached_statepoint['num_particles']}.svg'
+        f'alj_2d_conservation_kT{job.cached_statepoint["kT"]}_'
+        f'density{round(job.cached_statepoint["density"], 2)}_'
+        f'N{job.cached_statepoint["num_particles"]}.svg'
     )
 
     fig.savefig(os.path.join(jobs[0]._project.path, filename), bbox_inches='tight')

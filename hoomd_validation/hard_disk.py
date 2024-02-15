@@ -697,9 +697,9 @@ def hard_disk_analyze(job):
     )
 
     fig.suptitle(
-        f'$\\rho={job.cached_statepoint['density']}$, '
-        f'$N={job.cached_statepoint['num_particles']}$, '
-        f'replicate={job.cached_statepoint['replicate_idx']}'
+        f'$\\rho={job.cached_statepoint["density"]}$, '
+        f'$N={job.cached_statepoint["num_particles"]}$, '
+        f'replicate={job.cached_statepoint["replicate_idx"]}'
     )
     fig.savefig(job.fn('nvt_npt_plots.svg'), bbox_inches='tight')
 
