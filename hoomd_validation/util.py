@@ -345,6 +345,7 @@ def _sort_sim_modes(sim_modes):
 def read_log(filename):
     """Read a HDF5 log as a dictionary of logged quantities."""
     import h5py
+    import numpy
 
     with h5py.File(mode='r', name=filename) as f:
         keys = []
