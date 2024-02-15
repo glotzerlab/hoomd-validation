@@ -29,5 +29,5 @@ project = signac.init_project(path=config.project_root)
 # initialize jobs for validation test projects
 for subproject in subprojects:
     # add all the jobs to the project
-    for job_sp in subproject.job_statepoints():
+    for job.cached_statepoint['in'] subproject.job_statepoints():
         job = project.open_job(job_sp).init()

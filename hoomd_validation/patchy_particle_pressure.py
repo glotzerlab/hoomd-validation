@@ -62,14 +62,14 @@ def job_statepoints():
 
 def is_patchy_particle_pressure(job):
     """Test if a job is part of the patchy_particle_pressure subproject."""
-    return job.statepoint['subproject'] == 'patchy_particle_pressure'
+    return job.cached_statepoint['subproject'] == 'patchy_particle_pressure'
 
 
 def is_patchy_particle_pressure_positive_pressure(job):
     """Test if a job is part of the patchy_particle_pressure subproject."""
     return (
-        job.statepoint['subproject'] == 'patchy_particle_pressure'
-        and job.statepoint['pressure'] > 0
+        job.cached_statepoint['subproject'] == 'patchy_particle_pressure'
+        and job.cached_statepoint['pressure'] > 0
     )
 
 
@@ -168,12 +168,12 @@ def patchy_particle_pressure_create_initial_state(*jobs):
     if communicator.rank == 0:
         print('starting patchy_particle_pressure_create_initial_state:', job)
 
-    num_particles = job.statepoint['num_particles']
-    density = job.statepoint['density']
-    temperature = job.statepoint['temperature']
-    chi = job.statepoint['chi']
-    lambda_ = job.statepoint['lambda_']
-    long_range_interaction_scale_factor = job.statepoint[
+    num_particles = job.cached_statepoint['num_particles']
+    density = job.cached_statepoint['density']
+    temperature = job.cached_statepoint['temperature']
+    chi = job.cached_statepoint['chi']
+    lambda_ = job.cached_statepoint['lambda_']
+    long_range_interaction_scale_factor = job.cached_statepoint[
         'long_range_interaction_scale_factor'
     ]
 
@@ -270,10 +270,10 @@ def make_mc_simulation(job, device, initial_state, sim_mode, extra_loggables=Non
         extra_loggables = []
 
     # integrator and patchy potential
-    temperature = job.statepoint['temperature']
-    chi = job.statepoint['chi']
-    lambda_ = job.statepoint['lambda_']
-    long_range_interaction_scale_factor = job.statepoint[
+    temperature = job.cached_statepoint['temperature']
+    chi = job.cached_statepoint['chi']
+    lambda_ = job.cached_statepoint['lambda_']
+    long_range_interaction_scale_factor = job.cached_statepoint[
         'long_range_interaction_scale_factor'
     ]
     diameter = 1.0
@@ -443,7 +443,7 @@ def run_npt_sim(job, device, complete_filename):
 
     # box updates
     boxmc = hoomd.hpmc.update.BoxMC(
-        betaP=job.statepoint.pressure, trigger=hoomd.trigger.Periodic(1)
+        betaP=job.cached_statepoint['pressure'], trigger=hoomd.trigger.Periodic(1)
     )
     boxmc.volume = dict(weight=1.0, mode='ln', delta=1e-6)
 
@@ -661,7 +661,7 @@ def patchy_particle_pressure_analyze(job):
         timesteps=timesteps,
         data=densities,
         ylabel=r'$\rho$',
-        expected=job.sp.density,
+        expected=job.cached_statepoint['density'],
         max_points=500,
     )
     ax.legend()
@@ -671,7 +671,7 @@ def patchy_particle_pressure_analyze(job):
         ax_distribution,
         {k: v for k, v in densities.items() if not k.startswith('nvt')},
         r'',
-        expected=job.sp.density,
+        expected=job.cached_statepoint['density'],
         bins=50,
         plot_rotated=True,
     )
@@ -682,7 +682,7 @@ def patchy_particle_pressure_analyze(job):
         timesteps=timesteps,
         data=pressures,
         ylabel=r'$\beta P$',
-        expected=job.sp.pressure,
+        expected=job.cached_statepoint['pressure'],
         max_points=500,
     )
     ax_distribution = fig.add_subplot(2, 2, 4, sharey=ax)
@@ -690,19 +690,19 @@ def patchy_particle_pressure_analyze(job):
         ax_distribution,
         pressures,
         r'',
-        expected=job.sp.pressure,
+        expected=job.cached_statepoint['pressure'],
         bins=50,
         plot_rotated=True,
     )
 
     fig.suptitle(
-        f'$\\rho={job.sp.density}$, '
-        f'$N={job.sp.num_particles}$, '
-        f'T={job.sp.temperature}, '
-        f'$\\chi={job.sp.chi}$, '
-        f'replicate={job.statepoint.replicate_idx}, '
+        f'$\\rho={job.cached_statepoint['density']}$, '
+        f'$N={job.cached_statepoint['num_particles']}$, '
+        f'T={job.cached_statepoint['temperature']}, '
+        f'$\\chi={job.cached_statepoint['chi']}$, '
+        f'replicate={job.cached_statepoint['replicate_idx']}, '
         '$\\varepsilon_{\\mathrm{rep}}/\\varepsilon_{\\mathrm{att}}$'
-        f'$={job.sp.long_range_interaction_scale_factor}$'
+        f'$={job.cached_statepoint['long_range_interaction_scale_factor']}$'
     )
     fig.savefig(job.fn('nvt_npt_plots.svg'), bbox_inches='tight', transparent=False)
 

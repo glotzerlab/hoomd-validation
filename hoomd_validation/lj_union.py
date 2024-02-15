@@ -64,7 +64,7 @@ def job_statepoints():
 
 def is_lj_union(job):
     """Test if a given job is part of the lj_union subproject."""
-    return job.statepoint['subproject'] == 'lj_union'
+    return job.cached_statepoint['subproject'] == 'lj_union'
 
 
 partition_jobs_cpu_mpi = aggregator.groupsof(
@@ -295,38 +295,38 @@ def run_md_sim(job, device, ensemble, thermostat, complete_filename):
 
     if ensemble == 'nvt':
         if thermostat == 'langevin':
-            method = md.methods.Langevin(filter=integrate_filter, kT=job.statepoint.kT)
+            method = md.methods.Langevin(filter=integrate_filter, kT=job.cached_statepoint['kT'])
             method.gamma.default = 1.0
         elif thermostat == 'mttk':
             method = md.methods.ConstantVolume(filter=integrate_filter)
             method.thermostat = hoomd.md.methods.thermostats.MTTK(
-                kT=job.statepoint.kT, tau=0.25
+                kT=job.cached_statepoint['kT'], tau=0.25
             )
         elif thermostat == 'bussi':
             method = md.methods.ConstantVolume(filter=integrate_filter)
-            method.thermostat = hoomd.md.methods.thermostats.Bussi(kT=job.statepoint.kT)
+            method.thermostat = hoomd.md.methods.thermostats.Bussi(kT=job.cached_statepoint['kT'])
         else:
             raise ValueError(f'Unsupported thermostat {thermostat}')
     elif ensemble == 'npt':
-        p = job.statepoint.pressure
+        p = job.cached_statepoint['pressure']
         method = md.methods.ConstantPressure(
             integrate_filter, S=[p, p, p, 0, 0, 0], tauS=3, couple='xyz'
         )
         if thermostat == 'bussi':
-            method.thermostat = hoomd.md.methods.thermostats.Bussi(kT=job.statepoint.kT)
+            method.thermostat = hoomd.md.methods.thermostats.Bussi(kT=job.cached_statepoint['kT'])
         else:
             raise ValueError(f'Unsupported thermostat {thermostat}')
 
     sim_mode = f'{ensemble}_{thermostat}_md'
 
-    density_compute = ComputeDensity(job.statepoint['num_particles'])
+    density_compute = ComputeDensity(job.cached_statepoint['num_particles'])
     sim = make_md_simulation(
         job, device, initial_state, method, sim_mode, extra_loggables=[density_compute]
     )
 
     # thermalize momenta
     sim.state.thermalize_particle_momenta(
-        hoomd.filter.Rigid(flags=('center',)), job.sp.kT
+        hoomd.filter.Rigid(flags=('center',)), job.cached_statepoint['kT']
     )
 
     # thermalize the thermostat (if applicable)
@@ -509,7 +509,7 @@ def make_mc_simulation(job, device, initial_state, sim_mode, extra_loggables=Non
     mc.shape['R'] = dict(diameter=0.0, orientable=True)
 
     # pair potential
-    epsilon = LJ_PARAMS['epsilon'] / job.sp.kT  # noqa F841
+    epsilon = LJ_PARAMS['epsilon'] / job.cached_statepoint['kT']  # noqa F841
     sigma = LJ_PARAMS['sigma']
     r_on = LJ_PARAMS['r_on']
     r_cut = LJ_PARAMS['r_cut']
@@ -744,7 +744,7 @@ def run_npt_mc_sim(job, device, complete_filename):
 
     # box updates
     boxmc = hpmc.update.BoxMC(
-        betaP=job.statepoint.pressure / job.sp.kT, trigger=hoomd.trigger.Periodic(1)
+        betaP=job.cached_statepoint['pressure'] / job.cached_statepoint['kT'], trigger=hoomd.trigger.Periodic(1)
     )
     boxmc.volume = dict(weight=1.0, mode='ln', delta=0.01)
 
@@ -992,10 +992,10 @@ def lj_union_analyze(job):
         else:
             energies[sim_mode] = (
                 log_traj['hoomd-data/hpmc/pair/user/CPPPotentialUnion/energy']
-                * job.statepoint.kT
+                * job.cached_statepoint['kT']
             )
 
-        energies[sim_mode] /= job.statepoint.num_particles
+        energies[sim_mode] /= job.cached_statepoint['num_particles']
 
         if 'md' in sim_mode:
             pressures[sim_mode] = log_traj[
@@ -1031,7 +1031,7 @@ def lj_union_analyze(job):
         timesteps=timesteps,
         data=densities,
         ylabel=r'$\rho$',
-        expected=job.sp.density,
+        expected=job.cached_statepoint['density'],
         max_points=500,
     )
     ax.legend()
@@ -1042,7 +1042,7 @@ def lj_union_analyze(job):
         timesteps=timesteps,
         data=pressures,
         ylabel=r'$P$',
-        expected=job.sp.pressure,
+        expected=job.cached_statepoint['pressure'],
         max_points=500,
     )
 
@@ -1056,7 +1056,7 @@ def lj_union_analyze(job):
         ax=ax,
         timesteps=timesteps,
         data={
-            mode: numpy.asarray(lm) / job.sp.num_particles
+            mode: numpy.asarray(lm) / job.cached_statepoint['num_particles']
             for mode, lm in linear_momentum.items()
         },
         ylabel=r'$|\vec{p}| / N$',
@@ -1064,9 +1064,9 @@ def lj_union_analyze(job):
     )
 
     fig.suptitle(
-        f'$kT={job.statepoint.kT}$, $\\rho={job.statepoint.density}$, '
-        f'$N={job.statepoint.num_particles}$, '
-        f'replicate={job.statepoint.replicate_idx}'
+        f'$kT={job.cached_statepoint['kT']}$, $\\rho={job.cached_statepoint['density']}$, '
+        f'$N={job.cached_statepoint['num_particles']}$, '
+        f'replicate={job.cached_statepoint['replicate_idx']}'
     )
     fig.savefig(job.fn('nvt_npt_plots.svg'), bbox_inches='tight')
 
@@ -1297,10 +1297,10 @@ def lj_union_distribution_analyze(*jobs):
                 ke_rotate_samples[sim_mode].extend(ke_rotate)
             else:
                 ke_translate_samples[sim_mode].extend(
-                    [3 / 2 * job.statepoint.num_particles * job.statepoint.kT]
+                    [3 / 2 * job.cached_statepoint['num_particles'] * job.cached_statepoint['kT']]
                 )
                 ke_rotate_samples[sim_mode].extend(
-                    [3 / 2 * job.statepoint.num_particles * job.statepoint.kT]
+                    [3 / 2 * job.cached_statepoint['num_particles'] * job.cached_statepoint['kT']]
                 )
 
             if 'md' in sim_mode:
@@ -1313,7 +1313,7 @@ def lj_union_distribution_analyze(*jobs):
             else:
                 potential_energy_samples[sim_mode].extend(
                     log_traj['hoomd-data/hpmc/pair/user/CPPPotentialUnion/energy']
-                    * job.statepoint.kT
+                    * job.cached_statepoint['kT']
                 )
 
             if 'md' in sim_mode:
@@ -1321,7 +1321,7 @@ def lj_union_distribution_analyze(*jobs):
                     log_traj['hoomd-data/md/compute/ThermodynamicQuantities/pressure']
                 )
             else:
-                pressure_samples[sim_mode].extend([job.statepoint.pressure])
+                pressure_samples[sim_mode].extend([job.cached_statepoint['pressure']])
 
             density_samples[sim_mode].extend(
                 log_traj['hoomd-data/custom_actions/ComputeDensity/density']
@@ -1353,7 +1353,7 @@ def lj_union_distribution_analyze(*jobs):
 
     ax = fig.add_subplot(4, 2, 5)
     rv = scipy.stats.gamma(
-        3 * job.statepoint.num_particles / 2, scale=job.statepoint.kT
+        3 * job.cached_statepoint['num_particles'] / 2, scale=job.cached_statepoint['kT']
     )
     util.plot_distribution(
         ax, ke_translate_samples, r'$K_\mathrm{translate}$', expected=rv.pdf
@@ -1370,11 +1370,11 @@ def lj_union_distribution_analyze(*jobs):
 
     ax = fig.add_subplot(4, 4, 14)
     util.plot_distribution(
-        ax, density_samples, r'$\rho$', expected=job.statepoint.density
+        ax, density_samples, r'$\rho$', expected=job.cached_statepoint['density']
     )
 
     ax = fig.add_subplot(4, 4, 15)
-    util.plot_distribution(ax, pressure_samples, 'P', expected=job.statepoint.pressure)
+    util.plot_distribution(ax, pressure_samples, 'P', expected=job.cached_statepoint['pressure'])
 
     filename = (
         f'lj_union_distribution_analyze_kT{kT}_' f'density{round(set_density, 2)}.svg'
@@ -1411,7 +1411,7 @@ def run_nve_md_sim(job, device, run_length, complete_filename):
 
     if not is_restarting:
         sim.state.thermalize_particle_momenta(
-            hoomd.filter.Rigid(flags=('center',)), job.sp.kT
+            hoomd.filter.Rigid(flags=('center',)), job.cached_statepoint['kT']
         )
 
     # Run for a long time to look for energy and momentum drift
@@ -1439,8 +1439,8 @@ def run_nve_md_sim(job, device, run_length, complete_filename):
 def is_lj_union_nve(job):
     """Test if a given job should be run for NVE conservation."""
     return (
-        job.statepoint['subproject'] == 'lj_union'
-        and job.statepoint['replicate_idx'] < NUM_NVE_RUNS
+        job.cached_statepoint['subproject'] == 'lj_union'
+        and job.cached_statepoint['replicate_idx'] < NUM_NVE_RUNS
     )
 
 
@@ -1593,12 +1593,12 @@ def lj_union_conservation_analyze(*jobs):
             )
             job_energies[sim_mode] = (
                 job_energies[sim_mode] - job_energies[sim_mode][0]
-            ) / job.statepoint['num_particles']
+            ) / job.cached_statepoint['num_particles']
 
             momentum_vector = log_traj['hoomd-data/md/Integrator/linear_momentum']
             job_linear_momentum[sim_mode] = [
                 math.sqrt(v[0] ** 2 + v[1] ** 2 + v[2] ** 2)
-                / job.statepoint['num_particles']
+                / job.cached_statepoint['num_particles']
                 for v in momentum_vector
             ]
 
@@ -1613,7 +1613,7 @@ def lj_union_conservation_analyze(*jobs):
                 ax.plot(
                     timesteps[i][mode],
                     data[i][mode],
-                    label=f'{mode}_{job.statepoint.replicate_idx}',
+                    label=f'{mode}_{job.cached_statepoint['replicate_idx']}',
                 )
         ax.set_xlabel('time step')
         ax.set_ylabel(quantity_name)
@@ -1630,13 +1630,13 @@ def lj_union_conservation_analyze(*jobs):
 
     fig.suptitle(
         'LJ union conservation tests: '
-        f'$kT={job.statepoint.kT}$, $\\rho={job.statepoint.density}$, '
-        f'$N={job.statepoint.num_particles}$'
+        f'$kT={job.cached_statepoint['kT']}$, $\\rho={job.cached_statepoint['density']}$, '
+        f'$N={job.cached_statepoint['num_particles']}$'
     )
     filename = (
-        f'lj_union_conservation_kT{job.statepoint.kT}_'
-        f'density{round(job.statepoint.density, 2)}_'
-        f'N{job.statepoint.num_particles}.svg'
+        f'lj_union_conservation_kT{job.cached_statepoint['kT']}_'
+        f'density{round(job.cached_statepoint['density'], 2)}_'
+        f'N{job.cached_statepoint['num_particles']}.svg'
     )
 
     fig.savefig(os.path.join(jobs[0]._project.path, filename), bbox_inches='tight')

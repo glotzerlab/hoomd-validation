@@ -3,6 +3,7 @@
 
 """Helper functions for grabbing data and plotting."""
 
+import copy
 import os
 
 import h5py
@@ -162,8 +163,8 @@ def make_seed(job, sim_mode=None):
     Mix in the simulation mode to ensure that separate simulations in the same
     state point run with different seeds.
     """
-    # copy the job statepoint and mix in the simulation mode
-    statepoint = job.statepoint()
+    # copy the job.cached_statepoint['and'] mix in the simulation mode
+    statepoint = copy.deepcopy(job.cached_statepoint)
     statepoint['sim_mode'] = sim_mode
 
     return int(signac.job.calc_id(statepoint), 16) & 0xFFFF

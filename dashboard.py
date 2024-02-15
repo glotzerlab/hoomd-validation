@@ -20,44 +20,44 @@ class ValidationDashboard(Dashboard):
 
     def job_title(self, job):
         """Name jobs."""
-        if job.statepoint.subproject == 'lj_fluid':
+        if job.cached_statepoint['subproject'] == 'lj_fluid':
             return (
-                f'lj_fluid: kT={job.statepoint.kT}, '
-                f'rho={job.statepoint.density}, '
-                f'N={job.statepoint.num_particles}'
+                f'lj_fluid: kT={job.cached_statepoint['kT']}, '
+                f'rho={job.cached_statepoint['density']}, '
+                f'N={job.cached_statepoint['num_particles']}'
             )
 
-        if job.statepoint.subproject == 'lj_union':
-            return f'lj_union: kT={job.statepoint.kT}, rho={job.statepoint.density}'
+        if job.cached_statepoint['subproject'] == 'lj_union':
+            return f'lj_union: kT={job.cached_statepoint['kT']}, rho={job.cached_statepoint['density']}'
 
-        if job.statepoint.subproject == 'alj_2d':
-            return f'alj_2d: kT={job.statepoint.kT}, rho={job.statepoint.density}'
+        if job.cached_statepoint['subproject'] == 'alj_2d':
+            return f'alj_2d: kT={job.cached_statepoint['kT']}, rho={job.cached_statepoint['density']}'
 
-        if job.statepoint.subproject in (
+        if job.cached_statepoint['subproject'] in (
             'hard_disk',
             'hard_sphere',
             'simple_polygon',
             'patchy_particle_pressure',
         ):
-            return f'{job.statepoint.subproject}: rho={job.statepoint.density}'
+            return f'{job.cached_statepoint['subproject']}: rho={job.cached_statepoint['density']}'
 
         raise RuntimeError('Unexpected job')
 
     def job_sorter(self, job):
         """Sort jobs."""
-        if job.statepoint.subproject == 'patchy_particle_pressure':
+        if job.cached_statepoint['subproject'] == 'patchy_particle_pressure':
             return (
-                job.statepoint.subproject,
-                job.statepoint.density,
-                job.statepoint.pressure,
-                job.statepoint.temperature,
-                job.statepoint.chi,
-                job.statepoint.replicate_idx,
+                job.cached_statepoint['subproject'],
+                job.cached_statepoint['density'],
+                job.cached_statepoint['pressure'],
+                job.cached_statepoint['temperature'],
+                job.cached_statepoint['chi'],
+                job.cached_statepoint['replicate_idx'],
             )
 
         return (
-            job.statepoint.subproject,
-            job.statepoint.num_particles,
+            job.cached_statepoint['subproject'],
+            job.cached_statepoint['num_particles'],
         )
 
 
