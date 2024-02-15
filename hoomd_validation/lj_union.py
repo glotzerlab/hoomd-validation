@@ -295,7 +295,9 @@ def run_md_sim(job, device, ensemble, thermostat, complete_filename):
 
     if ensemble == 'nvt':
         if thermostat == 'langevin':
-            method = md.methods.Langevin(filter=integrate_filter, kT=job.cached_statepoint['kT'])
+            method = md.methods.Langevin(
+                filter=integrate_filter, kT=job.cached_statepoint['kT']
+            )
             method.gamma.default = 1.0
         elif thermostat == 'mttk':
             method = md.methods.ConstantVolume(filter=integrate_filter)
@@ -304,7 +306,9 @@ def run_md_sim(job, device, ensemble, thermostat, complete_filename):
             )
         elif thermostat == 'bussi':
             method = md.methods.ConstantVolume(filter=integrate_filter)
-            method.thermostat = hoomd.md.methods.thermostats.Bussi(kT=job.cached_statepoint['kT'])
+            method.thermostat = hoomd.md.methods.thermostats.Bussi(
+                kT=job.cached_statepoint['kT']
+            )
         else:
             raise ValueError(f'Unsupported thermostat {thermostat}')
     elif ensemble == 'npt':
@@ -313,7 +317,9 @@ def run_md_sim(job, device, ensemble, thermostat, complete_filename):
             integrate_filter, S=[p, p, p, 0, 0, 0], tauS=3, couple='xyz'
         )
         if thermostat == 'bussi':
-            method.thermostat = hoomd.md.methods.thermostats.Bussi(kT=job.cached_statepoint['kT'])
+            method.thermostat = hoomd.md.methods.thermostats.Bussi(
+                kT=job.cached_statepoint['kT']
+            )
         else:
             raise ValueError(f'Unsupported thermostat {thermostat}')
 
@@ -744,7 +750,8 @@ def run_npt_mc_sim(job, device, complete_filename):
 
     # box updates
     boxmc = hpmc.update.BoxMC(
-        betaP=job.cached_statepoint['pressure'] / job.cached_statepoint['kT'], trigger=hoomd.trigger.Periodic(1)
+        betaP=job.cached_statepoint['pressure'] / job.cached_statepoint['kT'],
+        trigger=hoomd.trigger.Periodic(1),
     )
     boxmc.volume = dict(weight=1.0, mode='ln', delta=0.01)
 
@@ -1064,7 +1071,8 @@ def lj_union_analyze(job):
     )
 
     fig.suptitle(
-        f'$kT={job.cached_statepoint["kT"]}$, $\\rho={job.cached_statepoint["density"]}$, '
+        f'$kT={job.cached_statepoint["kT"]}$, '
+        f'$\\rho={job.cached_statepoint["density"]}$, '
         f'$N={job.cached_statepoint["num_particles"]}$, '
         f'replicate={job.cached_statepoint["replicate_idx"]}'
     )
@@ -1297,10 +1305,20 @@ def lj_union_distribution_analyze(*jobs):
                 ke_rotate_samples[sim_mode].extend(ke_rotate)
             else:
                 ke_translate_samples[sim_mode].extend(
-                    [3 / 2 * job.cached_statepoint['num_particles'] * job.cached_statepoint['kT']]
+                    [
+                        3
+                        / 2
+                        * job.cached_statepoint['num_particles']
+                        * job.cached_statepoint['kT']
+                    ]
                 )
                 ke_rotate_samples[sim_mode].extend(
-                    [3 / 2 * job.cached_statepoint['num_particles'] * job.cached_statepoint['kT']]
+                    [
+                        3
+                        / 2
+                        * job.cached_statepoint['num_particles']
+                        * job.cached_statepoint['kT']
+                    ]
                 )
 
             if 'md' in sim_mode:
@@ -1353,7 +1371,8 @@ def lj_union_distribution_analyze(*jobs):
 
     ax = fig.add_subplot(4, 2, 5)
     rv = scipy.stats.gamma(
-        3 * job.cached_statepoint['num_particles'] / 2, scale=job.cached_statepoint['kT']
+        3 * job.cached_statepoint['num_particles'] / 2,
+        scale=job.cached_statepoint['kT'],
     )
     util.plot_distribution(
         ax, ke_translate_samples, r'$K_\mathrm{translate}$', expected=rv.pdf
@@ -1374,7 +1393,9 @@ def lj_union_distribution_analyze(*jobs):
     )
 
     ax = fig.add_subplot(4, 4, 15)
-    util.plot_distribution(ax, pressure_samples, 'P', expected=job.cached_statepoint['pressure'])
+    util.plot_distribution(
+        ax, pressure_samples, 'P', expected=job.cached_statepoint['pressure']
+    )
 
     filename = (
         f'lj_union_distribution_analyze_kT{kT}_' f'density{round(set_density, 2)}.svg'
@@ -1630,7 +1651,8 @@ def lj_union_conservation_analyze(*jobs):
 
     fig.suptitle(
         'LJ union conservation tests: '
-        f'$kT={job.cached_statepoint["kT"]}$, $\\rho={job.cached_statepoint["density"]}$, '
+        f'$kT={job.cached_statepoint["kT"]}$, '
+        f'$\\rho={job.cached_statepoint["density"]}$, '
         f'$N={job.cached_statepoint["num_particles"]}$'
     )
     filename = (

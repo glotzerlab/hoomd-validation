@@ -269,7 +269,9 @@ def run_md_sim(job, device, ensemble, thermostat, complete_filename):
 
     if ensemble == 'nvt':
         if thermostat == 'langevin':
-            method = md.methods.Langevin(hoomd.filter.All(), kT=job.cached_statepoint['kT'])
+            method = md.methods.Langevin(
+                hoomd.filter.All(), kT=job.cached_statepoint['kT']
+            )
             method.gamma.default = 1.0
         elif thermostat == 'mttk':
             method = md.methods.ConstantVolume(filter=hoomd.filter.All())
@@ -278,7 +280,9 @@ def run_md_sim(job, device, ensemble, thermostat, complete_filename):
             )
         elif thermostat == 'bussi':
             method = md.methods.ConstantVolume(filter=hoomd.filter.All())
-            method.thermostat = hoomd.md.methods.thermostats.Bussi(kT=job.cached_statepoint['kT'])
+            method.thermostat = hoomd.md.methods.thermostats.Bussi(
+                kT=job.cached_statepoint['kT']
+            )
         else:
             raise ValueError(f'Unsupported thermostat {thermostat}')
     elif ensemble == 'npt':
@@ -287,7 +291,9 @@ def run_md_sim(job, device, ensemble, thermostat, complete_filename):
             hoomd.filter.All(), S=[p, p, p, 0, 0, 0], tauS=3, couple='xyz'
         )
         if thermostat == 'bussi':
-            method.thermostat = hoomd.md.methods.thermostats.Bussi(kT=job.cached_statepoint['kT'])
+            method.thermostat = hoomd.md.methods.thermostats.Bussi(
+                kT=job.cached_statepoint['kT']
+            )
         else:
             raise ValueError(f'Unsupported thermostat {thermostat}')
 
@@ -299,7 +305,9 @@ def run_md_sim(job, device, ensemble, thermostat, complete_filename):
     )
 
     # thermalize momenta
-    sim.state.thermalize_particle_momenta(hoomd.filter.All(), job.cached_statepoint['kT'])
+    sim.state.thermalize_particle_momenta(
+        hoomd.filter.All(), job.cached_statepoint['kT']
+    )
 
     # thermalize the thermostat (if applicable)
     if (
@@ -540,7 +548,9 @@ def make_mc_simulation(job, device, initial_state, sim_mode, extra_loggables=Non
         if virials is not None:
             w = virials[0] + virials[3] + virials[5]
         V = sim.state.box.volume
-        return job.cached_statepoint['num_particles'] * job.cached_statepoint['kT'] / V + w / (3 * V)
+        return job.cached_statepoint['num_particles'] * job.cached_statepoint[
+            'kT'
+        ] / V + w / (3 * V)
 
     logger[('custom', 'virial_pressure')] = (_compute_virial_pressure, 'scalar')
 
@@ -645,7 +655,8 @@ def run_npt_mc_sim(job, device, complete_filename):
 
     # box updates
     boxmc = hpmc.update.BoxMC(
-        betaP=job.cached_statepoint['pressure'] / job.cached_statepoint['kT'], trigger=hoomd.trigger.Periodic(1)
+        betaP=job.cached_statepoint['pressure'] / job.cached_statepoint['kT'],
+        trigger=hoomd.trigger.Periodic(1),
     )
     boxmc.volume = dict(weight=1.0, mode='ln', delta=0.01)
 
@@ -864,7 +875,8 @@ def lj_fluid_analyze(job):
             ]
         else:
             energies[sim_mode] = (
-                log_traj['hoomd-data/hpmc/pair/LennardJones/energy'] * job.cached_statepoint['kT']
+                log_traj['hoomd-data/hpmc/pair/LennardJones/energy']
+                * job.cached_statepoint['kT']
             )
 
         energies[sim_mode] /= job.cached_statepoint['num_particles']
@@ -937,7 +949,8 @@ def lj_fluid_analyze(job):
     )
 
     fig.suptitle(
-        f'$kT={job.cached_statepoint["kT"]}$, $\\rho={job.cached_statepoint["density"]}$, '
+        f'$kT={job.cached_statepoint["kT"]}$, '
+        f'$\\rho={job.cached_statepoint["density"]}$, '
         f'$N={job.cached_statepoint["num_particles"]}$, '
         f'$r_\\mathrm{{cut}}={job.cached_statepoint["r_cut"]}$, '
         f'replicate={job.cached_statepoint["replicate_idx"]}'
@@ -1166,7 +1179,12 @@ def lj_fluid_distribution_analyze(*jobs):
                 ke_samples[sim_mode].extend(ke)
             else:
                 ke_samples[sim_mode].extend(
-                    [3 / 2 * job.cached_statepoint['num_particles'] * job.cached_statepoint['kT']]
+                    [
+                        3
+                        / 2
+                        * job.cached_statepoint['num_particles']
+                        * job.cached_statepoint['kT']
+                    ]
                 )
 
             if 'md' in sim_mode:
@@ -1214,7 +1232,8 @@ def lj_fluid_distribution_analyze(*jobs):
 
     ax = fig.add_subplot(2, 4, 5)
     rv = scipy.stats.gamma(
-        3 * job.cached_statepoint['num_particles'] / 2, scale=job.cached_statepoint['kT']
+        3 * job.cached_statepoint['num_particles'] / 2,
+        scale=job.cached_statepoint['kT'],
     )
     util.plot_distribution(ax, ke_samples, 'K', expected=rv.pdf)
     ax.legend(loc='upper right', fontsize='xx-small')
@@ -1228,7 +1247,9 @@ def lj_fluid_distribution_analyze(*jobs):
     )
 
     ax = fig.add_subplot(2, 4, 8)
-    util.plot_distribution(ax, pressure_samples, 'P', expected=job.cached_statepoint['pressure'])
+    util.plot_distribution(
+        ax, pressure_samples, 'P', expected=job.cached_statepoint['pressure']
+    )
 
     filename = (
         f'lj_fluid_distribution_analyze_kT{kT}'
@@ -1267,7 +1288,9 @@ def run_nve_md_sim(job, device, run_length, complete_filename):
     )
 
     if not is_restarting:
-        sim.state.thermalize_particle_momenta(hoomd.filter.All(), job.cached_statepoint['kT'])
+        sim.state.thermalize_particle_momenta(
+            hoomd.filter.All(), job.cached_statepoint['kT']
+        )
 
     # Run for a long time to look for energy and momentum drift
     device.notice('Running...')
@@ -1486,7 +1509,8 @@ def lj_fluid_conservation_analyze(*jobs):
 
     fig.suptitle(
         'LJ conservation tests: '
-        f'$kT={job.cached_statepoint["kT"]}$, $\\rho={job.cached_statepoint["density"]}$, '
+        f'$kT={job.cached_statepoint["kT"]}$, '
+        f'$\\rho={job.cached_statepoint["density"]}$, '
         f'$r_\\mathrm{{cut}}={job.cached_statepoint["r_cut"]}$, '
         f'$N={job.cached_statepoint["num_particles"]}$'
     )

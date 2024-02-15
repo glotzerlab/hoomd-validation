@@ -231,7 +231,9 @@ def make_md_simulation(
     sim.operations.add(thermo)
 
     # thermalize momenta
-    sim.state.thermalize_particle_momenta(hoomd.filter.All(), job.cached_statepoint['kT'])
+    sim.state.thermalize_particle_momenta(
+        hoomd.filter.All(), job.cached_statepoint['kT']
+    )
 
     return sim
 
@@ -442,7 +444,8 @@ def alj_2d_conservation_analyze(*jobs):
 
     fig.suptitle(
         'ALJ 2D conservation tests: '
-        f'$kT={job.cached_statepoint["kT"]}$, $\\rho={job.cached_statepoint["density"]}$, '
+        f'$kT={job.cached_statepoint["kT"]}$, '
+        f'$\\rho={job.cached_statepoint["density"]}$, '
         f'$N={job.cached_statepoint["num_particles"]}$'
     )
     filename = (

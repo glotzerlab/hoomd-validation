@@ -28,10 +28,16 @@ class ValidationDashboard(Dashboard):
             )
 
         if job.cached_statepoint['subproject'] == 'lj_union':
-            return f'lj_union: kT={job.cached_statepoint["kT"]}, rho={job.cached_statepoint["density"]}'
+            return (
+                f'lj_union: kT={job.cached_statepoint["kT"]}, '
+                f'rho={job.cached_statepoint["density"]}'
+            )
 
         if job.cached_statepoint['subproject'] == 'alj_2d':
-            return f'alj_2d: kT={job.cached_statepoint["kT"]}, rho={job.cached_statepoint["density"]}'
+            return (
+                f'alj_2d: kT={job.cached_statepoint["kT"]}, '
+                f'rho={job.cached_statepoint["density"]}'
+            )
 
         if job.cached_statepoint['subproject'] in (
             'hard_disk',
@@ -39,7 +45,10 @@ class ValidationDashboard(Dashboard):
             'simple_polygon',
             'patchy_particle_pressure',
         ):
-            return f'{job.cached_statepoint["subproject"]}: rho={job.cached_statepoint["density"]}'
+            return (
+                f'{job.cached_statepoint["subproject"]}: '
+                f'rho={job.cached_statepoint["density"]}'
+            )
 
         raise RuntimeError('Unexpected job')
 
