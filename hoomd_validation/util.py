@@ -5,7 +5,6 @@
 
 import os
 
-import numpy
 import signac
 
 
@@ -242,6 +241,8 @@ def plot_vs_expected(
     ax, values, ylabel, expected=0, relative_scale=None, separate_nvt_npt=False
 ):
     """Plot values vs an expected value."""
+    import numpy
+
     sim_modes = values.keys()
 
     avg_value = {}
@@ -308,6 +309,8 @@ def plot_vs_expected(
 
 def plot_timeseries(ax, timesteps, data, ylabel, expected=None, max_points=None):
     """Plot data as a time series."""
+    import numpy
+
     provided_modes = list(data.keys())
 
     for mode in provided_modes:
