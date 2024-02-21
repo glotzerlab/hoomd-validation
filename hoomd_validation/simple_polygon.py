@@ -60,7 +60,7 @@ def job_statepoints():
 
 def is_simple_polygon(job):
     """Test if a given job is part of the simple_polygon subproject."""
-    return job.statepoint['subproject'] == 'simple_polygon'
+    return job.cached_statepoint['subproject'] == 'simple_polygon'
 
 
 partition_jobs_cpu_serial = aggregator.groupsof(
@@ -98,8 +98,8 @@ def simple_polygon_create_initial_state(*jobs):
     if communicator.rank == 0:
         print('starting simple_polygon_create_initial_state:', job)
 
-    num_particles = job.statepoint['num_particles']
-    density = job.statepoint['density']
+    num_particles = job.cached_statepoint['num_particles']
+    density = job.cached_statepoint['density']
 
     box_volume = num_particles / density
     L = box_volume ** (1 / 2.0)
@@ -334,7 +334,7 @@ def run_npt_sim(job, device, complete_filename):
 
     # box updates
     boxmc = hoomd.hpmc.update.BoxMC(
-        betaP=job.statepoint.pressure, trigger=hoomd.trigger.Periodic(1)
+        betaP=job.cached_statepoint['pressure'], trigger=hoomd.trigger.Periodic(1)
     )
     boxmc.volume = dict(weight=1.0, mode='ln', delta=1e-6)
 
@@ -555,7 +555,7 @@ def simple_polygon_analyze(job):
         timesteps=timesteps,
         data=densities,
         ylabel=r'$\rho$',
-        expected=job.sp.density,
+        expected=job.cached_statepoint['density'],
         max_points=500,
     )
     ax.legend()
@@ -566,14 +566,14 @@ def simple_polygon_analyze(job):
         timesteps=timesteps,
         data=pressures,
         ylabel=r'$\beta P$',
-        expected=job.sp.pressure,
+        expected=job.cached_statepoint['pressure'],
         max_points=500,
     )
 
     fig.suptitle(
-        f'$\\rho={job.statepoint.density}$, '
-        f'$N={job.statepoint.num_particles}$, '
-        f'replicate={job.statepoint.replicate_idx}'
+        f'$\\rho={job.cached_statepoint["density"]}$, '
+        f'$N={job.cached_statepoint["num_particles"]}$, '
+        f'replicate={job.cached_statepoint["replicate_idx"]}'
     )
     fig.savefig(job.fn('nvt_npt_plots.svg'), bbox_inches='tight')
 

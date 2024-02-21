@@ -73,12 +73,12 @@ def job_statepoints():
 
 def is_lj_fluid(job):
     """Test if a given job is part of the lj_fluid subproject."""
-    return job.statepoint['subproject'] == 'lj_fluid'
+    return job.cached_statepoint['subproject'] == 'lj_fluid'
 
 
 def sort_key(job):
     """Aggregator sort key."""
-    return (job.statepoint.density, job.statepoint.num_particles)
+    return (job.cached_statepoint['density'], job.cached_statepoint['num_particles'])
 
 
 partition_jobs_cpu_mpi = aggregator.groupsof(
@@ -208,8 +208,8 @@ def make_md_simulation(
         extra_loggables = []
     nlist = md.nlist.Cell(buffer=0.4)
     lj = md.pair.LJ(
-        default_r_cut=job.statepoint.r_cut,
-        default_r_on=job.statepoint.r_on,
+        default_r_cut=job.cached_statepoint['r_cut'],
+        default_r_on=job.cached_statepoint['r_on'],
         nlist=nlist,
     )
     lj.params[('A', 'A')] = dict(sigma=LJ_PARAMS['sigma'], epsilon=LJ_PARAMS['epsilon'])
@@ -269,25 +269,31 @@ def run_md_sim(job, device, ensemble, thermostat, complete_filename):
 
     if ensemble == 'nvt':
         if thermostat == 'langevin':
-            method = md.methods.Langevin(hoomd.filter.All(), kT=job.statepoint.kT)
+            method = md.methods.Langevin(
+                hoomd.filter.All(), kT=job.cached_statepoint['kT']
+            )
             method.gamma.default = 1.0
         elif thermostat == 'mttk':
             method = md.methods.ConstantVolume(filter=hoomd.filter.All())
             method.thermostat = hoomd.md.methods.thermostats.MTTK(
-                kT=job.statepoint.kT, tau=0.25
+                kT=job.cached_statepoint['kT'], tau=0.25
             )
         elif thermostat == 'bussi':
             method = md.methods.ConstantVolume(filter=hoomd.filter.All())
-            method.thermostat = hoomd.md.methods.thermostats.Bussi(kT=job.statepoint.kT)
+            method.thermostat = hoomd.md.methods.thermostats.Bussi(
+                kT=job.cached_statepoint['kT']
+            )
         else:
             raise ValueError(f'Unsupported thermostat {thermostat}')
     elif ensemble == 'npt':
-        p = job.statepoint.pressure
+        p = job.cached_statepoint['pressure']
         method = md.methods.ConstantPressure(
             hoomd.filter.All(), S=[p, p, p, 0, 0, 0], tauS=3, couple='xyz'
         )
         if thermostat == 'bussi':
-            method.thermostat = hoomd.md.methods.thermostats.Bussi(kT=job.statepoint.kT)
+            method.thermostat = hoomd.md.methods.thermostats.Bussi(
+                kT=job.cached_statepoint['kT']
+            )
         else:
             raise ValueError(f'Unsupported thermostat {thermostat}')
 
@@ -299,7 +305,9 @@ def run_md_sim(job, device, ensemble, thermostat, complete_filename):
     )
 
     # thermalize momenta
-    sim.state.thermalize_particle_momenta(hoomd.filter.All(), job.sp.kT)
+    sim.state.thermalize_particle_momenta(
+        hoomd.filter.All(), job.cached_statepoint['kT']
+    )
 
     # thermalize the thermostat (if applicable)
     if (
@@ -481,66 +489,23 @@ def make_mc_simulation(job, device, initial_state, sim_mode, extra_loggables=Non
     mc.shape['A'] = dict(diameter=0.0)
 
     # pair potential
-    epsilon = LJ_PARAMS['epsilon'] / job.sp.kT  # noqa F841
+    epsilon = LJ_PARAMS['epsilon'] / job.cached_statepoint['kT']  # noqa F841
     sigma = LJ_PARAMS['sigma']
-    r_on = job.statepoint.r_on
-    r_cut = job.statepoint.r_cut
+    r_on = job.cached_statepoint['r_on']
+    r_cut = job.cached_statepoint['r_cut']
 
-    # the potential will have xplor smoothing with r_on=2
-    lj_str = f"""// standard lj energy with sigma set to 1
-                float rsq = dot(r_ij, r_ij);
-                float r_cut = {r_cut};
-                float r_cutsq = r_cut * r_cut;
-
-                if (rsq >= r_cutsq)
-                    return 0.0f;
-
-                float sigma = {sigma};
-                float sigsq = sigma * sigma;
-                float rsqinv = sigsq / rsq;
-                float r6inv = rsqinv * rsqinv * rsqinv;
-                float r12inv = r6inv * r6inv;
-                float energy = 4 * {epsilon} * (r12inv - r6inv);
-
-                float r_on = {r_on};
-                float r_onsq = r_on * r_on;
-
-                // energy shift for WCA
-                if (r_onsq > r_cutsq)
-                {{
-                    energy += {epsilon};
-                }}
-
-                // apply xplor smoothing
-                if (rsq > r_onsq)
-                {{
-                    // computing denominator for the shifting factor
-                    float diff = r_cutsq - r_onsq;
-                    float denom = diff * diff * diff;
-
-                    // compute second term for the shift
-                    float second_term = diff - r_onsq - r_onsq;
-                    second_term += (2 * rsq);
-
-                    // compute first term for the shift
-                    float first_term = r_cutsq - rsq;
-                    first_term = first_term * first_term;
-                    float smoothing = first_term * second_term / denom;
-                    energy = energy * smoothing;
-                }}
-                return energy;
-            """
-
-    lj_jit_potential = hpmc.pair.user.CPPPotential(
-        r_cut=r_cut, code=lj_str, param_array=[]
+    lennard_jones_mc = hoomd.hpmc.pair.LennardJones()
+    lennard_jones_mc.params[('A', 'A')] = dict(
+        epsilon=epsilon, sigma=sigma, r_cut=r_cut, r_on=r_on
     )
-    mc.pair_potential = lj_jit_potential
+    lennard_jones_mc.mode = 'xplor'
+    mc.pair_potentials = [lennard_jones_mc]
 
     # pair force to compute virial pressure
     nlist = hoomd.md.nlist.Cell(buffer=0.4)
     lj = hoomd.md.pair.LJ(
-        default_r_cut=job.statepoint.r_cut,
-        default_r_on=job.statepoint.r_on,
+        default_r_cut=job.cached_statepoint['r_cut'],
+        default_r_on=job.cached_statepoint['r_on'],
         nlist=nlist,
     )
     lj.params[('A', 'A')] = dict(sigma=LJ_PARAMS['sigma'], epsilon=LJ_PARAMS['epsilon'])
@@ -550,7 +515,7 @@ def make_mc_simulation(job, device, initial_state, sim_mode, extra_loggables=Non
     compute_density = ComputeDensity()
 
     logger = hoomd.logging.Logger(categories=['scalar', 'sequence'])
-    logger.add(lj_jit_potential, quantities=['energy'])
+    logger.add(lennard_jones_mc, quantities=['energy'])
     logger.add(mc, quantities=['translate_moves'])
     logger.add(compute_density)
     for loggable in extra_loggables:
@@ -583,7 +548,9 @@ def make_mc_simulation(job, device, initial_state, sim_mode, extra_loggables=Non
         if virials is not None:
             w = virials[0] + virials[3] + virials[5]
         V = sim.state.box.volume
-        return job.statepoint.num_particles * job.statepoint.kT / V + w / (3 * V)
+        return job.cached_statepoint['num_particles'] * job.cached_statepoint[
+            'kT'
+        ] / V + w / (3 * V)
 
     logger[('custom', 'virial_pressure')] = (_compute_virial_pressure, 'scalar')
 
@@ -608,10 +575,6 @@ def make_mc_simulation(job, device, initial_state, sim_mode, extra_loggables=Non
 def run_nvt_mc_sim(job, device, complete_filename):
     """Run MC sim in NVT."""
     import hoomd
-
-    if not hoomd.version.llvm_enabled:
-        device.notice('LLVM disabled, skipping MC simulations.')
-        return
 
     # simulation
     sim_mode = 'nvt_mc'
@@ -680,10 +643,6 @@ def run_npt_mc_sim(job, device, complete_filename):
     import hoomd
     from hoomd import hpmc
 
-    if not hoomd.version.llvm_enabled:
-        device.notice('LLVM disabled, skipping MC simulations.')
-        return
-
     # device
     sim_mode = 'npt_mc'
     restart_filename = util.get_job_filename(sim_mode, device, 'restart', 'gsd')
@@ -696,7 +655,8 @@ def run_npt_mc_sim(job, device, complete_filename):
 
     # box updates
     boxmc = hpmc.update.BoxMC(
-        betaP=job.statepoint.pressure / job.sp.kT, trigger=hoomd.trigger.Periodic(1)
+        betaP=job.cached_statepoint['pressure'] / job.cached_statepoint['kT'],
+        trigger=hoomd.trigger.Periodic(1),
     )
     boxmc.volume = dict(weight=1.0, mode='ln', delta=0.01)
 
@@ -799,18 +759,6 @@ mc_job_definitions = [
     },
 ]
 
-if CONFIG['enable_gpu']:
-    mc_job_definitions.extend(
-        [
-            {
-                'mode': 'nvt',
-                'device_name': 'gpu',
-                'ranks_per_partition': 1,
-                'aggregator': partition_jobs_gpu,
-            },
-        ]
-    )
-
 
 def add_mc_sampling_job(mode, device_name, ranks_per_partition, aggregator):
     """Add a MC sampling job to the workflow."""
@@ -864,9 +812,8 @@ def add_mc_sampling_job(mode, device_name, ranks_per_partition, aggregator):
     mc_sampling_jobs.append(sampling_operation)
 
 
-if CONFIG['enable_llvm']:
-    for definition in mc_job_definitions:
-        add_mc_sampling_job(**definition)
+for definition in mc_job_definitions:
+    add_mc_sampling_job(**definition)
 
 
 @Project.pre(is_lj_fluid)
@@ -909,9 +856,6 @@ def lj_fluid_analyze(job):
     if os.path.exists(job.fn('nvt_mc_cpu_quantities.h5')):
         sim_modes.extend(['nvt_mc_cpu', 'npt_mc_cpu'])
 
-    if os.path.exists(job.fn('nvt_mc_gpu_quantities.h5')):
-        sim_modes.extend(['nvt_mc_gpu'])
-
     util._sort_sim_modes(sim_modes)
 
     timesteps = {}
@@ -931,11 +875,11 @@ def lj_fluid_analyze(job):
             ]
         else:
             energies[sim_mode] = (
-                log_traj['hoomd-data/hpmc/pair/user/CPPPotential/energy']
-                * job.statepoint.kT
+                log_traj['hoomd-data/hpmc/pair/LennardJones/energy']
+                * job.cached_statepoint['kT']
             )
 
-        energies[sim_mode] /= job.statepoint.num_particles
+        energies[sim_mode] /= job.cached_statepoint['num_particles']
 
         if 'md' in sim_mode:
             pressures[sim_mode] = log_traj[
@@ -972,7 +916,7 @@ def lj_fluid_analyze(job):
         timesteps=timesteps,
         data=densities,
         ylabel=r'$\rho$',
-        expected=job.sp.density,
+        expected=job.cached_statepoint['density'],
         max_points=500,
     )
     ax.legend()
@@ -983,7 +927,7 @@ def lj_fluid_analyze(job):
         timesteps=timesteps,
         data=pressures,
         ylabel=r'$P$',
-        expected=job.sp.pressure,
+        expected=job.cached_statepoint['pressure'],
         max_points=500,
     )
 
@@ -997,7 +941,7 @@ def lj_fluid_analyze(job):
         ax=ax,
         timesteps=timesteps,
         data={
-            mode: numpy.asarray(lm) / job.sp.num_particles
+            mode: numpy.asarray(lm) / job.cached_statepoint['num_particles']
             for mode, lm in linear_momentum.items()
         },
         ylabel=r'$|\vec{p}| / N$',
@@ -1005,10 +949,11 @@ def lj_fluid_analyze(job):
     )
 
     fig.suptitle(
-        f'$kT={job.statepoint.kT}$, $\\rho={job.statepoint.density}$, '
-        f'$N={job.statepoint.num_particles}$, '
-        f'$r_\\mathrm{{cut}}={job.statepoint.r_cut}$, '
-        f'replicate={job.statepoint.replicate_idx}'
+        f'$kT={job.cached_statepoint["kT"]}$, '
+        f'$\\rho={job.cached_statepoint["density"]}$, '
+        f'$N={job.cached_statepoint["num_particles"]}$, '
+        f'$r_\\mathrm{{cut}}={job.cached_statepoint["r_cut"]}$, '
+        f'replicate={job.cached_statepoint["replicate_idx"]}'
     )
     fig.savefig(job.fn('nvt_npt_plots.svg'), bbox_inches='tight')
 
@@ -1058,9 +1003,6 @@ def lj_fluid_compare_modes(*jobs):
 
     if os.path.exists(jobs[0].fn('nvt_mc_cpu_quantities.h5')):
         sim_modes.extend(['nvt_mc_cpu', 'npt_mc_cpu'])
-
-    if os.path.exists(jobs[0].fn('nvt_mc_gpu_quantities.h5')):
-        sim_modes.extend(['nvt_mc_gpu'])
 
     util._sort_sim_modes(sim_modes)
 
@@ -1194,9 +1136,6 @@ def lj_fluid_distribution_analyze(*jobs):
     if os.path.exists(jobs[0].fn('nvt_mc_cpu_quantities.h5')):
         sim_modes.extend(['nvt_mc_cpu', 'npt_mc_cpu'])
 
-    if os.path.exists(jobs[0].fn('nvt_mc_gpu_quantities.h5')):
-        sim_modes.extend(['nvt_mc_gpu'])
-
     util._sort_sim_modes(sim_modes)
 
     # grab the common statepoint parameters
@@ -1240,7 +1179,12 @@ def lj_fluid_distribution_analyze(*jobs):
                 ke_samples[sim_mode].extend(ke)
             else:
                 ke_samples[sim_mode].extend(
-                    [3 / 2 * job.statepoint.num_particles * job.statepoint.kT]
+                    [
+                        3
+                        / 2
+                        * job.cached_statepoint['num_particles']
+                        * job.cached_statepoint['kT']
+                    ]
                 )
 
             if 'md' in sim_mode:
@@ -1255,8 +1199,8 @@ def lj_fluid_distribution_analyze(*jobs):
             else:
                 potential_energy_samples[sim_mode].extend(
                     list(
-                        log_traj['hoomd-data/hpmc/pair/user/CPPPotential/energy']
-                        * job.statepoint.kT
+                        log_traj['hoomd-data/hpmc/pair/LennardJones/energy']
+                        * job.cached_statepoint['kT']
                     )
                 )
 
@@ -1288,7 +1232,8 @@ def lj_fluid_distribution_analyze(*jobs):
 
     ax = fig.add_subplot(2, 4, 5)
     rv = scipy.stats.gamma(
-        3 * job.statepoint.num_particles / 2, scale=job.statepoint.kT
+        3 * job.cached_statepoint['num_particles'] / 2,
+        scale=job.cached_statepoint['kT'],
     )
     util.plot_distribution(ax, ke_samples, 'K', expected=rv.pdf)
     ax.legend(loc='upper right', fontsize='xx-small')
@@ -1298,11 +1243,13 @@ def lj_fluid_distribution_analyze(*jobs):
 
     ax = fig.add_subplot(2, 4, 7)
     util.plot_distribution(
-        ax, density_samples, r'$\rho$', expected=job.statepoint.density
+        ax, density_samples, r'$\rho$', expected=job.cached_statepoint['density']
     )
 
     ax = fig.add_subplot(2, 4, 8)
-    util.plot_distribution(ax, pressure_samples, 'P', expected=job.statepoint.pressure)
+    util.plot_distribution(
+        ax, pressure_samples, 'P', expected=job.cached_statepoint['pressure']
+    )
 
     filename = (
         f'lj_fluid_distribution_analyze_kT{kT}'
@@ -1341,7 +1288,9 @@ def run_nve_md_sim(job, device, run_length, complete_filename):
     )
 
     if not is_restarting:
-        sim.state.thermalize_particle_momenta(hoomd.filter.All(), job.sp.kT)
+        sim.state.thermalize_particle_momenta(
+            hoomd.filter.All(), job.cached_statepoint['kT']
+        )
 
     # Run for a long time to look for energy and momentum drift
     device.notice('Running...')
@@ -1368,8 +1317,8 @@ def run_nve_md_sim(job, device, run_length, complete_filename):
 def is_lj_fluid_nve(job):
     """Test if a given job should be run for NVE conservation."""
     return (
-        job.statepoint['subproject'] == 'lj_fluid'
-        and job.statepoint['replicate_idx'] < NUM_NVE_RUNS
+        job.cached_statepoint['subproject'] == 'lj_fluid'
+        and job.cached_statepoint['replicate_idx'] < NUM_NVE_RUNS
     )
 
 
@@ -1523,12 +1472,12 @@ def lj_fluid_conservation_analyze(*jobs):
             )
             job_energies[sim_mode] = (
                 job_energies[sim_mode] - job_energies[sim_mode][0]
-            ) / job.statepoint['num_particles']
+            ) / job.cached_statepoint['num_particles']
 
             momentum_vector = log_traj['hoomd-data/md/Integrator/linear_momentum']
             job_linear_momentum[sim_mode] = [
                 math.sqrt(v[0] ** 2 + v[1] ** 2 + v[2] ** 2)
-                / job.statepoint['num_particles']
+                / job.cached_statepoint['num_particles']
                 for v in momentum_vector
             ]
 
@@ -1543,7 +1492,7 @@ def lj_fluid_conservation_analyze(*jobs):
                 ax.plot(
                     timesteps[i][mode],
                     numpy.asarray(data[i][mode]),
-                    label=f'{mode}_{job.statepoint.replicate_idx}',
+                    label=f'{mode}_{job.cached_statepoint["replicate_idx"]}',
                 )
         ax.set_xlabel('time step')
         ax.set_ylabel(quantity_name)
@@ -1560,15 +1509,16 @@ def lj_fluid_conservation_analyze(*jobs):
 
     fig.suptitle(
         'LJ conservation tests: '
-        f'$kT={job.statepoint.kT}$, $\\rho={job.statepoint.density}$, '
-        f'$r_\\mathrm{{cut}}={job.statepoint.r_cut}$, '
-        f'$N={job.statepoint.num_particles}$'
+        f'$kT={job.cached_statepoint["kT"]}$, '
+        f'$\\rho={job.cached_statepoint["density"]}$, '
+        f'$r_\\mathrm{{cut}}={job.cached_statepoint["r_cut"]}$, '
+        f'$N={job.cached_statepoint["num_particles"]}$'
     )
     filename = (
-        f'lj_fluid_conservation_kT{job.statepoint.kT}_'
-        f'density{round(job.statepoint.density, 2)}_'
+        f'lj_fluid_conservation_kT{job.cached_statepoint["kT"]}_'
+        f'density{round(job.cached_statepoint["density"], 2)}_'
         f'r_cut{round(jobs[0].statepoint.r_cut, 2)}_'
-        f'N{job.statepoint.num_particles}.svg'
+        f'N{job.cached_statepoint["num_particles"]}.svg'
     )
 
     fig.savefig(os.path.join(jobs[0]._project.path, filename), bbox_inches='tight')

@@ -59,7 +59,7 @@ def job_statepoints():
 
 def is_alj_2d(job):
     """Test if a given job is part of the alj_2d subproject."""
-    return job.statepoint['subproject'] == 'alj_2d'
+    return job.cached_statepoint['subproject'] == 'alj_2d'
 
 
 partition_jobs_cpu = aggregator.groupsof(
@@ -104,8 +104,8 @@ def alj_2d_create_initial_state(*jobs):
         message_filename=util.get_message_filename(job, 'create_initial_state.log'),
     )
 
-    num_particles = job.statepoint['num_particles']
-    density = job.statepoint['density']
+    num_particles = job.cached_statepoint['num_particles']
+    density = job.cached_statepoint['density']
 
     box_volume = num_particles / density
     L = box_volume ** (1 / 2.0)
@@ -231,7 +231,9 @@ def make_md_simulation(
     sim.operations.add(thermo)
 
     # thermalize momenta
-    sim.state.thermalize_particle_momenta(hoomd.filter.All(), job.sp.kT)
+    sim.state.thermalize_particle_momenta(
+        hoomd.filter.All(), job.cached_statepoint['kT']
+    )
 
     return sim
 
@@ -405,12 +407,12 @@ def alj_2d_conservation_analyze(*jobs):
             )
             job_energies[sim_mode] = (
                 job_energies[sim_mode] - job_energies[sim_mode][0]
-            ) / job.statepoint['num_particles']
+            ) / job.cached_statepoint['num_particles']
 
             momentum_vector = log_traj['hoomd-data/md/Integrator/linear_momentum']
             job_linear_momentum[sim_mode] = [
                 math.sqrt(v[0] ** 2 + v[1] ** 2 + v[2] ** 2)
-                / job.statepoint['num_particles']
+                / job.cached_statepoint['num_particles']
                 for v in momentum_vector
             ]
 
@@ -425,7 +427,7 @@ def alj_2d_conservation_analyze(*jobs):
                 ax.plot(
                     timesteps[i][mode],
                     data[i][mode],
-                    label=f'{mode}_{job.statepoint.replicate_idx}',
+                    label=f'{mode}_{job.cached_statepoint["replicate_idx"]}',
                 )
         ax.set_xlabel('time step')
         ax.set_ylabel(quantity_name)
@@ -442,13 +444,14 @@ def alj_2d_conservation_analyze(*jobs):
 
     fig.suptitle(
         'ALJ 2D conservation tests: '
-        f'$kT={job.statepoint.kT}$, $\\rho={job.statepoint.density}$, '
-        f'$N={job.statepoint.num_particles}$'
+        f'$kT={job.cached_statepoint["kT"]}$, '
+        f'$\\rho={job.cached_statepoint["density"]}$, '
+        f'$N={job.cached_statepoint["num_particles"]}$'
     )
     filename = (
-        f'alj_2d_conservation_kT{job.statepoint.kT}_'
-        f'density{round(job.statepoint.density, 2)}_'
-        f'N{job.statepoint.num_particles}.svg'
+        f'alj_2d_conservation_kT{job.cached_statepoint["kT"]}_'
+        f'density{round(job.cached_statepoint["density"], 2)}_'
+        f'N{job.cached_statepoint["num_particles"]}.svg'
     )
 
     fig.savefig(os.path.join(jobs[0]._project.path, filename), bbox_inches='tight')
