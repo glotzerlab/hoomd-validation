@@ -516,17 +516,20 @@ def make_mc_simulation(job, device, initial_state, sim_mode, extra_loggables=Non
 
     # pair potential
     lennard_jones = hpmc.pair.LennardJones()
-    lennard_jones.params[('A', 'A')] = dict(epsilon=LJ_PARAMS['epsilon'] / job.cached_statepoint['kT'], sigma = LJ_PARAMS['sigma'],
-    r_on = LJ_PARAMS['r_on'], r_cut = LJ_PARAMS['r_cut'])
-    lennard_jones.params[('A', 'R')] = dict(epsilon=0, sigma = 0, r_on = 0, r_cut = 0)
-    lennard_jones.params[('R', 'R')] = dict(epsilon=0, sigma = 0, r_on = 0, r_cut = 0)
+    lennard_jones.params[('A', 'A')] = dict(
+        epsilon=LJ_PARAMS['epsilon'] / job.cached_statepoint['kT'],
+        sigma=LJ_PARAMS['sigma'],
+        r_on=LJ_PARAMS['r_on'],
+        r_cut=LJ_PARAMS['r_cut'],
+    )
+    lennard_jones.params[('A', 'R')] = dict(epsilon=0, sigma=0, r_on=0, r_cut=0)
+    lennard_jones.params[('R', 'R')] = dict(epsilon=0, sigma=0, r_on=0, r_cut=0)
 
     lennard_jones.mode = 'xplor'
 
     lj_union = hpmc.pair.Union(constituent_potential=lennard_jones)
-    lj_union.body['A'] = dict(positions = [], types = [])
-    lj_union.body['R'] = dict(positions = CUBE_VERTS,
-                              types = ['A'] * len(CUBE_VERTS))
+    lj_union.body['A'] = dict(positions=[], types=[])
+    lj_union.body['R'] = dict(positions=CUBE_VERTS, types=['A'] * len(CUBE_VERTS))
 
     mc.pair_potentials = [lj_union]
 
