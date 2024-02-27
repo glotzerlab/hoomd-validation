@@ -15,13 +15,13 @@ import signac
 import simple_polygon
 
 subprojects = [
-    # alj_2d,
-    # lj_fluid,
+    alj_2d,
+    lj_fluid,
     lj_union,
-    # hard_disk,
-    # hard_sphere,
-    # simple_polygon,
-    # patchy_particle_pressure,
+    hard_disk,
+    hard_sphere,
+    simple_polygon,
+    patchy_particle_pressure,
 ]
 
 project = signac.init_project(path=config.project_root)
