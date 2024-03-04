@@ -17,7 +17,7 @@ from project_class import Project
 RANDOMIZE_STEPS = 20_000
 EQUILIBRATE_STEPS = 200_000
 RUN_STEPS = 500_000
-RESTART_STEPS = RUN_STEPS // 50
+RESTART_STEPS = RUN_STEPS // 10
 TOTAL_STEPS = RANDOMIZE_STEPS + EQUILIBRATE_STEPS + RUN_STEPS
 
 WRITE_PERIOD = 1_000
@@ -34,14 +34,14 @@ def job_statepoints():
     params_list = [
         # kern-frenkel. density and temperature chosen to produce
         # a dense liquid. pressure measured from NVT simulations on CPU.
-        (1.0, 0.95, 10.208625410213362, 0.7, 1.5, 1.0),
+        # (1.0, 0.95, 10.208625410213362, 0.7, 1.5, 1.0),
         # hard sphere + square well, from 10.1063/1.3054361
         # pressure from NVT simulations (on CPU), NOT from values in paper
-        (3.0, 0.8, 4.837436833423719, 1.0, 1.5, 1.0),
+        # (3.0, 0.8, 4.837436833423719, 1.0, 1.5, 1.0),
         # hard sphere + square well + repulsive shoulder.
         # temperatures/densities for dense liquid based on initial tests.
         # pressure measured from NVT simulations on CPU.
-        (3.0, 0.7, 4.00804, 1.0, 1.0, -1.0),
+        (3.0, 0.6, 4.2952, 1.0, 1.5, -1.0),
     ]  # kT, rho, pressure, chi, lambda_, long_range_interaction_scale_factor
     for temperature, density, pressure, chi, lambda_, lrisf in params_list:
         for idx in replicate_indices:
@@ -125,11 +125,13 @@ def _single_patch_kern_frenkel_code(
     float rsq = dot(r_ij, r_ij);
     if (patch_on_i_is_aligned_with_r_ij && patch_on_j_is_aligned_with_r_ji)
         {{
-        if (rsq < lambda / 2 * sigma * lambda / 2 * sigma)
+        float r_0 = (sigma + lambda * sigma) / 2.0f;
+        float r_1 = lambda * sigma;
+        if (rsq < r_0 * r_0)
             {{
             return -1 / kT;
             }}
-        else if (rsq < lambda * sigma * lambda * sigma)
+        else if (rsq < r_1 * r_1)
             {{
             return -1 / kT * long_range_interaction_scale_factor;
             }}
@@ -155,7 +157,7 @@ def _single_patch_kern_frenkel_code(
     ),
     aggregator=partition_jobs_cpu_mpi_nvt,
 )
-def patchy_particle_pressure_create_initial_state(*jobs):
+def patchy_particle_pressure_vim(*jobs):
     """Create initial system configuration."""
     import itertools
 

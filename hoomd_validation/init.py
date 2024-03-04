@@ -15,12 +15,12 @@ import signac
 import simple_polygon
 
 subprojects = [
-    alj_2d,
-    lj_fluid,
-    lj_union,
-    hard_disk,
-    hard_sphere,
-    simple_polygon,
+    # alj_2d,
+    # lj_fluid,
+    # lj_union,
+    # hard_disk,
+    # hard_sphere,
+    # simple_polygon,
     patchy_particle_pressure,
 ]
 
