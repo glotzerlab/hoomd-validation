@@ -157,7 +157,7 @@ def _single_patch_kern_frenkel_code(
     ),
     aggregator=partition_jobs_cpu_mpi_nvt,
 )
-def patchy_particle_pressure_vim(*jobs):
+def patchy_particle_pressure_create_initial_state(*jobs):
     """Create initial system configuration."""
     import itertools
 
