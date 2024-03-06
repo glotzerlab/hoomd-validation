@@ -109,20 +109,22 @@ def make_potential(
     HOOMD-blue tutorial.
     """
     import hoomd
-    r = [(sigma + sq_well_lambda * sigma) / 2.0,
+
+    r = [
+        (sigma + sq_well_lambda * sigma) / 2.0,
         sq_well_lambda * sigma,
-        ]
-    epsilon = [-1/kT,
--1 / kT * long_range_interaction_scale_factor,
-]
+    ]
+    epsilon = [
+        -1 / kT,
+        -1 / kT * long_range_interaction_scale_factor,
+    ]
     step = hoomd.hpmc.pair.Step()
     step.params[('A', 'A')] = dict(epsilon=epsilon, r=r)
 
-    angular_step = hoomd.hpmc.pair.AngularStep(
-                   isotropic_potential=step)
-    angular_step.patch['A'] = dict(directors=[(1.0, 0, 0)],
-                    deltas=[delta_rad])
+    angular_step = hoomd.hpmc.pair.AngularStep(isotropic_potential=step)
+    angular_step.patch['A'] = dict(directors=[(1.0, 0, 0)], deltas=[delta_rad])
     return angular_step
+
 
 @Project.post.isfile('patchy_particle_pressure_initial_state.gsd')
 @Project.operation(
