@@ -804,6 +804,30 @@ def patchy_particle_pressure_compare_modes(*jobs):
         )
         ax.axhline(0.0, c='k', ls='--')
 
+        if quantity_name == 'density':
+            if 'npt_cpu' in avg_quantity:
+                print(
+                    f'Average npt_cpu density {num_particles}:',
+                    avg_quantity['npt_cpu'],
+                    '+/-',
+                    stderr_quantity['npt_cpu'],
+                )
+        if quantity_name == 'pressure':
+            if 'nvt_cpu' in avg_quantity:
+                print(
+                    f'Average nvt_cpu pressure {num_particles}:',
+                    avg_quantity['nvt_cpu'],
+                    '+/-',
+                    stderr_quantity['nvt_cpu'],
+                )
+            if 'npt_cpu' in avg_quantity:
+                print(
+                    f'Average npt_cpu pressure {num_particles}:',
+                    avg_quantity['npt_cpu'],
+                    '+/-',
+                    stderr_quantity['npt_cpu'],
+                )
+
     filename = 'patchy_particle_pressure_compare_'
     filename += f'density{round(set_density, 2)}_'
     filename += f'temperature{round(set_temperature, 4)}_'
