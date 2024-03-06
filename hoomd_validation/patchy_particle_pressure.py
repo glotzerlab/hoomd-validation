@@ -124,7 +124,6 @@ def make_potential(
                     deltas=[delta_rad])
     return angular_step
 
-@Project.pre(lambda *jobs: CONFIG['enable_llvm'])
 @Project.post.isfile('patchy_particle_pressure_initial_state.gsd')
 @Project.operation(
     directives=dict(
