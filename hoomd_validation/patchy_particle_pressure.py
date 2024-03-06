@@ -41,7 +41,7 @@ def job_statepoints():
         # hard sphere + square well + repulsive shoulder.
         # temperatures/densities for dense liquid based on initial tests.
         # pressure measured from NVT simulations on CPU.
-        (3.0, 0.6, 4.2952, 1.0, 1.5, -1.0),
+        (3.0, 0.6, 2.12496, 1.0, 1.5, -1.0),
     ]  # kT, rho, pressure, chi, lambda_, long_range_interaction_scale_factor
     for temperature, density, pressure, chi, lambda_, lrisf in params_list:
         for idx in replicate_indices:
