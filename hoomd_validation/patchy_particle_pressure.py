@@ -17,7 +17,7 @@ from project_class import Project
 RANDOMIZE_STEPS = 20_000
 EQUILIBRATE_STEPS = 200_000
 RUN_STEPS = 500_000
-RESTART_STEPS = RUN_STEPS // 50
+RESTART_STEPS = RUN_STEPS // 10
 TOTAL_STEPS = RANDOMIZE_STEPS + EQUILIBRATE_STEPS + RUN_STEPS
 
 WRITE_PERIOD = 1_000
@@ -41,7 +41,7 @@ def job_statepoints():
         # hard sphere + square well + repulsive shoulder.
         # temperatures/densities for dense liquid based on initial tests.
         # pressure measured from NVT simulations on CPU.
-        (3.0, 0.7, 4.00804, 1.0, 1.0, -1.0),
+        (3.0, 0.6, 2.12496, 1.0, 1.5, -1.0),
     ]  # kT, rho, pressure, chi, lambda_, long_range_interaction_scale_factor
     for temperature, density, pressure, chi, lambda_, lrisf in params_list:
         for idx in replicate_indices:
@@ -125,11 +125,13 @@ def _single_patch_kern_frenkel_code(
     float rsq = dot(r_ij, r_ij);
     if (patch_on_i_is_aligned_with_r_ij && patch_on_j_is_aligned_with_r_ji)
         {{
-        if (rsq < lambda / 2 * sigma * lambda / 2 * sigma)
+        float r_0 = (sigma + lambda * sigma) / 2.0f;
+        float r_1 = lambda * sigma;
+        if (rsq < r_0 * r_0)
             {{
             return -1 / kT;
             }}
-        else if (rsq < lambda * sigma * lambda * sigma)
+        else if (rsq < r_1 * r_1)
             {{
             return -1 / kT * long_range_interaction_scale_factor;
             }}
@@ -801,6 +803,30 @@ def patchy_particle_pressure_compare_modes(*jobs):
             separate_nvt_npt=True,
         )
         ax.axhline(0.0, c='k', ls='--')
+
+        if quantity_name == 'density':
+            if 'npt_cpu' in avg_quantity:
+                print(
+                    f'Average npt_cpu density {num_particles}:',
+                    avg_quantity['npt_cpu'],
+                    '+/-',
+                    stderr_quantity['npt_cpu'],
+                )
+        if quantity_name == 'pressure':
+            if 'nvt_cpu' in avg_quantity:
+                print(
+                    f'Average nvt_cpu pressure {num_particles}:',
+                    avg_quantity['nvt_cpu'],
+                    '+/-',
+                    stderr_quantity['nvt_cpu'],
+                )
+            if 'npt_cpu' in avg_quantity:
+                print(
+                    f'Average npt_cpu pressure {num_particles}:',
+                    avg_quantity['npt_cpu'],
+                    '+/-',
+                    stderr_quantity['npt_cpu'],
+                )
 
     filename = 'patchy_particle_pressure_compare_'
     filename += f'density{round(set_density, 2)}_'
