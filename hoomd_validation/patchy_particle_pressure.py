@@ -86,10 +86,10 @@ partition_jobs_cpu_mpi_npt = aggregator.groupsof(
 )
 
 
-def _single_patch_kern_frenkel_code(
+def make_potential(
     delta_rad, sq_well_lambda, sigma, kT, long_range_interaction_scale_factor
 ):
-    """Generate code for JIT compilation of Kern-Frenkel potential.
+    """Make the Kern-Frenkel pair potential.
 
     Args:
         delta_rad (float): Half-opening angle of patchy interaction in radians
@@ -107,47 +107,25 @@ def _single_patch_kern_frenkel_code(
 
     The terminology (e.g., `ehat`) comes from the "Modelling Patchy Particles"
     HOOMD-blue tutorial.
-
     """
-    return f"""
-    const float delta = {delta_rad};
-    const float lambda = {sq_well_lambda:f};
-    const float sigma = {sigma:f};  // hard core diameter
-    const float kT = {kT:f};
-    const float long_range_interaction_scale_factor = {
-        long_range_interaction_scale_factor:f};
-    const vec3<float> ehat_particle_reference_frame(1, 0, 0);
-    vec3<float> ehat_i = rotate(q_i, ehat_particle_reference_frame);
-    vec3<float> ehat_j = rotate(q_j, ehat_particle_reference_frame);
-    vec3<float> r_hat_ij = r_ij / sqrtf(dot(r_ij, r_ij));
-    bool patch_on_i_is_aligned_with_r_ij = dot(ehat_i, r_hat_ij) >= cos(delta);
-    bool patch_on_j_is_aligned_with_r_ji = dot(ehat_j, -r_hat_ij) >= cos(delta);
-    float rsq = dot(r_ij, r_ij);
-    if (patch_on_i_is_aligned_with_r_ij && patch_on_j_is_aligned_with_r_ji)
-        {{
-        float r_0 = (sigma + lambda * sigma) / 2.0f;
-        float r_1 = lambda * sigma;
-        if (rsq < r_0 * r_0)
-            {{
-            return -1 / kT;
-            }}
-        else if (rsq < r_1 * r_1)
-            {{
-            return -1 / kT * long_range_interaction_scale_factor;
-            }}
-        else
-            {{
-            return 0.0;
-            }}
-        }}
-    else
-        {{
-        return 0.0;
-        }}
-    """
+    import hoomd
+
+    r = [
+        (sigma + sq_well_lambda * sigma) / 2.0,
+        sq_well_lambda * sigma,
+    ]
+    epsilon = [
+        -1 / kT,
+        -1 / kT * long_range_interaction_scale_factor,
+    ]
+    step = hoomd.hpmc.pair.Step()
+    step.params[('A', 'A')] = dict(epsilon=epsilon, r=r)
+
+    angular_step = hoomd.hpmc.pair.AngularStep(isotropic_potential=step)
+    angular_step.patch['A'] = dict(directors=[(1.0, 0, 0)], deltas=[delta_rad])
+    return angular_step
 
 
-@Project.pre(lambda *jobs: CONFIG['enable_llvm'])
 @Project.post.isfile('patchy_particle_pressure_initial_state.gsd')
 @Project.operation(
     directives=dict(
@@ -211,18 +189,14 @@ def patchy_particle_pressure_create_initial_state(*jobs):
     diameter = 1.0
     mc.shape['A'] = dict(diameter=diameter, orientable=True)
     delta = 2 * numpy.arcsin(numpy.sqrt(chi))
-    patch_code = _single_patch_kern_frenkel_code(
+    angular_step = make_potential(
         delta,
         lambda_,
         diameter,
         temperature,
         long_range_interaction_scale_factor,
     )
-    r_cut = diameter + diameter * (lambda_ - 1)
-    patches = hoomd.hpmc.pair.user.CPPPotential(
-        r_cut=r_cut, code=patch_code, param_array=[]
-    )
-    mc.pair_potential = patches
+    mc.pair_potentials = [angular_step]
 
     sim = hoomd.Simulation(device=device, seed=util.make_seed(job))
     sim.create_state_from_snapshot(snap)
@@ -282,18 +256,14 @@ def make_mc_simulation(job, device, initial_state, sim_mode, extra_loggables=Non
     mc = hoomd.hpmc.integrate.Sphere(default_d=0.05, default_a=0.1)
     mc.shape['A'] = dict(diameter=diameter, orientable=True)
     delta = 2 * numpy.arcsin(numpy.sqrt(chi))
-    patch_code = _single_patch_kern_frenkel_code(
+    angular_step = make_potential(
         delta,
         lambda_,
         diameter,
         temperature,
         long_range_interaction_scale_factor,
     )
-    r_cut = diameter + diameter * (lambda_ - 1)
-    patches = hoomd.hpmc.pair.user.CPPPotential(
-        r_cut=r_cut, code=patch_code, param_array=[]
-    )
-    mc.pair_potential = patches
+    mc.pair_potentials = [angular_step]
 
     # compute the density and pressure
     compute_density = ComputeDensity()
@@ -303,7 +273,7 @@ def make_mc_simulation(job, device, initial_state, sim_mode, extra_loggables=Non
     logger.add(mc, quantities=['translate_moves'])
     logger.add(sdf, quantities=['betaP'])
     logger.add(compute_density, quantities=['density'])
-    logger.add(patches, quantities=['energy'])
+    logger.add(angular_step, quantities=['energy'])
     for loggable, quantity in extra_loggables:
         logger.add(loggable, quantities=[quantity])
 
