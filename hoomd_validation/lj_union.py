@@ -515,89 +515,29 @@ def make_mc_simulation(job, device, initial_state, sim_mode, extra_loggables=Non
     mc.shape['R'] = dict(diameter=0.0, orientable=True)
 
     # pair potential
-    epsilon = LJ_PARAMS['epsilon'] / job.cached_statepoint['kT']  # noqa F841
-    sigma = LJ_PARAMS['sigma']
-    r_on = LJ_PARAMS['r_on']
-    r_cut = LJ_PARAMS['r_cut']
-
-    # the potential will have xplor smoothing with r_on=2
-    lj_str = f"""// standard lj energy with sigma set to 1
-                float rsq = dot(r_ij, r_ij);
-                float r_cut = {r_cut};
-                float r_cutsq = r_cut * r_cut;
-
-                if (rsq >= r_cutsq)
-                    return 0.0f;
-
-                float sigma = {sigma};
-                float sigsq = sigma * sigma;
-                float rsqinv = sigsq / rsq;
-                float r6inv = rsqinv * rsqinv * rsqinv;
-                float r12inv = r6inv * r6inv;
-                float energy = 4 * {epsilon} * (r12inv - r6inv);
-
-                float r_on = {r_on};
-                float r_onsq = r_on * r_on;
-
-                // energy shift for WCA
-                if (r_onsq > r_cutsq)
-                {{
-                    energy += {epsilon};
-                }}
-
-                // apply xplor smoothing
-                if (rsq > r_onsq)
-                {{
-                    // computing denominator for the shifting factor
-                    float diff = r_cutsq - r_onsq;
-                    float denom = diff * diff * diff;
-
-                    // compute second term for the shift
-                    float second_term = diff - r_onsq - r_onsq;
-                    second_term += (2 * rsq);
-
-                    // compute first term for the shift
-                    float first_term = r_cutsq - rsq;
-                    first_term = first_term * first_term;
-                    float smoothing = first_term * second_term / denom;
-                    energy = energy * smoothing;
-                }}
-                return energy;
-            """
-
-    if isinstance(device, hoomd.device.CPU):
-        code_isotropic = 'return 0.0f;'
-    else:
-        code_isotropic = ''
-
-    lj_jit_potential = hpmc.pair.user.CPPPotentialUnion(
-        r_cut_constituent=r_cut,
-        code_constituent=lj_str,
-        r_cut_isotropic=0,
-        code_isotropic=code_isotropic,
-        param_array_constituent=[],
-        param_array_isotropic=[],
+    lennard_jones = hpmc.pair.LennardJones()
+    lennard_jones.params[('A', 'A')] = dict(
+        epsilon=LJ_PARAMS['epsilon'] / job.cached_statepoint['kT'],
+        sigma=LJ_PARAMS['sigma'],
+        r_on=LJ_PARAMS['r_on'],
+        r_cut=LJ_PARAMS['r_cut'],
     )
-    lj_jit_potential.positions['A'] = []
-    lj_jit_potential.diameters['A'] = []
-    lj_jit_potential.typeids['A'] = []
-    lj_jit_potential.orientations['A'] = []
-    lj_jit_potential.charges['A'] = []
+    lennard_jones.params[('A', 'R')] = dict(epsilon=0, sigma=0, r_on=0, r_cut=0)
+    lennard_jones.params[('R', 'R')] = dict(epsilon=0, sigma=0, r_on=0, r_cut=0)
 
-    lj_jit_potential.positions['R'] = CUBE_VERTS
-    lj_jit_potential.diameters['R'] = [0] * len(CUBE_VERTS)
-    lj_jit_potential.typeids['R'] = [0] * len(CUBE_VERTS)
-    lj_jit_potential.orientations['R'] = [(1, 0, 0, 0)] * len(CUBE_VERTS)
-    lj_jit_potential.charges['R'] = [0] * len(CUBE_VERTS)
-    mc.pair_potential = lj_jit_potential
+    lennard_jones.mode = 'xplor'
 
-    # Note: Computing the virial pressure is non-trivial, skip
+    lj_union = hpmc.pair.Union(constituent_potential=lennard_jones)
+    lj_union.body['A'] = dict(positions=[], types=[])
+    lj_union.body['R'] = dict(positions=CUBE_VERTS, types=['A'] * len(CUBE_VERTS))
+
+    mc.pair_potentials = [lj_union]
 
     # compute the density
     compute_density = ComputeDensity()
 
     logger = hoomd.logging.Logger(categories=['scalar', 'sequence'])
-    logger.add(lj_jit_potential, quantities=['energy'])
+    logger.add(lj_union, quantities=['energy'])
     logger.add(mc, quantities=['translate_moves', 'rotate_moves'])
     logger.add(compute_density)
     for loggable in extra_loggables:
@@ -646,10 +586,6 @@ def make_mc_simulation(job, device, initial_state, sim_mode, extra_loggables=Non
 def run_nvt_mc_sim(job, device, complete_filename):
     """Run MC sim in NVT."""
     import hoomd
-
-    if not hoomd.version.llvm_enabled:
-        device.notice('LLVM disabled, skipping MC simulations.')
-        return
 
     # simulation
 
@@ -733,10 +669,6 @@ def run_npt_mc_sim(job, device, complete_filename):
     """Run MC sim in NPT."""
     import hoomd
     from hoomd import hpmc
-
-    if not hoomd.version.llvm_enabled:
-        device.notice('LLVM disabled, skipping MC simulations.')
-        return
 
     sim_mode = 'npt_mc'
 
@@ -864,18 +796,6 @@ mc_job_definitions = [
     },
 ]
 
-if CONFIG['enable_gpu']:
-    mc_job_definitions.extend(
-        [
-            {
-                'mode': 'nvt',
-                'device_name': 'gpu',
-                'ranks_per_partition': 1,
-                'aggregator': partition_jobs_gpu,
-            },
-        ]
-    )
-
 
 def add_mc_sampling_job(mode, device_name, ranks_per_partition, aggregator):
     """Add a MC sampling job to the workflow."""
@@ -931,9 +851,8 @@ def add_mc_sampling_job(mode, device_name, ranks_per_partition, aggregator):
     mc_sampling_jobs.append(sampling_operation)
 
 
-if CONFIG['enable_llvm']:
-    for definition in mc_job_definitions:
-        add_mc_sampling_job(**definition)
+for definition in mc_job_definitions:
+    add_mc_sampling_job(**definition)
 
 
 @Project.pre(is_lj_union)
@@ -976,9 +895,6 @@ def lj_union_analyze(job):
     if os.path.exists(job.fn('nvt_mc_cpu_quantities.h5')):
         sim_modes.extend(['nvt_mc_cpu', 'npt_mc_cpu'])
 
-    if os.path.exists(job.fn('nvt_mc_gpu_quantities.h5')):
-        sim_modes.extend(['nvt_mc_gpu'])
-
     util._sort_sim_modes(sim_modes)
 
     timesteps = {}
@@ -998,7 +914,7 @@ def lj_union_analyze(job):
             ]
         else:
             energies[sim_mode] = (
-                log_traj['hoomd-data/hpmc/pair/user/CPPPotentialUnion/energy']
+                log_traj['hoomd-data/hpmc/pair/Union/energy']
                 * job.cached_statepoint['kT']
             )
 
@@ -1123,9 +1039,6 @@ def lj_union_compare_modes(*jobs):
     if os.path.exists(jobs[0].fn('nvt_mc_cpu_quantities.h5')):
         sim_modes.extend(['nvt_mc_cpu', 'npt_mc_cpu'])
 
-    if os.path.exists(jobs[0].fn('nvt_mc_gpu_quantities.h5')):
-        sim_modes.extend(['nvt_mc_gpu'])
-
     util._sort_sim_modes(sim_modes)
 
     quantity_names = ['density', 'pressure', 'potential_energy']
@@ -1235,9 +1148,6 @@ def lj_union_distribution_analyze(*jobs):
     if os.path.exists(jobs[0].fn('nvt_mc_cpu_quantities.h5')):
         sim_modes.extend(['nvt_mc_cpu', 'npt_mc_cpu'])
 
-    if os.path.exists(jobs[0].fn('nvt_mc_gpu_quantities.h5')):
-        sim_modes.extend(['nvt_mc_gpu'])
-
     util._sort_sim_modes(sim_modes)
 
     # grab the common statepoint parameters
@@ -1330,7 +1240,7 @@ def lj_union_distribution_analyze(*jobs):
                 )
             else:
                 potential_energy_samples[sim_mode].extend(
-                    log_traj['hoomd-data/hpmc/pair/user/CPPPotentialUnion/energy']
+                    log_traj['hoomd-data/hpmc/pair/Union/energy']
                     * job.cached_statepoint['kT']
                 )
 
