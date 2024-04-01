@@ -22,12 +22,12 @@ jobs:
     name: flow-status
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4.1.1
+      - uses: actions/checkout@v4.1.2
       - name: Set up Python
-        uses: actions/setup-python@v5.0.0
+        uses: actions/setup-python@v5.1.0
         with:
           python-version: '3.11'
-      - uses: actions/cache@v4.0.1
+      - uses: actions/cache@v4.0.2
         with:
           path: ~/.cache/pip
           key: ${{ runner.os }}-pip-${{ hashFiles('.github/workflows/requirements-test.txt') }}
