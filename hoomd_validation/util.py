@@ -4,27 +4,21 @@
 """Helper functions for grabbing data and plotting."""
 
 import os
+import numpy
+import h5py
 
 import signac
-
-
-def true_all(*jobs, key):
-    """Check that a given key is true in all jobs."""
-    return all(job.document.get(key, False) for job in jobs)
-
-
-def total_ranks_function(ranks_per_job):
-    """Make a function that computes the number of ranks for an aggregate."""
-    return lambda *jobs: ranks_per_job * len(jobs)
+import hoomd
 
 
 def get_job_filename(sim_mode, device, name, file_type):
     """Construct a job filename."""
-    import hoomd
-
-    suffix = 'cpu'
-    if isinstance(device, hoomd.device.GPU):
-        suffix = 'gpu'
+    if isinstance(device, str):
+        suffix = device
+    else:
+        suffix = 'cpu'
+        if isinstance(device, hoomd.device.GPU):
+            suffix = 'gpu'
 
     return f'{sim_mode}_{suffix}_{name}.{file_type}'
 
@@ -103,8 +97,6 @@ def make_simulation(
         trajectory_logger (`hoomd.logging.Logger`): Logger to add to trajectory
             writer.
     """
-    import hoomd
-
     sim = hoomd.Simulation(device)
     sim.seed = make_seed(job, sim_mode)
     sim.create_state_from_gsd(initial_state)
@@ -123,7 +115,7 @@ def make_simulation(
 
     # write particle trajectory to a gsd file
     trajectory_writer = hoomd.write.GSD(
-        filename=job.fn(get_job_filename(sim_mode, device, 'trajectory', 'gsd')),
+        filename=job.fn(get_job_filename(sim_mode, device, 'trajectory', 'gsd.tmp')),
         trigger=hoomd.trigger.And(
             [
                 hoomd.trigger.Periodic(trajectory_write_period),
@@ -139,7 +131,7 @@ def make_simulation(
     logger.add(sim, quantities=['timestep'])
 
     quantity_writer = hoomd.write.HDF5Log(
-        filename=job.fn(get_job_filename(sim_mode, device, 'quantities', 'h5')),
+        filename=job.fn(get_job_filename(sim_mode, device, 'quantities', 'h5.tmp')),
         trigger=hoomd.trigger.And(
             [
                 hoomd.trigger.Periodic(log_write_period),
@@ -152,6 +144,51 @@ def make_simulation(
     sim.operations.add(quantity_writer)
 
     return sim
+
+
+def is_simulation_complete(
+    job,
+    device,
+    sim_mode,
+):
+    """Check if a simulation is complete.
+
+    Check if all output files are present.
+
+    Args:
+        job (`signac.Job`): signac job object.
+
+        device (`hoomd.device.Device`): hoomd device object.
+
+        sim_mode (str): String defining the simulation mode.
+    """
+    gsd_exists = job.isfile(get_job_filename(sim_mode, device, 'trajectory', 'gsd'))
+    h5_exists = job.isfile(get_job_filename(sim_mode, device, 'quantities', 'h5'))
+
+    return gsd_exists and h5_exists
+
+def mark_simulation_complete(
+    job,
+    device,
+    sim_mode,
+):
+    """Mark that simulation is complete.
+
+    Moves .tmp files to the final filename.
+
+    Args:
+        job (`signac.Job`): signac job object.
+
+        device (`hoomd.device.Device`): hoomd device object.
+
+        sim_mode (str): String defining the simulation mode.
+    """
+    if device.communicator.rank == 0:
+        os.rename(job.fn(get_job_filename(sim_mode, device, 'trajectory', 'gsd.tmp')),
+        job.fn(get_job_filename(sim_mode, device, 'trajectory', 'gsd')))
+
+        os.rename(job.fn(get_job_filename(sim_mode, device, 'quantities', 'h5.tmp')),
+        job.fn(get_job_filename(sim_mode, device, 'quantities', 'h5')))
 
 
 def make_seed(job, sim_mode=None):
@@ -171,8 +208,6 @@ def plot_distribution(
     ax, data, independent_variable_label, expected=None, bins=100, plot_rotated=False
 ):
     """Plot distributions."""
-    import numpy
-
     max_density_histogram = 0
     sim_modes = data.keys()
 
@@ -241,8 +276,6 @@ def plot_vs_expected(
     ax, values, ylabel, expected=0, relative_scale=None, separate_nvt_npt=False
 ):
     """Plot values vs an expected value."""
-    import numpy
-
     sim_modes = values.keys()
 
     avg_value = {}
@@ -309,8 +342,6 @@ def plot_vs_expected(
 
 def plot_timeseries(ax, timesteps, data, ylabel, expected=None, max_points=None):
     """Plot data as a time series."""
-    import numpy
-
     provided_modes = list(data.keys())
 
     for mode in provided_modes:
@@ -344,9 +375,6 @@ def _sort_sim_modes(sim_modes):
 
 def read_log(filename):
     """Read a HDF5 log as a dictionary of logged quantities."""
-    import h5py
-    import numpy
-
     with h5py.File(mode='r', name=filename) as f:
         keys = []
         f.visit(lambda name: keys.append(name))

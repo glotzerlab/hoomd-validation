@@ -18,6 +18,7 @@ from config import CONFIG
 from flow import aggregator
 from workflow_class import ValidationWorkflow
 from workflow import Action
+from custom_actions import ComputeDensity
 
 # Run parameters shared between simulations.
 # Step counts must be even and a multiple of the log quantity period.
@@ -77,9 +78,10 @@ def job_statepoints():
 
 
 _group = {'sort_by': ["/density", "/num_particles"], 'include': [{'condition': ["/subproject", "==", __name__]}]}
-_resources_cpu = {'processes': {'per_directory': NUM_CPU_RANKS}}
+_resources = {'walltime': {'per_submission': CONFIG['max_walltime']}}
+_resources_cpu = _resources | {'processes': {'per_directory': NUM_CPU_RANKS}}
 _group_cpu = _group | {'maximum_size': min(CONFIG['replicates'], CONFIG['max_cores_submission'] // NUM_CPU_RANKS)}
-_resources_gpu = {'processes': {'per_directory': 1}, 'gpus_per_process': 1}
+_resources_gpu = _resources | {'processes': {'per_directory': 1}, 'gpus_per_process': 1}
 _group_gpu = _group | {'maximum_size': CONFIG['max_gpus_submission']}
 
 
@@ -150,294 +152,265 @@ configuration = {'products': ['initial_state.gsd'], 'launchers': ['mpi'], 'group
 #################################
 
 
-# def make_md_simulation(
-#     job,
-#     device,
-#     initial_state,
-#     method,
-#     sim_mode,
-#     extra_loggables=None,
-#     period_multiplier=1,
-# ):
-#     """Make an MD simulation.
+def make_md_simulation(
+    job,
+    device,
+    initial_state,
+    method,
+    sim_mode,
+    extra_loggables=None,
+    period_multiplier=1,
+):
+    """Make an MD simulation.
 
-#     Args:
-#         job (`signac.job.Job`): Signac job object.
+    Args:
+        job (`signac.job.Job`): Signac job object.
 
-#         device (`hoomd.device.Device`): hoomd device object.
+        device (`hoomd.device.Device`): hoomd device object.
 
-#         initial_state (str): Path to the gsd file to be used as an initial state
-#             for the simulation.
+        initial_state (str): Path to the gsd file to be used as an initial state
+            for the simulation.
 
-#         method (`hoomd.md.methods.Method`): hoomd integration method.
+        method (`hoomd.md.methods.Method`): hoomd integration method.
 
-#         sim_mode (str): String identifying the simulation mode.
+        sim_mode (str): String identifying the simulation mode.
 
-#         extra_loggables (list): List of quantities to add to the gsd logger.
+        extra_loggables (list): List of quantities to add to the gsd logger.
 
-#         ThermodynamicQuantities is added by default, any more quantities should
-#             be in this list.
+        ThermodynamicQuantities is added by default, any more quantities should
+            be in this list.
 
-#         period_multiplier (int): Factor to multiply the GSD file periods by.
-#     """
-#     import hoomd
-#     from hoomd import md
+        period_multiplier (int): Factor to multiply the GSD file periods by.
+    """
+    # pair force
+    if extra_loggables is None:
+        extra_loggables = []
+    nlist = hoomd.md.nlist.Cell(buffer=0.4)
+    lj = hoomd.md.pair.LJ(
+        default_r_cut=job.cached_statepoint['r_cut'],
+        default_r_on=job.cached_statepoint['r_on'],
+        nlist=nlist,
+    )
+    lj.params[('A', 'A')] = dict(sigma=LJ_PARAMS['sigma'], epsilon=LJ_PARAMS['epsilon'])
+    lj.mode = 'xplor'
 
-#     # pair force
-#     if extra_loggables is None:
-#         extra_loggables = []
-#     nlist = md.nlist.Cell(buffer=0.4)
-#     lj = md.pair.LJ(
-#         default_r_cut=job.cached_statepoint['r_cut'],
-#         default_r_on=job.cached_statepoint['r_on'],
-#         nlist=nlist,
-#     )
-#     lj.params[('A', 'A')] = dict(sigma=LJ_PARAMS['sigma'], epsilon=LJ_PARAMS['epsilon'])
-#     lj.mode = 'xplor'
+    # integrator
+    integrator = hoomd.md.Integrator(dt=0.001, methods=[method], forces=[lj])
 
-#     # integrator
-#     integrator = md.Integrator(dt=0.001, methods=[method], forces=[lj])
+    # compute thermo
+    thermo = hoomd.md.compute.ThermodynamicQuantities(hoomd.filter.All())
 
-#     # compute thermo
-#     thermo = md.compute.ThermodynamicQuantities(hoomd.filter.All())
+    # add gsd log quantities
+    logger = hoomd.logging.Logger(categories=['scalar', 'sequence'])
+    logger.add(
+        thermo,
+        quantities=[
+            'pressure',
+            'potential_energy',
+            'kinetic_temperature',
+            'kinetic_energy',
+        ],
+    )
+    logger.add(integrator, quantities=['linear_momentum'])
+    for loggable in extra_loggables:
+        logger.add(loggable)
 
-#     # add gsd log quantities
-#     logger = hoomd.logging.Logger(categories=['scalar', 'sequence'])
-#     logger.add(
-#         thermo,
-#         quantities=[
-#             'pressure',
-#             'potential_energy',
-#             'kinetic_temperature',
-#             'kinetic_energy',
-#         ],
-#     )
-#     logger.add(integrator, quantities=['linear_momentum'])
-#     for loggable in extra_loggables:
-#         logger.add(loggable)
+    # simulation
+    sim = util.make_simulation(
+        job=job,
+        device=device,
+        initial_state=initial_state,
+        integrator=integrator,
+        sim_mode=sim_mode,
+        logger=logger,
+        table_write_period=WRITE_PERIOD,
+        trajectory_write_period=LOG_PERIOD['trajectory'] * period_multiplier,
+        log_write_period=LOG_PERIOD['quantities'] * period_multiplier,
+        log_start_step=RANDOMIZE_STEPS + EQUILIBRATE_STEPS,
+    )
+    sim.operations.add(thermo)
+    for loggable in extra_loggables:
+        # call attach explicitly so we can access sim state when computing the
+        # loggable quantity
+        if hasattr(loggable, 'attach'):
+            loggable.attach(sim)
 
-#     # simulation
-#     sim = util.make_simulation(
-#         job=job,
-#         device=device,
-#         initial_state=initial_state,
-#         integrator=integrator,
-#         sim_mode=sim_mode,
-#         logger=logger,
-#         table_write_period=WRITE_PERIOD,
-#         trajectory_write_period=LOG_PERIOD['trajectory'] * period_multiplier,
-#         log_write_period=LOG_PERIOD['quantities'] * period_multiplier,
-#         log_start_step=RANDOMIZE_STEPS + EQUILIBRATE_STEPS,
-#     )
-#     sim.operations.add(thermo)
-#     for loggable in extra_loggables:
-#         # call attach explicitly so we can access sim state when computing the
-#         # loggable quantity
-#         if hasattr(loggable, 'attach'):
-#             loggable.attach(sim)
-
-#     return sim
+    return sim
 
 
-# def run_md_sim(job, device, ensemble, thermostat, complete_filename):
-#     """Run the MD simulation with the given ensemble and thermostat."""
-#     import hoomd
-#     from custom_actions import ComputeDensity
-#     from hoomd import md
+def run_md_sim(job, device, ensemble, thermostat):
+    """Run the MD simulation with the given ensemble and thermostat."""
+    initial_state = job.fn('initial_state.gsd')
 
-#     initial_state = job.fn('initial_state.gsd')
+    if ensemble == 'nvt':
+        if thermostat == 'langevin':
+            method = hoomd.md.methods.Langevin(
+                hoomd.filter.All(), kT=job.cached_statepoint['kT']
+            )
+            method.gamma.default = 1.0
+        elif thermostat == 'mttk':
+            method = hoomd.md.methods.ConstantVolume(filter=hoomd.filter.All())
+            method.thermostat = hoomd.md.methods.thermostats.MTTK(
+                kT=job.cached_statepoint['kT'], tau=0.25
+            )
+        elif thermostat == 'bussi':
+            method = hoomd.md.methods.ConstantVolume(filter=hoomd.filter.All())
+            method.thermostat = hoomd.md.methods.thermostats.Bussi(
+                kT=job.cached_statepoint['kT']
+            )
+        else:
+            raise ValueError(f'Unsupported thermostat {thermostat}')
+    elif ensemble == 'npt':
+        p = job.cached_statepoint['pressure']
+        method = hoomd.md.methods.ConstantPressure(
+            hoomd.filter.All(), S=[p, p, p, 0, 0, 0], tauS=3, couple='xyz'
+        )
+        if thermostat == 'bussi':
+            method.thermostat = hoomd.md.methods.thermostats.Bussi(
+                kT=job.cached_statepoint['kT']
+            )
+        else:
+            raise ValueError(f'Unsupported thermostat {thermostat}')
 
-#     if ensemble == 'nvt':
-#         if thermostat == 'langevin':
-#             method = md.methods.Langevin(
-#                 hoomd.filter.All(), kT=job.cached_statepoint['kT']
-#             )
-#             method.gamma.default = 1.0
-#         elif thermostat == 'mttk':
-#             method = md.methods.ConstantVolume(filter=hoomd.filter.All())
-#             method.thermostat = hoomd.md.methods.thermostats.MTTK(
-#                 kT=job.cached_statepoint['kT'], tau=0.25
-#             )
-#         elif thermostat == 'bussi':
-#             method = md.methods.ConstantVolume(filter=hoomd.filter.All())
-#             method.thermostat = hoomd.md.methods.thermostats.Bussi(
-#                 kT=job.cached_statepoint['kT']
-#             )
-#         else:
-#             raise ValueError(f'Unsupported thermostat {thermostat}')
-#     elif ensemble == 'npt':
-#         p = job.cached_statepoint['pressure']
-#         method = md.methods.ConstantPressure(
-#             hoomd.filter.All(), S=[p, p, p, 0, 0, 0], tauS=3, couple='xyz'
-#         )
-#         if thermostat == 'bussi':
-#             method.thermostat = hoomd.md.methods.thermostats.Bussi(
-#                 kT=job.cached_statepoint['kT']
-#             )
-#         else:
-#             raise ValueError(f'Unsupported thermostat {thermostat}')
+    sim_mode = f'{ensemble}_{thermostat}_md'
 
-#     sim_mode = f'{ensemble}_{thermostat}_md'
+    if util.is_simulation_complete(job, device, sim_mode):
+        return
 
-#     density_compute = ComputeDensity()
-#     sim = make_md_simulation(
-#         job, device, initial_state, method, sim_mode, extra_loggables=[density_compute]
-#     )
+    density_compute = ComputeDensity()
+    sim = make_md_simulation(
+        job, device, initial_state, method, sim_mode, extra_loggables=[density_compute]
+    )
 
-#     # thermalize momenta
-#     sim.state.thermalize_particle_momenta(
-#         hoomd.filter.All(), job.cached_statepoint['kT']
-#     )
+    # thermalize momenta
+    sim.state.thermalize_particle_momenta(
+        hoomd.filter.All(), job.cached_statepoint['kT']
+    )
 
-#     # thermalize the thermostat (if applicable)
-#     if (
-#         isinstance(method, (md.methods.ConstantPressure, md.methods.ConstantVolume))
-#     ) and hasattr(method.thermostat, 'thermalize_dof'):
-#         sim.run(0)
-#         method.thermostat.thermalize_dof()
+    # thermalize the thermostat (if applicable)
+    if (
+        isinstance(method, (hoomd.md.methods.ConstantPressure, hoomd.md.methods.ConstantVolume))
+    ) and hasattr(method.thermostat, 'thermalize_dof'):
+        sim.run(0)
+        method.thermostat.thermalize_dof()
 
-#     # equilibrate
-#     device.notice('Equilibrating...')
-#     sim.run(EQUILIBRATE_STEPS)
-#     device.notice('Done.')
+    # equilibrate
+    device.notice('Equilibrating...')
+    sim.run(EQUILIBRATE_STEPS)
+    device.notice('Done.')
 
-#     # run
-#     device.notice('Running...')
-#     sim.run(RUN_STEPS)
+    # run
+    device.notice('Running...')
+    sim.run(RUN_STEPS)
 
-#     pathlib.Path(job.fn(complete_filename)).touch()
-#     device.notice('Done.')
+    util.mark_simulation_complete(job, device, sim_mode)
 
-
-# md_sampling_jobs = []
-# md_job_definitions = [
-#     {
-#         'ensemble': 'nvt',
-#         'thermostat': 'langevin',
-#         'device_name': 'cpu',
-#         'ranks_per_partition': NUM_CPU_RANKS,
-#         'aggregator': partition_jobs_cpu_mpi,
-#     },
-#     {
-#         'ensemble': 'nvt',
-#         'thermostat': 'mttk',
-#         'device_name': 'cpu',
-#         'ranks_per_partition': NUM_CPU_RANKS,
-#         'aggregator': partition_jobs_cpu_mpi,
-#     },
-#     {
-#         'ensemble': 'nvt',
-#         'thermostat': 'bussi',
-#         'device_name': 'cpu',
-#         'ranks_per_partition': NUM_CPU_RANKS,
-#         'aggregator': partition_jobs_cpu_mpi,
-#     },
-#     {
-#         'ensemble': 'npt',
-#         'thermostat': 'bussi',
-#         'device_name': 'cpu',
-#         'ranks_per_partition': NUM_CPU_RANKS,
-#         'aggregator': partition_jobs_cpu_mpi,
-#     },
-# ]
-
-# if CONFIG['enable_gpu']:
-#     md_job_definitions.extend(
-#         [
-#             {
-#                 'ensemble': 'nvt',
-#                 'thermostat': 'langevin',
-#                 'device_name': 'gpu',
-#                 'ranks_per_partition': 1,
-#                 'aggregator': partition_jobs_gpu,
-#             },
-#             {
-#                 'ensemble': 'nvt',
-#                 'thermostat': 'mttk',
-#                 'device_name': 'gpu',
-#                 'ranks_per_partition': 1,
-#                 'aggregator': partition_jobs_gpu,
-#             },
-#             {
-#                 'ensemble': 'nvt',
-#                 'thermostat': 'bussi',
-#                 'device_name': 'gpu',
-#                 'ranks_per_partition': 1,
-#                 'aggregator': partition_jobs_gpu,
-#             },
-#             {
-#                 'ensemble': 'npt',
-#                 'thermostat': 'bussi',
-#                 'device_name': 'gpu',
-#                 'ranks_per_partition': 1,
-#                 'aggregator': partition_jobs_gpu,
-#             },
-#         ]
-#     )
+    device.notice('Done.')
 
 
-# def add_md_sampling_job(
-#     ensemble, thermostat, device_name, ranks_per_partition, aggregator
-# ):
-#     """Add a MD sampling job to the workflow."""
-#     sim_mode = f'{ensemble}_{thermostat}_md'
+md_sampling_jobs = []
+md_job_definitions = [
+    {
+        'ensemble': 'nvt',
+        'thermostat': 'langevin',
+        'device_name': 'cpu',
+    },
+    {
+        'ensemble': 'nvt',
+        'thermostat': 'mttk',
+        'device_name': 'cpu',
+    },
+    {
+        'ensemble': 'nvt',
+        'thermostat': 'bussi',
+        'device_name': 'cpu',
+    },
+    {
+        'ensemble': 'npt',
+        'thermostat': 'bussi',
+        'device_name': 'cpu',
+    },
+]
 
-#     directives = dict(
-#         walltime=CONFIG['max_walltime'],
-#         executable=CONFIG['executable'],
-#         nranks=util.total_ranks_function(ranks_per_partition),
-#     )
-
-#     if device_name == 'gpu':
-#         directives['ngpu'] = util.total_ranks_function(ranks_per_partition)
-
-#     @Project.pre.after(lj_fluid_create_initial_state)
-#     @Project.post.isfile(f'{sim_mode}_{device_name}_complete')
-#     @Project.operation(
-#         name=f'lj_fluid_{sim_mode}_{device_name}',
-#         directives=directives,
-#         aggregator=aggregator,
-#     )
-#     def md_sampling_operation(*jobs):
-#         """Perform sampling simulation given the definition."""
-#         import hoomd
-
-#         communicator = hoomd.communicator.Communicator(
-#             ranks_per_partition=ranks_per_partition
-#         )
-#         job = jobs[communicator.partition]
-
-#         if communicator.rank == 0:
-#             print(f'starting lj_fluid_{sim_mode}_{device_name}:', job)
-
-#         if device_name == 'gpu':
-#             device_cls = hoomd.device.GPU
-#         elif device_name == 'cpu':
-#             device_cls = hoomd.device.CPU
-
-#         device = device_cls(
-#             communicator=communicator,
-#             message_filename=util.get_message_filename(
-#                 job, f'{sim_mode}_{device_name}.log'
-#             ),
-#         )
-
-#         run_md_sim(
-#             job,
-#             device,
-#             ensemble,
-#             thermostat,
-#             complete_filename=f'{sim_mode}_{device_name}_complete',
-#         )
-
-#         if communicator.rank == 0:
-#             print(f'completed lj_fluid_{sim_mode}_{device_name}: {job}')
-
-#     md_sampling_jobs.append(md_sampling_operation)
+if CONFIG['enable_gpu']:
+    md_job_definitions.extend(
+        [
+            {
+                'ensemble': 'nvt',
+                'thermostat': 'langevin',
+                'device_name': 'gpu',
+            },
+            {
+                'ensemble': 'nvt',
+                'thermostat': 'mttk',
+                'device_name': 'gpu',
+            },
+            {
+                'ensemble': 'nvt',
+                'thermostat': 'bussi',
+                'device_name': 'gpu',
+            },
+            {
+                'ensemble': 'npt',
+                'thermostat': 'bussi',
+                'device_name': 'gpu',
+            },
+        ]
+    )
 
 
-# for definition in md_job_definitions:
-#     add_md_sampling_job(**definition)
+def add_md_sampling_job(
+    ensemble, thermostat, device_name
+):
+    """Add a MD sampling job to the workflow."""
+    sim_mode = f'{ensemble}_{thermostat}_md'
+    action_name = f'{__name__}.{sim_mode}_{device_name}'
+
+    def md_sampling_operation(*jobs):
+        """Perform sampling simulation given the definition."""
+        communicator = hoomd.communicator.Communicator(
+            ranks_per_partition=int(os.environ['ACTION_PROCESSES_PER_DIRECTORY'])
+        )
+        job = jobs[communicator.partition]
+
+        if communicator.rank == 0:
+            print(f'starting {action_name}:', job)
+
+        if device_name == 'gpu':
+            device_cls = hoomd.device.GPU
+        elif device_name == 'cpu':
+            device_cls = hoomd.device.CPU
+
+        device = device_cls(
+            communicator=communicator,
+            message_filename=util.get_message_filename(
+                job, f'{sim_mode}_{device_name}.log'
+            ),
+        )
+
+        run_md_sim(
+            job,
+            device,
+            ensemble,
+            thermostat,
+        )
+
+        if communicator.rank == 0:
+            print(f'completed {action_name}: {job}')
+
+    md_sampling_jobs.append(action_name)
+    
+    ValidationWorkflow.add_action(action_name, Action(method = md_sampling_operation,
+    configuration={'products': [util.get_job_filename(sim_mode, device_name, 'trajectory', 'gsd'), util.get_job_filename(sim_mode, device_name, 'trajectory', 'h5')],
+        'launchers': ['mpi'],
+        'group': globals().get(f'_group_{device_name}'),
+        'resources': globals().get(f'_resources_{device_name}'),
+        'previous_actions': [f'{__name__}.create_initial_state']
+        }))
+
+
+for definition in md_job_definitions:
+    add_md_sampling_job(**definition)
 
 # #################################
 # # MC simulations

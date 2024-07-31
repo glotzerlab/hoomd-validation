@@ -99,7 +99,7 @@ class Workflow:
             path = Path('.')
 
         with open(path / 'workflow.toml', 'w', encoding='utf-8') as workflow_file:
-            rtoml.dump(workflow, workflow_file)
+            rtoml.dump(workflow, workflow_file, pretty=True)
 
     @classmethod
     def main(cls, init = None, init_args = None, **kwargs):
