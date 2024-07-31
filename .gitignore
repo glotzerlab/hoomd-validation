@@ -1,13 +1,9 @@
 workspace
-templates
+workflow.toml
 *.out
 *.svg
 hoomd_validation/__pycache__
-hoomd_validation/config.json
-signac.rc
 signac_project_document.json
 .signac_sp_cache.json.gz
 __pycache__
 .signac
-.bundles
-*.code-workspace

@@ -1,27 +1,31 @@
 # Copyright (c) 2022-2024 The Regents of the University of Michigan.
 # Part of HOOMD-blue, released under the BSD 3-Clause License.
 
-"""Populate the signac project with jobs and job document parameters."""
+"""Populate the signac project with jobs and job document parameters.
 
+Also, write the row `workflow.toml`.
+"""
+
+import action
 # import subprojects
-import alj_2d
+# import alj_2d
 import config
-import hard_disk
-import hard_sphere
+# import hard_disk
+# import hard_sphere
 import lj_fluid
-import lj_union
-import patchy_particle_pressure
+# import lj_union
+# import patchy_particle_pressure
 import signac
-import simple_polygon
+# import simple_polygon
 
 subprojects = [
-    alj_2d,
+    # alj_2d,
     lj_fluid,
-    lj_union,
-    hard_disk,
-    hard_sphere,
-    simple_polygon,
-    patchy_particle_pressure,
+    # lj_union,
+    # hard_disk,
+    # hard_sphere,
+    # simple_polygon,
+    # patchy_particle_pressure,
 ]
 
 project = signac.init_project(path=config.project_root)
