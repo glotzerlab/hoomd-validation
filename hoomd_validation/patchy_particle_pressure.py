@@ -122,7 +122,7 @@ def make_potential(
     step.params[('A', 'A')] = dict(epsilon=epsilon, r=r)
 
     angular_step = hoomd.hpmc.pair.AngularStep(isotropic_potential=step)
-    angular_step.patch['A'] = dict(directors=[(1.0, 0, 0)], deltas=[delta_rad])
+    angular_step.mask['A'] = dict(directors=[(1.0, 0, 0)], deltas=[delta_rad])
     return angular_step
 
 
