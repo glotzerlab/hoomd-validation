@@ -1,9 +1,10 @@
-workspace
-workflow.toml
+__pycache__
+.row
+.signac_sp_cache.json.gz
+.signac
 *.out
 *.svg
 hoomd_validation/__pycache__
 signac_project_document.json
-.signac_sp_cache.json.gz
-__pycache__
-.signac
+workflow.toml
+workspace

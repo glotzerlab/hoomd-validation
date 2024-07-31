@@ -13,6 +13,7 @@
 
 import argparse
 from pathlib import Path
+import signac
 
 import rtoml
 
@@ -54,7 +55,7 @@ class Workflow:
     @classmethod
     def add_action(cls, name, action):
         """Add an action.
-        
+
         Args:
             name(str): The action's name. Must be unique.
             action(Action): The action itself.
@@ -83,16 +84,16 @@ class Workflow:
         """
         workflow = {'workspace': {'path': 'workspace', 'value_file': 'signac_statepoint.json'}}
 
-        workflow['default'] = {'action': {'command': f'python -u {entrypoint} $ACTION_NAME {{directories}}'}}
+        workflow['default'] = {'action': {'command': f'python -u {entrypoint} action $ACTION_NAME {{directories}}'}}
 
         if default is not None:
             workflow['default'].update(default)
 
-        workflow['actions'] = []
+        workflow['action'] = []
         for name, action_item in cls._actions.items():
             action = {'name': name}
             action.update(action_item._configuration)
-            workflow['actions'].append(action)
+            workflow['action'].append(action)
 
         if path is None:
             path = Path('.')
@@ -125,6 +126,10 @@ class Workflow:
             for arg in init_args:
                 init_parser.add_argument(arg)
 
+        action_parser = command.add_parser('action')
+        action_parser.add_argument('action')
+        action_parser.add_argument('directories', nargs='+')
+
         args = parser.parse_args()
 
         if args.command == 'init':
@@ -132,6 +137,11 @@ class Workflow:
                 init(args)
 
             cls.write_workflow(**kwargs)
+        elif args.command == 'action':
+            project = signac.get_project()
+            jobs = [project.open_job(id=directory) for directory in args.directories]            
+            cls._actions[args.action](*jobs)
+            
         else:
             message = f'Invalid command: {args.command}'
             raise RuntimeError(message)
