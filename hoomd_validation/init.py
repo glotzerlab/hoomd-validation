@@ -6,16 +6,19 @@
 Also, write the row `workflow.toml`.
 """
 
-import action
+
 # import subprojects
 # import alj_2d
 import config
+
 # import hard_disk
 # import hard_sphere
 import lj_fluid
+
 # import lj_union
 # import patchy_particle_pressure
 import signac
+
 # import simple_polygon
 
 subprojects = [

@@ -4,25 +4,22 @@
 """Lennard Jones phase behavior validation test."""
 
 import collections
+import itertools
 import json
 import math
 import os
-import pathlib
-import itertools
-import numpy
+
+import hoomd
 import matplotlib
 import matplotlib.figure
 import matplotlib.style
+import numpy
 import scipy
-
-import hoomd
-
 import util
 from config import CONFIG
-from flow import aggregator
-from workflow_class import ValidationWorkflow
-from workflow import Action
 from custom_actions import ComputeDensity
+from workflow import Action
+from workflow_class import ValidationWorkflow
 
 # Run parameters shared between simulations.
 # Step counts must be even and a multiple of the log quantity period.
@@ -37,7 +34,9 @@ LOG_PERIOD = {'trajectory': 50_000, 'quantities': 100}
 LJ_PARAMS = {'epsilon': 1.0, 'sigma': 1.0}
 NUM_CPU_RANKS = min(8, CONFIG['max_cores_sim'])
 
-WALLTIME_STOP_SECONDS = (int(os.environ.get('ACTION_WALLTIME_IN_MINUTES', 10)) - 10) * 60
+WALLTIME_STOP_SECONDS = (
+    int(os.environ.get('ACTION_WALLTIME_IN_MINUTES', 10)) - 10
+) * 60
 
 # Limit the number of long NVE runs to reduce the number of CPU hours needed.
 NUM_NVE_RUNS = 2
@@ -81,17 +80,38 @@ def job_statepoints():
             )
 
 
-_group = {'sort_by': ["/density", "/num_particles"], 'include': [{'condition': ["/subproject", "==", __name__]}]}
+_group = {
+    'sort_by': ['/density', '/num_particles'],
+    'include': [{'condition': ['/subproject', '==', __name__]}],
+}
 _resources = {'walltime': {'per_submission': CONFIG['max_walltime']}}
 _resources_cpu = _resources | {'processes': {'per_directory': NUM_CPU_RANKS}}
-_group_cpu = _group | {'maximum_size': min(CONFIG['replicates'], CONFIG['max_cores_submission'] // NUM_CPU_RANKS)}
+_group_cpu = _group | {
+    'maximum_size': min(
+        CONFIG['replicates'], CONFIG['max_cores_submission'] // NUM_CPU_RANKS
+    )
+}
 _resources_gpu = _resources | {'processes': {'per_directory': 1}, 'gpus_per_process': 1}
 _group_gpu = _group | {'maximum_size': CONFIG['max_gpus_submission']}
-_group_compare = _group | {'sort_by': ['/kT', '/density', '/num_particles', '/r_cut'], 'split_by_sort_key': True, 'submit_whole': True}
+_group_compare = _group | {
+    'sort_by': ['/kT', '/density', '/num_particles', '/r_cut'],
+    'split_by_sort_key': True,
+    'submit_whole': True,
+}
 
-_include_nve = {'include': [{'all': [["/subproject", "==", __name__], ["/replicate_idx", "<", NUM_NVE_RUNS]]}]}
+_include_nve = {
+    'include': [
+        {
+            'all': [
+                ['/subproject', '==', __name__],
+                ['/replicate_idx', '<', NUM_NVE_RUNS],
+            ]
+        }
+    ]
+}
 _group_nve_cpu = _group_cpu | _include_nve
 _group_nve_gpu = _group_gpu | _include_nve
+
 
 def create_initial_state(*jobs):
     """Create initial system configuration."""
@@ -152,8 +172,20 @@ def create_initial_state(*jobs):
     if communicator.rank == 0:
         print(f'completed {__name__}.create_initial_state: {job}')
 
-ValidationWorkflow.add_action(f'{__name__}.create_initial_state', Action(method = create_initial_state,
-configuration = {'products': ['initial_state.gsd'], 'launchers': ['mpi'], 'group': _group_cpu, 'resources': _resources_cpu | {'walltime': {'per_submission': CONFIG['short_walltime']}}}))
+
+ValidationWorkflow.add_action(
+    f'{__name__}.create_initial_state',
+    Action(
+        method=create_initial_state,
+        configuration={
+            'products': ['initial_state.gsd'],
+            'launchers': ['mpi'],
+            'group': _group_cpu,
+            'resources': _resources_cpu
+            | {'walltime': {'per_submission': CONFIG['short_walltime']}},
+        },
+    ),
+)
 
 #################################
 # MD ensemble simulations
@@ -297,7 +329,9 @@ def run_md_sim(job, device, ensemble, thermostat):
 
     # thermalize the thermostat (if applicable)
     if (
-        isinstance(method, (hoomd.md.methods.ConstantPressure, hoomd.md.methods.ConstantVolume))
+        isinstance(
+            method, (hoomd.md.methods.ConstantPressure, hoomd.md.methods.ConstantVolume)
+        )
     ) and hasattr(method.thermostat, 'thermalize_dof'):
         sim.run(0)
         method.thermostat.thermalize_dof()
@@ -367,9 +401,7 @@ if CONFIG['enable_gpu']:
     )
 
 
-def add_md_sampling_job(
-    ensemble, thermostat, device_name
-):
+def add_md_sampling_job(ensemble, thermostat, device_name):
     """Add a MD sampling job to the workflow."""
     sim_mode = f'{ensemble}_{thermostat}_md'
     action_name = f'{__name__}.{sim_mode}_{device_name}'
@@ -407,14 +439,23 @@ def add_md_sampling_job(
             print(f'completed {action_name}: {job}')
 
     md_sampling_jobs.append(action_name)
-    
-    ValidationWorkflow.add_action(action_name, Action(method = md_sampling_operation,
-    configuration={'products': [util.get_job_filename(sim_mode, device_name, 'trajectory', 'gsd'), util.get_job_filename(sim_mode, device_name, 'quantities', 'h5')],
-        'launchers': ['mpi'],
-        'group': globals().get(f'_group_{device_name}'),
-        'resources': globals().get(f'_resources_{device_name}'),
-        'previous_actions': [f'{__name__}.create_initial_state']
-        }))
+
+    ValidationWorkflow.add_action(
+        action_name,
+        Action(
+            method=md_sampling_operation,
+            configuration={
+                'products': [
+                    util.get_job_filename(sim_mode, device_name, 'trajectory', 'gsd'),
+                    util.get_job_filename(sim_mode, device_name, 'quantities', 'h5'),
+                ],
+                'launchers': ['mpi'],
+                'group': globals().get(f'_group_{device_name}'),
+                'resources': globals().get(f'_resources_{device_name}'),
+                'previous_actions': [f'{__name__}.create_initial_state'],
+            },
+        ),
+    )
 
 
 for definition in md_job_definitions:
@@ -740,9 +781,7 @@ def add_mc_sampling_job(mode, device_name):
             ),
         )
 
-        globals().get(f'run_{mode}_mc_sim')(
-            job, device
-        )
+        globals().get(f'run_{mode}_mc_sim')(job, device)
 
         if communicator.rank == 0:
             print(f'completed {action_name}: {job}')
@@ -750,13 +789,22 @@ def add_mc_sampling_job(mode, device_name):
     mc_sampling_jobs.append(action_name)
 
     sim_mode = mode + '_mc'
-    ValidationWorkflow.add_action(action_name, Action(method = sampling_operation,
-    configuration={'products': [util.get_job_filename(sim_mode, device_name, 'trajectory', 'gsd'), util.get_job_filename(sim_mode, device_name, 'quantities', 'h5')],
-        'launchers': ['mpi'],
-        'group': globals().get(f'_group_{device_name}'),
-        'resources': globals().get(f'_resources_{device_name}'),
-        'previous_actions': [f'{__name__}.create_initial_state']
-        }))
+    ValidationWorkflow.add_action(
+        action_name,
+        Action(
+            method=sampling_operation,
+            configuration={
+                'products': [
+                    util.get_job_filename(sim_mode, device_name, 'trajectory', 'gsd'),
+                    util.get_job_filename(sim_mode, device_name, 'quantities', 'h5'),
+                ],
+                'launchers': ['mpi'],
+                'group': globals().get(f'_group_{device_name}'),
+                'resources': globals().get(f'_resources_{device_name}'),
+                'previous_actions': [f'{__name__}.create_initial_state'],
+            },
+        ),
+    )
 
 
 for definition in mc_job_definitions:
@@ -829,7 +877,8 @@ def analyze(*jobs):
             if 'md' in sim_mode and 'langevin' not in sim_mode:
                 momentum_vector = log_traj['hoomd-data/md/Integrator/linear_momentum']
                 linear_momentum[sim_mode] = [
-                    math.sqrt(v[0] ** 2 + v[1] ** 2 + v[2] ** 2) for v in momentum_vector
+                    math.sqrt(v[0] ** 2 + v[1] ** 2 + v[2] ** 2)
+                    for v in momentum_vector
                 ]
             else:
                 linear_momentum[sim_mode] = numpy.zeros(len(energies[sim_mode]))
@@ -891,11 +940,22 @@ def analyze(*jobs):
         )
         fig.savefig(job.fn('nvt_npt_plots.svg'), bbox_inches='tight')
 
-ValidationWorkflow.add_action(f'{__name__}.analyze', Action(method = analyze,
-configuration = {'products': ['nvt_npt_plots.svg'],
-'previous_actions': md_sampling_jobs + mc_sampling_jobs,
-'group': _group,
-'resources': {'processes': {'per_submission': 1}, 'walltime': {'per_directory': '00:01:00'}}}))
+
+ValidationWorkflow.add_action(
+    f'{__name__}.analyze',
+    Action(
+        method=analyze,
+        configuration={
+            'products': ['nvt_npt_plots.svg'],
+            'previous_actions': md_sampling_jobs + mc_sampling_jobs,
+            'group': _group,
+            'resources': {
+                'processes': {'per_submission': 1},
+                'walltime': {'per_directory': '00:01:00'},
+            },
+        },
+    ),
+)
 
 
 def compare_modes(*jobs):
@@ -1013,11 +1073,20 @@ def compare_modes(*jobs):
     fig.savefig(os.path.join(jobs[0]._project.path, filename), bbox_inches='tight')
 
 
-ValidationWorkflow.add_action(f'{__name__}.compare_modes', Action(method = compare_modes,
-configuration = {
-'previous_actions': [f'{__name__}.analyze'],
-'group': _group_compare,
-'resources': {'processes': {'per_submission': 1}, 'walltime': {'per_directory': '00:02:00'}}}))
+ValidationWorkflow.add_action(
+    f'{__name__}.compare_modes',
+    Action(
+        method=compare_modes,
+        configuration={
+            'previous_actions': [f'{__name__}.analyze'],
+            'group': _group_compare,
+            'resources': {
+                'processes': {'per_submission': 1},
+                'walltime': {'per_directory': '00:02:00'},
+            },
+        },
+    ),
+)
 
 
 def distribution_analyze(*jobs):
@@ -1169,18 +1238,27 @@ def distribution_analyze(*jobs):
     fig.savefig(os.path.join(jobs[0]._project.path, filename), bbox_inches='tight')
 
 
-ValidationWorkflow.add_action(f'{__name__}.distribution_analyze', Action(method = distribution_analyze,
-configuration = {
-'previous_actions': [f'{__name__}.analyze'],
-'group': _group_compare,
-'resources': {'processes': {'per_submission': 1}, 'walltime': {'per_directory': '00:02:00'}}}))
+ValidationWorkflow.add_action(
+    f'{__name__}.distribution_analyze',
+    Action(
+        method=distribution_analyze,
+        configuration={
+            'previous_actions': [f'{__name__}.analyze'],
+            'group': _group_compare,
+            'resources': {
+                'processes': {'per_submission': 1},
+                'walltime': {'per_directory': '00:02:00'},
+            },
+        },
+    ),
+)
 
 # #################################
 # # MD conservation simulations
 # #################################
 
 
-def run_nve_md_sim(job, device,run_length):
+def run_nve_md_sim(job, device, run_length):
     """Run the MD simulation in NVE."""
     sim_mode = 'nve_md'
     if util.is_simulation_complete(job, device, sim_mode):
@@ -1258,7 +1336,7 @@ def add_nve_md_job(device_name, run_length):
     """Add a MD NVE conservation job to the workflow."""
     sim_mode = 'nve_md'
     action_name = f'{__name__}.{sim_mode}_{device_name}'
-    
+
     def nve_action(*jobs):
         """Run NVE MD."""
         communicator = hoomd.communicator.Communicator(
@@ -1291,17 +1369,27 @@ def add_nve_md_job(device_name, run_length):
 
     nve_md_sampling_jobs.append(action_name)
 
-    ValidationWorkflow.add_action(action_name, Action(method = nve_action,
-    configuration={'products': [util.get_job_filename(sim_mode, device_name, 'trajectory', 'gsd'), util.get_job_filename(sim_mode, device_name, 'quantities', 'h5')],
-        'launchers': ['mpi'],
-        'group': globals().get(f'_group_nve_{device_name}'),
-        'resources': globals().get(f'_resources_{device_name}'),
-        'previous_actions': [f'{__name__}.create_initial_state']
-        }))
+    ValidationWorkflow.add_action(
+        action_name,
+        Action(
+            method=nve_action,
+            configuration={
+                'products': [
+                    util.get_job_filename(sim_mode, device_name, 'trajectory', 'gsd'),
+                    util.get_job_filename(sim_mode, device_name, 'quantities', 'h5'),
+                ],
+                'launchers': ['mpi'],
+                'group': globals().get(f'_group_nve_{device_name}'),
+                'resources': globals().get(f'_resources_{device_name}'),
+                'previous_actions': [f'{__name__}.create_initial_state'],
+            },
+        ),
+    )
 
 
 for definition in nve_md_job_definitions:
     add_nve_md_job(**definition)
+
 
 def conservation_analyze(*jobs):
     """Analyze the output of NVE simulations and inspect conservation."""
@@ -1388,8 +1476,18 @@ def conservation_analyze(*jobs):
 
     fig.savefig(os.path.join(jobs[0]._project.path, filename), bbox_inches='tight')
 
-ValidationWorkflow.add_action(f'{__name__}.conservation_analyze', Action(method = conservation_analyze,
-configuration = {
-'previous_actions': nve_md_sampling_jobs,
-'group': _group_compare | _include_nve,
-'resources': {'processes': {'per_submission': 1}, 'walltime': {'per_directory': '00:02:00'}}}))
+
+ValidationWorkflow.add_action(
+    f'{__name__}.conservation_analyze',
+    Action(
+        method=conservation_analyze,
+        configuration={
+            'previous_actions': nve_md_sampling_jobs,
+            'group': _group_compare | _include_nve,
+            'resources': {
+                'processes': {'per_submission': 1},
+                'walltime': {'per_directory': '00:02:00'},
+            },
+        },
+    ),
+)

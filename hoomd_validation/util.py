@@ -4,11 +4,11 @@
 """Helper functions for grabbing data and plotting."""
 
 import os
-import numpy
-import h5py
 
-import signac
+import h5py
 import hoomd
+import numpy
+import signac
 
 
 def get_job_filename(sim_mode, device, name, file_type):
@@ -167,6 +167,7 @@ def is_simulation_complete(
 
     return gsd_exists and h5_exists
 
+
 def mark_simulation_complete(
     job,
     device,
@@ -184,11 +185,15 @@ def mark_simulation_complete(
         sim_mode (str): String defining the simulation mode.
     """
     if device.communicator.rank == 0:
-        os.rename(job.fn(get_job_filename(sim_mode, device, 'trajectory', 'gsd.tmp')),
-        job.fn(get_job_filename(sim_mode, device, 'trajectory', 'gsd')))
+        os.rename(
+            job.fn(get_job_filename(sim_mode, device, 'trajectory', 'gsd.tmp')),
+            job.fn(get_job_filename(sim_mode, device, 'trajectory', 'gsd')),
+        )
 
-        os.rename(job.fn(get_job_filename(sim_mode, device, 'quantities', 'h5.tmp')),
-        job.fn(get_job_filename(sim_mode, device, 'quantities', 'h5')))
+        os.rename(
+            job.fn(get_job_filename(sim_mode, device, 'quantities', 'h5.tmp')),
+            job.fn(get_job_filename(sim_mode, device, 'quantities', 'h5')),
+        )
 
 
 def make_seed(job, sim_mode=None):

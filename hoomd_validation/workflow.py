@@ -13,9 +13,9 @@
 
 import argparse
 from pathlib import Path
-import signac
 
 import rtoml
+import signac
 
 
 class Action:
@@ -46,6 +46,7 @@ class Action:
     def __call__(self, *jobs):
         """Call the `method` given on construction."""
         self._method(*jobs)
+
 
 class Workflow:
     """Represent a single workflow."""
@@ -82,9 +83,15 @@ class Workflow:
             path(Path): Path to write ``workflow.toml``.
             default(dict): The ``[default]`` mapping.
         """
-        workflow = {'workspace': {'path': 'workspace', 'value_file': 'signac_statepoint.json'}}
+        workflow = {
+            'workspace': {'path': 'workspace', 'value_file': 'signac_statepoint.json'}
+        }
 
-        workflow['default'] = {'action': {'command': f'python -u {entrypoint} action $ACTION_NAME {{directories}}'}}
+        workflow['default'] = {
+            'action': {
+                'command': f'python -u {entrypoint} action $ACTION_NAME {{directories}}'
+            }
+        }
 
         if default is not None:
             workflow['default'].update(default)
@@ -102,7 +109,7 @@ class Workflow:
             rtoml.dump(workflow, workflow_file, pretty=True)
 
     @classmethod
-    def main(cls, init = None, init_args = None, **kwargs):
+    def main(cls, init=None, init_args=None, **kwargs):
         """Implement the main entrypoint for ``project.py``.
 
         Valid commands are:
@@ -120,7 +127,7 @@ class Workflow:
             **kwargs: Fowarded to `make_workflow`.
         """
         parser = argparse.ArgumentParser()
-        command = parser.add_subparsers(dest="command", required=True)
+        command = parser.add_subparsers(dest='command', required=True)
         init_parser = command.add_parser('init')
         if init_args is not None:
             for arg in init_args:
@@ -139,9 +146,9 @@ class Workflow:
             cls.write_workflow(**kwargs)
         elif args.command == 'action':
             project = signac.get_project()
-            jobs = [project.open_job(id=directory) for directory in args.directories]            
+            jobs = [project.open_job(id=directory) for directory in args.directories]
             cls._actions[args.action](*jobs)
-            
+
         else:
             message = f'Invalid command: {args.command}'
             raise RuntimeError(message)

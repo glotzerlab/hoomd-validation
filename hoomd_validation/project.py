@@ -6,15 +6,16 @@
 # Define subproject flow operations
 # import alj_2d
 import config
+
 # import hard_disk
 # import hard_sphere
 import lj_fluid
+import signac
+
 # import lj_union
 # import patchy_particle_pressure
 # import simple_polygon
 from workflow_class import ValidationWorkflow
-
-import signac
 
 all_subprojects = [
     # 'alj_2d',
@@ -25,6 +26,7 @@ all_subprojects = [
     # 'simple_polygon',
     # 'patchy_particle_pressure',
 ]
+
 
 def init(args):
     """Initialize the workspace."""
@@ -46,4 +48,8 @@ def init(args):
 
 
 if __name__ == '__main__':
-    ValidationWorkflow.main(entrypoint = config.project_root / 'hoomd_validation' / 'project.py', init=init, path=config.project_root)
+    ValidationWorkflow.main(
+        entrypoint=config.project_root / 'hoomd_validation' / 'project.py',
+        init=init,
+        path=config.project_root,
+    )
