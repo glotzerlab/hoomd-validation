@@ -28,9 +28,10 @@ all_subprojects = [
 
 def init(args):
     """Initialize the workspace."""
-    if (config.project_root / 'workspace').exists():
-        message = "The project already initialized."
-        raise RuntimeError(message)
+    # TODO: uncomment
+    # if (config.project_root / 'workspace').exists():
+    #     message = "The project already initialized."
+    #     raise RuntimeError(message)
 
     project = signac.init_project(path=config.project_root)
 

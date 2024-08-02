@@ -10,6 +10,9 @@ import os
 import pathlib
 import itertools
 import numpy
+import matplotlib
+import matplotlib.figure
+import matplotlib.style
 
 import hoomd
 
@@ -23,8 +26,11 @@ from custom_actions import ComputeDensity
 # Run parameters shared between simulations.
 # Step counts must be even and a multiple of the log quantity period.
 RANDOMIZE_STEPS = 20_000
-EQUILIBRATE_STEPS = 100_000
-RUN_STEPS = 500_000
+# TODO: revert
+# EQUILIBRATE_STEPS = 100_000
+# RUN_STEPS = 500_000
+EQUILIBRATE_STEPS = 10_000
+RUN_STEPS = 50_000
 RESTART_STEPS = RUN_STEPS // 10
 TOTAL_STEPS = RANDOMIZE_STEPS + EQUILIBRATE_STEPS + RUN_STEPS
 
@@ -401,7 +407,7 @@ def add_md_sampling_job(
     md_sampling_jobs.append(action_name)
     
     ValidationWorkflow.add_action(action_name, Action(method = md_sampling_operation,
-    configuration={'products': [util.get_job_filename(sim_mode, device_name, 'trajectory', 'gsd'), util.get_job_filename(sim_mode, device_name, 'trajectory', 'h5')],
+    configuration={'products': [util.get_job_filename(sim_mode, device_name, 'trajectory', 'gsd'), util.get_job_filename(sim_mode, device_name, 'quantities', 'h5')],
         'launchers': ['mpi'],
         'group': globals().get(f'_group_{device_name}'),
         'resources': globals().get(f'_resources_{device_name}'),
@@ -417,357 +423,477 @@ for definition in md_job_definitions:
 # #################################
 
 
-# def make_mc_simulation(job, device, initial_state, sim_mode, extra_loggables=None):
-#     """Make an MC Simulation.
+def make_mc_simulation(job, device, initial_state, sim_mode, extra_loggables=None):
+    """Make a MC Simulation.
 
-#     Args:
-#         job (`signac.job.Job`): Signac job object.
-#         device (`hoomd.device.Device`): Device object.
-#         initial_state (str): Path to the gsd file to be used as an initial state
-#         for the simulation.
-#         sim_mode (str): String defining the simulation mode.
-#         extra_loggables (list): List of extra loggables to log to gsd files.
-#         Patch energies are logged by default.
-#     """
-#     import hoomd
-#     import numpy
-#     from custom_actions import ComputeDensity
-#     from hoomd import hpmc
+    Args:
+        job (`signac.job.Job`): Signac job object.
+        device (`hoomd.device.Device`): Device object.
+        initial_state (str): Path to the gsd file to be used as an initial state
+        for the simulation.
+        sim_mode (str): String defining the simulation mode.
+        extra_loggables (list): List of extra loggables to log to gsd files.
+        Patch energies are logged by default.
+    """
+    if extra_loggables is None:
+        extra_loggables = []
 
-#     if extra_loggables is None:
-#         extra_loggables = []
+    # integrator
+    mc = hoomd.hpmc.integrate.Sphere(nselect=1)
+    mc.shape['A'] = dict(diameter=0.0)
 
-#     # integrator
-#     mc = hpmc.integrate.Sphere(nselect=1)
-#     mc.shape['A'] = dict(diameter=0.0)
+    # pair potential
+    epsilon = LJ_PARAMS['epsilon'] / job.cached_statepoint['kT']  # noqa F841
+    sigma = LJ_PARAMS['sigma']
+    r_on = job.cached_statepoint['r_on']
+    r_cut = job.cached_statepoint['r_cut']
 
-#     # pair potential
-#     epsilon = LJ_PARAMS['epsilon'] / job.cached_statepoint['kT']  # noqa F841
-#     sigma = LJ_PARAMS['sigma']
-#     r_on = job.cached_statepoint['r_on']
-#     r_cut = job.cached_statepoint['r_cut']
+    lennard_jones_mc = hoomd.hpmc.pair.LennardJones()
+    lennard_jones_mc.params[('A', 'A')] = dict(
+        epsilon=epsilon, sigma=sigma, r_cut=r_cut, r_on=r_on
+    )
+    lennard_jones_mc.mode = 'xplor'
+    mc.pair_potentials = [lennard_jones_mc]
 
-#     lennard_jones_mc = hoomd.hpmc.pair.LennardJones()
-#     lennard_jones_mc.params[('A', 'A')] = dict(
-#         epsilon=epsilon, sigma=sigma, r_cut=r_cut, r_on=r_on
-#     )
-#     lennard_jones_mc.mode = 'xplor'
-#     mc.pair_potentials = [lennard_jones_mc]
+    # pair force to compute virial pressure
+    nlist = hoomd.md.nlist.Cell(buffer=0.4)
+    lj = hoomd.md.pair.LJ(
+        default_r_cut=job.cached_statepoint['r_cut'],
+        default_r_on=job.cached_statepoint['r_on'],
+        nlist=nlist,
+    )
+    lj.params[('A', 'A')] = dict(sigma=LJ_PARAMS['sigma'], epsilon=LJ_PARAMS['epsilon'])
+    lj.mode = 'xplor'
 
-#     # pair force to compute virial pressure
-#     nlist = hoomd.md.nlist.Cell(buffer=0.4)
-#     lj = hoomd.md.pair.LJ(
-#         default_r_cut=job.cached_statepoint['r_cut'],
-#         default_r_on=job.cached_statepoint['r_on'],
-#         nlist=nlist,
-#     )
-#     lj.params[('A', 'A')] = dict(sigma=LJ_PARAMS['sigma'], epsilon=LJ_PARAMS['epsilon'])
-#     lj.mode = 'xplor'
+    # compute the density
+    compute_density = ComputeDensity()
 
-#     # compute the density
-#     compute_density = ComputeDensity()
+    logger = hoomd.logging.Logger(categories=['scalar', 'sequence'])
+    logger.add(lennard_jones_mc, quantities=['energy'])
+    logger.add(mc, quantities=['translate_moves'])
+    logger.add(compute_density)
+    for loggable in extra_loggables:
+        logger.add(loggable)
 
-#     logger = hoomd.logging.Logger(categories=['scalar', 'sequence'])
-#     logger.add(lennard_jones_mc, quantities=['energy'])
-#     logger.add(mc, quantities=['translate_moves'])
-#     logger.add(compute_density)
-#     for loggable in extra_loggables:
-#         logger.add(loggable)
+    # make simulation
+    sim = util.make_simulation(
+        job=job,
+        device=device,
+        initial_state=initial_state,
+        integrator=mc,
+        sim_mode=sim_mode,
+        logger=logger,
+        table_write_period=WRITE_PERIOD,
+        trajectory_write_period=LOG_PERIOD['trajectory'],
+        log_write_period=LOG_PERIOD['quantities'],
+        log_start_step=RANDOMIZE_STEPS + EQUILIBRATE_STEPS,
+    )
+    for loggable in extra_loggables:
+        # call attach method explicitly so we can access simulation state when
+        # computing the loggable quantity
+        if hasattr(loggable, 'attach'):
+            loggable.attach(sim)
 
-#     # make simulation
-#     sim = util.make_simulation(
-#         job=job,
-#         device=device,
-#         initial_state=initial_state,
-#         integrator=mc,
-#         sim_mode=sim_mode,
-#         logger=logger,
-#         table_write_period=WRITE_PERIOD,
-#         trajectory_write_period=LOG_PERIOD['trajectory'],
-#         log_write_period=LOG_PERIOD['quantities'],
-#         log_start_step=RANDOMIZE_STEPS + EQUILIBRATE_STEPS,
-#     )
-#     for loggable in extra_loggables:
-#         # call attach method explicitly so we can access simulation state when
-#         # computing the loggable quantity
-#         if hasattr(loggable, 'attach'):
-#             loggable.attach(sim)
+    compute_density.attach(sim)
 
-#     compute_density.attach(sim)
+    def _compute_virial_pressure():
+        virials = numpy.sum(lj.virials, 0)
+        w = 0
+        if virials is not None:
+            w = virials[0] + virials[3] + virials[5]
+        V = sim.state.box.volume
+        return job.cached_statepoint['num_particles'] * job.cached_statepoint[
+            'kT'
+        ] / V + w / (3 * V)
 
-#     def _compute_virial_pressure():
-#         virials = numpy.sum(lj.virials, 0)
-#         w = 0
-#         if virials is not None:
-#             w = virials[0] + virials[3] + virials[5]
-#         V = sim.state.box.volume
-#         return job.cached_statepoint['num_particles'] * job.cached_statepoint[
-#             'kT'
-#         ] / V + w / (3 * V)
+    logger[('custom', 'virial_pressure')] = (_compute_virial_pressure, 'scalar')
 
-#     logger[('custom', 'virial_pressure')] = (_compute_virial_pressure, 'scalar')
+    # move size tuner
+    mstuner = hoomd.hpmc.tune.MoveSize.scale_solver(
+        moves=['d'],
+        target=0.2,
+        max_translation_move=0.5,
+        trigger=hoomd.trigger.And(
+            [
+                hoomd.trigger.Periodic(100),
+                hoomd.trigger.Before(RANDOMIZE_STEPS | EQUILIBRATE_STEPS // 2),
+            ]
+        ),
+    )
+    sim.operations.add(mstuner)
+    sim.operations.computes.append(lj)
 
-#     # move size tuner
-#     mstuner = hpmc.tune.MoveSize.scale_solver(
-#         moves=['d'],
-#         target=0.2,
-#         max_translation_move=0.5,
-#         trigger=hoomd.trigger.And(
-#             [
-#                 hoomd.trigger.Periodic(100),
-#                 hoomd.trigger.Before(RANDOMIZE_STEPS | EQUILIBRATE_STEPS // 2),
-#             ]
-#         ),
-#     )
-#     sim.operations.add(mstuner)
-#     sim.operations.computes.append(lj)
-
-#     return sim
+    return sim
 
 
-# def run_nvt_mc_sim(job, device, complete_filename):
-#     """Run MC sim in NVT."""
-#     import hoomd
+def run_nvt_mc_sim(job, device):
+    """Run MC sim in NVT."""
+    # simulation
+    sim_mode = 'nvt_mc'
 
-#     # simulation
-#     sim_mode = 'nvt_mc'
-#     restart_filename = util.get_job_filename(sim_mode, device, 'restart', 'gsd')
-#     if job.isfile(restart_filename):
-#         initial_state = job.fn(restart_filename)
-#         restart = True
-#     else:
-#         initial_state = job.fn('initial_state.gsd')
-#         restart = False
+    if util.is_simulation_complete(job, device, sim_mode):
+        return
 
-#     sim = make_mc_simulation(job, device, initial_state, sim_mode)
+    restart_filename = util.get_job_filename(sim_mode, device, 'restart', 'gsd')
+    if job.isfile(restart_filename):
+        initial_state = job.fn(restart_filename)
+        restart = True
+    else:
+        initial_state = job.fn('initial_state.gsd')
+        restart = False
 
-#     if not restart:
-#         # equilibrate
-#         device.notice('Equilibrating...')
-#         sim.run(EQUILIBRATE_STEPS // 2)
-#         sim.run(EQUILIBRATE_STEPS // 2)
-#         device.notice('Done.')
+    sim = make_mc_simulation(job, device, initial_state, sim_mode)
 
-#         # Print acceptance ratio as measured during the 2nd half of the
-#         # equilibration.
-#         translate_moves = sim.operations.integrator.translate_moves
-#         translate_acceptance = translate_moves[0] / sum(translate_moves)
-#         device.notice(f'Translate move acceptance: {translate_acceptance}')
-#         device.notice(f'Trial move size: {sim.operations.integrator.d["A"]}')
+    if not restart:
+        # equilibrate
+        device.notice('Equilibrating...')
+        sim.run(EQUILIBRATE_STEPS // 2)
+        sim.run(EQUILIBRATE_STEPS // 2)
+        device.notice('Done.')
 
-#         # save move size to a file
-#         if device.communicator.rank == 0:
-#             name = util.get_job_filename(sim_mode, device, 'move_size', 'json')
-#             with open(job.fn(name), 'w') as f:
-#                 json.dump(dict(d_A=sim.operations.integrator.d['A']), f)
-#     else:
-#         device.notice('Restarting...')
-#         # read move size from the file
-#         name = util.get_job_filename(sim_mode, device, 'move_size', 'json')
-#         with open(job.fn(name)) as f:
-#             data = json.load(f)
+        # Print acceptance ratio as measured during the 2nd half of the
+        # equilibration.
+        translate_moves = sim.operations.integrator.translate_moves
+        translate_acceptance = translate_moves[0] / sum(translate_moves)
+        device.notice(f'Translate move acceptance: {translate_acceptance}')
+        device.notice(f'Trial move size: {sim.operations.integrator.d["A"]}')
 
-#         sim.operations.integrator.d['A'] = data['d_A']
-#         device.notice(f'Restored trial move size: {sim.operations.integrator.d["A"]}')
+        # save move size to a file
+        if device.communicator.rank == 0:
+            name = util.get_job_filename(sim_mode, device, 'move_size', 'json')
+            with open(job.fn(name), 'w') as f:
+                json.dump(dict(d_A=sim.operations.integrator.d['A']), f)
+    else:
+        device.notice('Restarting...')
+        # read move size from the file
+        name = util.get_job_filename(sim_mode, device, 'move_size', 'json')
+        with open(job.fn(name)) as f:
+            data = json.load(f)
 
-#     # run
-#     device.notice('Running...')
-#     util.run_up_to_walltime(
-#         sim=sim,
-#         end_step=TOTAL_STEPS,
-#         steps=RESTART_STEPS,
-#         walltime_stop=WALLTIME_STOP_SECONDS,
-#     )
+        sim.operations.integrator.d['A'] = data['d_A']
+        device.notice(f'Restored trial move size: {sim.operations.integrator.d["A"]}')
 
-#     hoomd.write.GSD.write(state=sim.state, filename=job.fn(restart_filename), mode='wb')
+    # run
+    device.notice('Running...')
+    util.run_up_to_walltime(
+        sim=sim,
+        end_step=TOTAL_STEPS,
+        steps=RESTART_STEPS,
+        walltime_stop=WALLTIME_STOP_SECONDS,
+    )
 
-#     if sim.timestep == TOTAL_STEPS:
-#         pathlib.Path(job.fn(complete_filename)).touch()
-#         device.notice('Done.')
-#     else:
-#         device.notice(
-#             'Ending run early due to walltime limits at:'
-#             f'{device.communicator.walltime}'
-#         )
+    hoomd.write.GSD.write(state=sim.state, filename=job.fn(restart_filename), mode='wb')
 
-
-# def run_npt_mc_sim(job, device, complete_filename):
-#     """Run MC sim in NPT."""
-#     import hoomd
-#     from hoomd import hpmc
-
-#     # device
-#     sim_mode = 'npt_mc'
-#     restart_filename = util.get_job_filename(sim_mode, device, 'restart', 'gsd')
-#     if job.isfile(restart_filename):
-#         initial_state = job.fn(restart_filename)
-#         restart = True
-#     else:
-#         initial_state = job.fn('initial_state.gsd')
-#         restart = False
-
-#     # box updates
-#     boxmc = hpmc.update.BoxMC(
-#         betaP=job.cached_statepoint['pressure'] / job.cached_statepoint['kT'],
-#         trigger=hoomd.trigger.Periodic(1),
-#     )
-#     boxmc.volume = dict(weight=1.0, mode='ln', delta=0.01)
-
-#     # simulation
-#     sim = make_mc_simulation(
-#         job, device, initial_state, sim_mode, extra_loggables=[boxmc]
-#     )
-
-#     sim.operations.add(boxmc)
-
-#     boxmc_tuner = hpmc.tune.BoxMCMoveSize.scale_solver(
-#         trigger=hoomd.trigger.And(
-#             [
-#                 hoomd.trigger.Periodic(400),
-#                 hoomd.trigger.Before(RANDOMIZE_STEPS + EQUILIBRATE_STEPS // 2),
-#             ]
-#         ),
-#         boxmc=boxmc,
-#         moves=['volume'],
-#         target=0.5,
-#     )
-#     sim.operations.add(boxmc_tuner)
-
-#     if not restart:
-#         # equilibrate
-#         device.notice('Equilibrating...')
-#         sim.run(EQUILIBRATE_STEPS // 2)
-#         sim.run(EQUILIBRATE_STEPS // 2)
-#         device.notice('Done.')
-
-#         # Print acceptance ratio as measured during the 2nd half of the
-#         # equilibration.
-#         translate_moves = sim.operations.integrator.translate_moves
-#         translate_acceptance = translate_moves[0] / sum(translate_moves)
-#         device.notice(f'Translate move acceptance: {translate_acceptance}')
-#         device.notice(f'Trial move size: {sim.operations.integrator.d["A"]}')
-
-#         volume_moves = boxmc.volume_moves
-#         volume_acceptance = volume_moves[0] / sum(volume_moves)
-#         device.notice(f'Volume move acceptance: {volume_acceptance}')
-#         device.notice(f'Volume move size: {boxmc.volume["delta"]}')
-
-#         # save move sizes to a file
-#         if device.communicator.rank == 0:
-#             name = util.get_job_filename(sim_mode, device, 'move_size', 'json')
-#             with open(job.fn(name), 'w') as f:
-#                 json.dump(
-#                     dict(
-#                         d_A=sim.operations.integrator.d['A'],
-#                         volume_delta=boxmc.volume['delta'],
-#                     ),
-#                     f,
-#                 )
-#     else:
-#         device.notice('Restarting...')
-#         # read move size from the file
-#         name = util.get_job_filename(sim_mode, device, 'move_size', 'json')
-#         with open(job.fn(name)) as f:
-#             data = json.load(f)
-
-#         sim.operations.integrator.d['A'] = data['d_A']
-#         device.notice(f'Restored trial move size: {sim.operations.integrator.d["A"]}')
-#         boxmc.volume = dict(weight=1.0, mode='ln', delta=data['volume_delta'])
-#         device.notice(f'Restored volume move size: {boxmc.volume["delta"]}')
-
-#     # run
-#     device.notice('Running...')
-#     util.run_up_to_walltime(
-#         sim=sim,
-#         end_step=TOTAL_STEPS,
-#         steps=RESTART_STEPS,
-#         walltime_stop=WALLTIME_STOP_SECONDS,
-#     )
-
-#     hoomd.write.GSD.write(state=sim.state, filename=job.fn(restart_filename), mode='wb')
-
-#     if sim.timestep == TOTAL_STEPS:
-#         pathlib.Path(job.fn(complete_filename)).touch()
-#         device.notice('Done.')
-#     else:
-#         device.notice(
-#             'Ending run early due to walltime limits at:'
-#             f'{device.communicator.walltime}'
-#         )
+    if sim.timestep == TOTAL_STEPS:
+        util.mark_simulation_complete(job, device, sim_mode)
+        device.notice('Done.')
+    else:
+        device.notice(
+            'Ending run early due to walltime limits at:'
+            f'{device.communicator.walltime}'
+        )
 
 
-# mc_sampling_jobs = []
-# mc_job_definitions = [
-#     {
-#         'mode': 'nvt',
-#         'device_name': 'cpu',
-#         'ranks_per_partition': NUM_CPU_RANKS,
-#         'aggregator': partition_jobs_cpu_mpi,
-#     },
-#     {
-#         'mode': 'npt',
-#         'device_name': 'cpu',
-#         'ranks_per_partition': NUM_CPU_RANKS,
-#         'aggregator': partition_jobs_cpu_mpi,
-#     },
-# ]
+def run_npt_mc_sim(job, device):
+    """Run MC sim in NPT."""
+    sim_mode = 'npt_mc'
+
+    if util.is_simulation_complete(job, device, sim_mode):
+        return
+
+    restart_filename = util.get_job_filename(sim_mode, device, 'restart', 'gsd')
+    if job.isfile(restart_filename):
+        initial_state = job.fn(restart_filename)
+        restart = True
+    else:
+        initial_state = job.fn('initial_state.gsd')
+        restart = False
+
+    # box updates
+    boxmc = hoomd.hpmc.update.BoxMC(
+        betaP=job.cached_statepoint['pressure'] / job.cached_statepoint['kT'],
+        trigger=hoomd.trigger.Periodic(1),
+    )
+    boxmc.volume = dict(weight=1.0, mode='ln', delta=0.01)
+
+    # simulation
+    sim = make_mc_simulation(
+        job, device, initial_state, sim_mode, extra_loggables=[boxmc]
+    )
+
+    sim.operations.add(boxmc)
+
+    boxmc_tuner = hoomd.hpmc.tune.BoxMCMoveSize.scale_solver(
+        trigger=hoomd.trigger.And(
+            [
+                hoomd.trigger.Periodic(400),
+                hoomd.trigger.Before(RANDOMIZE_STEPS + EQUILIBRATE_STEPS // 2),
+            ]
+        ),
+        boxmc=boxmc,
+        moves=['volume'],
+        target=0.5,
+    )
+    sim.operations.add(boxmc_tuner)
+
+    if not restart:
+        # equilibrate
+        device.notice('Equilibrating...')
+        sim.run(EQUILIBRATE_STEPS // 2)
+        sim.run(EQUILIBRATE_STEPS // 2)
+        device.notice('Done.')
+
+        # Print acceptance ratio as measured during the 2nd half of the
+        # equilibration.
+        translate_moves = sim.operations.integrator.translate_moves
+        translate_acceptance = translate_moves[0] / sum(translate_moves)
+        device.notice(f'Translate move acceptance: {translate_acceptance}')
+        device.notice(f'Trial move size: {sim.operations.integrator.d["A"]}')
+
+        volume_moves = boxmc.volume_moves
+        volume_acceptance = volume_moves[0] / sum(volume_moves)
+        device.notice(f'Volume move acceptance: {volume_acceptance}')
+        device.notice(f'Volume move size: {boxmc.volume["delta"]}')
+
+        # save move sizes to a file
+        if device.communicator.rank == 0:
+            name = util.get_job_filename(sim_mode, device, 'move_size', 'json')
+            with open(job.fn(name), 'w') as f:
+                json.dump(
+                    dict(
+                        d_A=sim.operations.integrator.d['A'],
+                        volume_delta=boxmc.volume['delta'],
+                    ),
+                    f,
+                )
+    else:
+        device.notice('Restarting...')
+        # read move size from the file
+        name = util.get_job_filename(sim_mode, device, 'move_size', 'json')
+        with open(job.fn(name)) as f:
+            data = json.load(f)
+
+        sim.operations.integrator.d['A'] = data['d_A']
+        device.notice(f'Restored trial move size: {sim.operations.integrator.d["A"]}')
+        boxmc.volume = dict(weight=1.0, mode='ln', delta=data['volume_delta'])
+        device.notice(f'Restored volume move size: {boxmc.volume["delta"]}')
+
+    # run
+    device.notice('Running...')
+    util.run_up_to_walltime(
+        sim=sim,
+        end_step=TOTAL_STEPS,
+        steps=RESTART_STEPS,
+        walltime_stop=WALLTIME_STOP_SECONDS,
+    )
+
+    hoomd.write.GSD.write(state=sim.state, filename=job.fn(restart_filename), mode='wb')
+
+    if sim.timestep == TOTAL_STEPS:
+        util.mark_simulation_complete(job, device, sim_mode)
+        device.notice('Done.')
+    else:
+        device.notice(
+            'Ending run early due to walltime limits at:'
+            f'{device.communicator.walltime}'
+        )
 
 
-# def add_mc_sampling_job(mode, device_name, ranks_per_partition, aggregator):
-#     """Add a MC sampling job to the workflow."""
-#     directives = dict(
-#         walltime=CONFIG['max_walltime'],
-#         executable=CONFIG['executable'],
-#         nranks=util.total_ranks_function(ranks_per_partition),
-#     )
-
-#     if device_name == 'gpu':
-#         directives['ngpu'] = util.total_ranks_function(ranks_per_partition)
-
-#     @Project.pre.after(lj_fluid_create_initial_state)
-#     @Project.post.isfile(f'{mode}_mc_{device_name}_complete')
-#     @Project.operation(
-#         name=f'lj_fluid_{mode}_mc_{device_name}',
-#         directives=directives,
-#         aggregator=aggregator,
-#     )
-#     def sampling_operation(*jobs):
-#         """Perform sampling simulation given the definition."""
-#         import hoomd
-
-#         communicator = hoomd.communicator.Communicator(
-#             ranks_per_partition=ranks_per_partition
-#         )
-#         job = jobs[communicator.partition]
-
-#         if communicator.rank == 0:
-#             print(f'starting lj_fluid_{mode}_mc_{device_name}:', job)
-
-#         if device_name == 'gpu':
-#             device_cls = hoomd.device.GPU
-#         elif device_name == 'cpu':
-#             device_cls = hoomd.device.CPU
-
-#         device = device_cls(
-#             communicator=communicator,
-#             message_filename=util.get_message_filename(
-#                 job, f'{mode}_mc_{device_name}.log'
-#             ),
-#         )
-
-#         globals().get(f'run_{mode}_mc_sim')(
-#             job, device, complete_filename=f'{mode}_mc_{device_name}_complete'
-#         )
-
-#         if communicator.rank == 0:
-#             print(f'completed lj_fluid_{mode}_mc_{device_name}: {job}')
-
-#     mc_sampling_jobs.append(sampling_operation)
+mc_sampling_jobs = []
+mc_job_definitions = [
+    {
+        'mode': 'nvt',
+        'device_name': 'cpu',
+    },
+    {
+        'mode': 'npt',
+        'device_name': 'cpu',
+    },
+]
 
 
-# for definition in mc_job_definitions:
-#     add_mc_sampling_job(**definition)
+def add_mc_sampling_job(mode, device_name):
+    """Add a MC sampling job to the workflow."""
+    action_name = f'{__name__}.{mode}_mc_{device_name}'
 
+    def sampling_operation(*jobs):
+        """Perform sampling simulation given the definition."""
+        communicator = hoomd.communicator.Communicator(
+            ranks_per_partition=int(os.environ['ACTION_PROCESSES_PER_DIRECTORY'])
+        )
+        job = jobs[communicator.partition]
+
+        if communicator.rank == 0:
+            print(f'starting {action_name}:', job)
+
+        if device_name == 'gpu':
+            device_cls = hoomd.device.GPU
+        elif device_name == 'cpu':
+            device_cls = hoomd.device.CPU
+
+        device = device_cls(
+            communicator=communicator,
+            message_filename=util.get_message_filename(
+                job, f'{mode}_mc_{device_name}.log'
+            ),
+        )
+
+        globals().get(f'run_{mode}_mc_sim')(
+            job, device
+        )
+
+        if communicator.rank == 0:
+            print(f'completed {action_name}: {job}')
+
+    mc_sampling_jobs.append(action_name)
+
+    sim_mode = mode + '_mc'
+    ValidationWorkflow.add_action(action_name, Action(method = sampling_operation,
+    configuration={'products': [util.get_job_filename(sim_mode, device_name, 'trajectory', 'gsd'), util.get_job_filename(sim_mode, device_name, 'quantities', 'h5')],
+        'launchers': ['mpi'],
+        'group': globals().get(f'_group_{device_name}'),
+        'resources': globals().get(f'_resources_{device_name}'),
+        'previous_actions': [f'{__name__}.create_initial_state']
+        }))
+
+
+for definition in mc_job_definitions:
+    add_mc_sampling_job(**definition)
+
+
+def analyze(*jobs):
+    """Analyze the output of all simulation modes."""
+    matplotlib.style.use('fivethirtyeight')
+
+    for job in jobs:
+        print('starting lj_fluid_analyze:', job)
+
+        sim_modes = [
+            'nvt_langevin_md_cpu',
+            'nvt_mttk_md_cpu',
+            'nvt_bussi_md_cpu',
+            'npt_bussi_md_cpu',
+        ]
+
+        if os.path.exists(job.fn('nvt_langevin_md_gpu_quantities.h5')):
+            sim_modes.extend(
+                [
+                    'nvt_langevin_md_gpu',
+                    'nvt_mttk_md_gpu',
+                    'nvt_bussi_md_gpu',
+                    'npt_bussi_md_gpu',
+                ]
+            )
+
+        if os.path.exists(job.fn('nvt_mc_cpu_quantities.h5')):
+            sim_modes.extend(['nvt_mc_cpu', 'npt_mc_cpu'])
+
+        util._sort_sim_modes(sim_modes)
+
+        timesteps = {}
+        energies = {}
+        pressures = {}
+        densities = {}
+        linear_momentum = {}
+
+        for sim_mode in sim_modes:
+            log_traj = util.read_log(job.fn(sim_mode + '_quantities.h5'))
+
+            timesteps[sim_mode] = log_traj['hoomd-data/Simulation/timestep']
+
+            if 'md' in sim_mode:
+                energies[sim_mode] = log_traj[
+                    'hoomd-data/md/compute/ThermodynamicQuantities/potential_energy'
+                ]
+            else:
+                energies[sim_mode] = (
+                    log_traj['hoomd-data/hpmc/pair/LennardJones/energy']
+                    * job.cached_statepoint['kT']
+                )
+
+            energies[sim_mode] /= job.cached_statepoint['num_particles']
+
+            if 'md' in sim_mode:
+                pressures[sim_mode] = log_traj[
+                    'hoomd-data/md/compute/ThermodynamicQuantities/pressure'
+                ]
+            else:
+                pressures[sim_mode] = log_traj['hoomd-data/custom/virial_pressure']
+
+            densities[sim_mode] = log_traj[
+                'hoomd-data/custom_actions/ComputeDensity/density'
+            ]
+
+            if 'md' in sim_mode and 'langevin' not in sim_mode:
+                momentum_vector = log_traj['hoomd-data/md/Integrator/linear_momentum']
+                linear_momentum[sim_mode] = [
+                    math.sqrt(v[0] ** 2 + v[1] ** 2 + v[2] ** 2) for v in momentum_vector
+                ]
+            else:
+                linear_momentum[sim_mode] = numpy.zeros(len(energies[sim_mode]))
+
+        # save averages
+        for mode in sim_modes:
+            job.document[mode] = dict(
+                pressure=float(numpy.mean(pressures[mode])),
+                potential_energy=float(numpy.mean(energies[mode])),
+                density=float(numpy.mean(densities[mode])),
+            )
+
+        # Plot results
+        fig = matplotlib.figure.Figure(figsize=(20, 20 / 3.24 * 2), layout='tight')
+        ax = fig.add_subplot(2, 2, 1)
+        util.plot_timeseries(
+            ax=ax,
+            timesteps=timesteps,
+            data=densities,
+            ylabel=r'$\rho$',
+            expected=job.cached_statepoint['density'],
+            max_points=500,
+        )
+        ax.legend()
+
+        ax = fig.add_subplot(2, 2, 2)
+        util.plot_timeseries(
+            ax=ax,
+            timesteps=timesteps,
+            data=pressures,
+            ylabel=r'$P$',
+            expected=job.cached_statepoint['pressure'],
+            max_points=500,
+        )
+
+        ax = fig.add_subplot(2, 2, 3)
+        util.plot_timeseries(
+            ax=ax, timesteps=timesteps, data=energies, ylabel='$U / N$', max_points=500
+        )
+
+        ax = fig.add_subplot(2, 2, 4)
+        util.plot_timeseries(
+            ax=ax,
+            timesteps=timesteps,
+            data={
+                mode: numpy.asarray(lm) / job.cached_statepoint['num_particles']
+                for mode, lm in linear_momentum.items()
+            },
+            ylabel=r'$|\vec{p}| / N$',
+            max_points=500,
+        )
+
+        fig.suptitle(
+            f'$kT={job.cached_statepoint["kT"]}$, '
+            f'$\\rho={job.cached_statepoint["density"]}$, '
+            f'$N={job.cached_statepoint["num_particles"]}$, '
+            f'$r_\\mathrm{{cut}}={job.cached_statepoint["r_cut"]}$, '
+            f'replicate={job.cached_statepoint["replicate_idx"]}'
+        )
+        fig.savefig(job.fn('nvt_npt_plots.svg'), bbox_inches='tight')
+
+ValidationWorkflow.add_action(f'{__name__}.analyze', Action(method = analyze,
+configuration = {'products': ['nvt_npt_plots.svg'],
+'previous_actions': md_sampling_jobs + mc_sampling_jobs,
+'group': _group | {'submit_whole': True},
+'resources': {'processes': {'per_submission': 1}, 'walltime': {'per_directory': '00:01:00'}}}))
 
 # @Project.pre(is_lj_fluid)
 # @Project.pre.after(*md_sampling_jobs)
@@ -776,142 +902,6 @@ for definition in md_job_definitions:
 # @Project.operation(
 #     directives=dict(walltime=CONFIG['short_walltime'], executable=CONFIG['executable'])
 # )
-# def lj_fluid_analyze(job):
-#     """Analyze the output of all simulation modes."""
-#     import math
-
-#     import matplotlib
-#     import matplotlib.figure
-#     import matplotlib.style
-#     import numpy
-
-#     matplotlib.style.use('fivethirtyeight')
-
-#     print('starting lj_fluid_analyze:', job)
-
-#     sim_modes = [
-#         'nvt_langevin_md_cpu',
-#         'nvt_mttk_md_cpu',
-#         'nvt_bussi_md_cpu',
-#         'npt_bussi_md_cpu',
-#     ]
-
-#     if os.path.exists(job.fn('nvt_langevin_md_gpu_quantities.h5')):
-#         sim_modes.extend(
-#             [
-#                 'nvt_langevin_md_gpu',
-#                 'nvt_mttk_md_gpu',
-#                 'nvt_bussi_md_gpu',
-#                 'npt_bussi_md_gpu',
-#             ]
-#         )
-
-#     if os.path.exists(job.fn('nvt_mc_cpu_quantities.h5')):
-#         sim_modes.extend(['nvt_mc_cpu', 'npt_mc_cpu'])
-
-#     util._sort_sim_modes(sim_modes)
-
-#     timesteps = {}
-#     energies = {}
-#     pressures = {}
-#     densities = {}
-#     linear_momentum = {}
-
-#     for sim_mode in sim_modes:
-#         log_traj = util.read_log(job.fn(sim_mode + '_quantities.h5'))
-
-#         timesteps[sim_mode] = log_traj['hoomd-data/Simulation/timestep']
-
-#         if 'md' in sim_mode:
-#             energies[sim_mode] = log_traj[
-#                 'hoomd-data/md/compute/ThermodynamicQuantities/potential_energy'
-#             ]
-#         else:
-#             energies[sim_mode] = (
-#                 log_traj['hoomd-data/hpmc/pair/LennardJones/energy']
-#                 * job.cached_statepoint['kT']
-#             )
-
-#         energies[sim_mode] /= job.cached_statepoint['num_particles']
-
-#         if 'md' in sim_mode:
-#             pressures[sim_mode] = log_traj[
-#                 'hoomd-data/md/compute/ThermodynamicQuantities/pressure'
-#             ]
-#         else:
-#             pressures[sim_mode] = log_traj['hoomd-data/custom/virial_pressure']
-
-#         densities[sim_mode] = log_traj[
-#             'hoomd-data/custom_actions/ComputeDensity/density'
-#         ]
-
-#         if 'md' in sim_mode and 'langevin' not in sim_mode:
-#             momentum_vector = log_traj['hoomd-data/md/Integrator/linear_momentum']
-#             linear_momentum[sim_mode] = [
-#                 math.sqrt(v[0] ** 2 + v[1] ** 2 + v[2] ** 2) for v in momentum_vector
-#             ]
-#         else:
-#             linear_momentum[sim_mode] = numpy.zeros(len(energies[sim_mode]))
-
-#     # save averages
-#     for mode in sim_modes:
-#         job.document[mode] = dict(
-#             pressure=float(numpy.mean(pressures[mode])),
-#             potential_energy=float(numpy.mean(energies[mode])),
-#             density=float(numpy.mean(densities[mode])),
-#         )
-
-#     # Plot results
-#     fig = matplotlib.figure.Figure(figsize=(20, 20 / 3.24 * 2), layout='tight')
-#     ax = fig.add_subplot(2, 2, 1)
-#     util.plot_timeseries(
-#         ax=ax,
-#         timesteps=timesteps,
-#         data=densities,
-#         ylabel=r'$\rho$',
-#         expected=job.cached_statepoint['density'],
-#         max_points=500,
-#     )
-#     ax.legend()
-
-#     ax = fig.add_subplot(2, 2, 2)
-#     util.plot_timeseries(
-#         ax=ax,
-#         timesteps=timesteps,
-#         data=pressures,
-#         ylabel=r'$P$',
-#         expected=job.cached_statepoint['pressure'],
-#         max_points=500,
-#     )
-
-#     ax = fig.add_subplot(2, 2, 3)
-#     util.plot_timeseries(
-#         ax=ax, timesteps=timesteps, data=energies, ylabel='$U / N$', max_points=500
-#     )
-
-#     ax = fig.add_subplot(2, 2, 4)
-#     util.plot_timeseries(
-#         ax=ax,
-#         timesteps=timesteps,
-#         data={
-#             mode: numpy.asarray(lm) / job.cached_statepoint['num_particles']
-#             for mode, lm in linear_momentum.items()
-#         },
-#         ylabel=r'$|\vec{p}| / N$',
-#         max_points=500,
-#     )
-
-#     fig.suptitle(
-#         f'$kT={job.cached_statepoint["kT"]}$, '
-#         f'$\\rho={job.cached_statepoint["density"]}$, '
-#         f'$N={job.cached_statepoint["num_particles"]}$, '
-#         f'$r_\\mathrm{{cut}}={job.cached_statepoint["r_cut"]}$, '
-#         f'replicate={job.cached_statepoint["replicate_idx"]}'
-#     )
-#     fig.savefig(job.fn('nvt_npt_plots.svg'), bbox_inches='tight')
-
-#     job.document['lj_fluid_analysis_complete'] = True
-
 
 # analysis_aggregator = aggregator.groupby(
 #     key=['kT', 'density', 'num_particles', 'r_cut'],
