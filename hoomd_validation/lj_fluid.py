@@ -13,6 +13,7 @@ import numpy
 import matplotlib
 import matplotlib.figure
 import matplotlib.style
+import scipy
 
 import hoomd
 
@@ -89,7 +90,7 @@ _resources_cpu = _resources | {'processes': {'per_directory': NUM_CPU_RANKS}}
 _group_cpu = _group | {'maximum_size': min(CONFIG['replicates'], CONFIG['max_cores_submission'] // NUM_CPU_RANKS)}
 _resources_gpu = _resources | {'processes': {'per_directory': 1}, 'gpus_per_process': 1}
 _group_gpu = _group | {'maximum_size': CONFIG['max_gpus_submission']}
-
+_group_compare = _group | {'sort_by': ['/kT', '/density', '/num_particles', '/r_cut'], 'split_by_sort_key': True, 'submit_whole': True}
 
 def create_initial_state(*jobs):
     """Create initial system configuration."""
@@ -1014,184 +1015,164 @@ def compare_modes(*jobs):
 ValidationWorkflow.add_action(f'{__name__}.compare_modes', Action(method = compare_modes,
 configuration = {
 'previous_actions': [f'{__name__}.analyze'],
-'group': _group | {'sort_by': ['/kT', '/density', '/num_particles', '/r_cut'], 'split_by_sort_key': True, 'submit_whole': True},
+'group': _group_compare,
 'resources': {'processes': {'per_submission': 1}, 'walltime': {'per_directory': '00:02:00'}}}))
 
 
-# @Project.pre(lambda *jobs: util.true_all(*jobs, key='lj_fluid_analysis_complete'))
-# @Project.post(lambda *jobs: util.true_all(*jobs, key='lj_fluid_compare_modes_complete'))
-# @Project.operation(
-#     directives=dict(walltime=CONFIG['short_walltime'], executable=CONFIG['executable']),
-#     aggregator=analysis_aggregator,
-# )
+def distribution_analyze(*jobs):
+    """Checks that MD follows the correct KE distribution."""
+    matplotlib.style.use('fivethirtyeight')
+
+    print('starting lj_fluid_distribution_analyze:', jobs[0])
+
+    sim_modes = [
+        'nvt_langevin_md_cpu',
+        'nvt_mttk_md_cpu',
+        'nvt_bussi_md_cpu',
+        'npt_bussi_md_cpu',
+    ]
+
+    if os.path.exists(jobs[0].fn('nvt_langevin_md_gpu_quantities.h5')):
+        sim_modes.extend(
+            [
+                'nvt_langevin_md_gpu',
+                'nvt_mttk_md_gpu',
+                'nvt_bussi_md_gpu',
+                'npt_bussi_md_gpu',
+            ]
+        )
+
+    if os.path.exists(jobs[0].fn('nvt_mc_cpu_quantities.h5')):
+        sim_modes.extend(['nvt_mc_cpu', 'npt_mc_cpu'])
+
+    util._sort_sim_modes(sim_modes)
+
+    # grab the common statepoint parameters
+    kT = jobs[0].sp.kT
+    set_density = jobs[0].sp.density
+    num_particles = jobs[0].sp.num_particles
+
+    fig = matplotlib.figure.Figure(figsize=(20, 20 / 3.24 * 2), layout='tight')
+    fig.suptitle(
+        f'$kT={kT}$, $\\rho={set_density}$, '
+        f'$r_\\mathrm{{cut}}={jobs[0].statepoint.r_cut}$, '
+        f'$N={num_particles}$'
+    )
+
+    ke_means_expected = collections.defaultdict(list)
+    ke_sigmas_expected = collections.defaultdict(list)
+    ke_samples = collections.defaultdict(list)
+    potential_energy_samples = collections.defaultdict(list)
+    density_samples = collections.defaultdict(list)
+    pressure_samples = collections.defaultdict(list)
+
+    for job in jobs:
+        for sim_mode in sim_modes:
+            if sim_mode.startswith('nvt_langevin'):
+                n_dof = num_particles * 3
+            else:
+                n_dof = num_particles * 3 - 3
+
+            log_traj = util.read_log(job.fn(sim_mode + '_quantities.h5'))
+
+            if 'md' in sim_mode:
+                ke = log_traj[
+                    'hoomd-data/md/compute/ThermodynamicQuantities/kinetic_energy'
+                ]
+                ke_means_expected[sim_mode].append(numpy.mean(ke) - 1 / 2 * n_dof * kT)
+                ke_sigmas_expected[sim_mode].append(
+                    numpy.std(ke) - 1 / math.sqrt(2) * math.sqrt(n_dof) * kT
+                )
+
+                ke_samples[sim_mode].extend(ke)
+            else:
+                ke_samples[sim_mode].extend(
+                    [
+                        3
+                        / 2
+                        * job.cached_statepoint['num_particles']
+                        * job.cached_statepoint['kT']
+                    ]
+                )
+
+            if 'md' in sim_mode:
+                potential_energy_samples[sim_mode].extend(
+                    list(
+                        log_traj[
+                            'hoomd-data/md/compute/ThermodynamicQuantities'
+                            '/potential_energy'
+                        ]
+                    )
+                )
+            else:
+                potential_energy_samples[sim_mode].extend(
+                    list(
+                        log_traj['hoomd-data/hpmc/pair/LennardJones/energy']
+                        * job.cached_statepoint['kT']
+                    )
+                )
+
+            if 'md' in sim_mode:
+                pressure_samples[sim_mode].extend(
+                    list(
+                        log_traj[
+                            'hoomd-data/md/compute/ThermodynamicQuantities/pressure'
+                        ]
+                    )
+                )
+            else:
+                pressure_samples[sim_mode].extend(
+                    list(log_traj['hoomd-data/custom/virial_pressure'])
+                )
+
+            density_samples[sim_mode].extend(
+                list(log_traj['hoomd-data/custom_actions/ComputeDensity/density'])
+            )
+
+    ax = fig.add_subplot(2, 2, 1)
+    util.plot_vs_expected(ax, ke_means_expected, '$<K> - 1/2 N_{dof} k T$')
+
+    ax = fig.add_subplot(2, 2, 2)
+    # https://doi.org/10.1371/journal.pone.0202764
+    util.plot_vs_expected(
+        ax, ke_sigmas_expected, r'$\Delta K - 1/\sqrt{2} \sqrt{N_{dof}} k T$'
+    )
+
+    ax = fig.add_subplot(2, 4, 5)
+    rv = scipy.stats.gamma(
+        3 * job.cached_statepoint['num_particles'] / 2,
+        scale=job.cached_statepoint['kT'],
+    )
+    util.plot_distribution(ax, ke_samples, 'K', expected=rv.pdf)
+    ax.legend(loc='upper right', fontsize='xx-small')
+
+    ax = fig.add_subplot(2, 4, 6)
+    util.plot_distribution(ax, potential_energy_samples, 'U')
+
+    ax = fig.add_subplot(2, 4, 7)
+    util.plot_distribution(
+        ax, density_samples, r'$\rho$', expected=job.cached_statepoint['density']
+    )
+
+    ax = fig.add_subplot(2, 4, 8)
+    util.plot_distribution(
+        ax, pressure_samples, 'P', expected=job.cached_statepoint['pressure']
+    )
+
+    filename = (
+        f'lj_fluid_distribution_analyze_kT{kT}'
+        f'_density{round(set_density, 2)}_'
+        f'r_cut{round(jobs[0].statepoint.r_cut, 2)}_'
+        f'N{num_particles}.svg'
+    )
+    fig.savefig(os.path.join(jobs[0]._project.path, filename), bbox_inches='tight')
 
 
-# @Project.pre.after(*md_sampling_jobs)
-# @Project.post(
-#     lambda *jobs: util.true_all(*jobs, key='lj_fluid_distribution_analyze_complete')
-# )
-# @Project.operation(
-#     directives=dict(walltime=CONFIG['short_walltime'], executable=CONFIG['executable']),
-#     aggregator=analysis_aggregator,
-# )
-# def lj_fluid_distribution_analyze(*jobs):
-#     """Checks that MD follows the correct KE distribution."""
-#     import matplotlib
-#     import matplotlib.figure
-#     import matplotlib.style
-#     import numpy
-#     import scipy
-
-#     matplotlib.style.use('fivethirtyeight')
-
-#     print('starting lj_fluid_distribution_analyze:', jobs[0])
-
-#     sim_modes = [
-#         'nvt_langevin_md_cpu',
-#         'nvt_mttk_md_cpu',
-#         'nvt_bussi_md_cpu',
-#         'npt_bussi_md_cpu',
-#     ]
-
-#     if os.path.exists(jobs[0].fn('nvt_langevin_md_gpu_quantities.h5')):
-#         sim_modes.extend(
-#             [
-#                 'nvt_langevin_md_gpu',
-#                 'nvt_mttk_md_gpu',
-#                 'nvt_bussi_md_gpu',
-#                 'npt_bussi_md_gpu',
-#             ]
-#         )
-
-#     if os.path.exists(jobs[0].fn('nvt_mc_cpu_quantities.h5')):
-#         sim_modes.extend(['nvt_mc_cpu', 'npt_mc_cpu'])
-
-#     util._sort_sim_modes(sim_modes)
-
-#     # grab the common statepoint parameters
-#     kT = jobs[0].sp.kT
-#     set_density = jobs[0].sp.density
-#     num_particles = jobs[0].sp.num_particles
-
-#     fig = matplotlib.figure.Figure(figsize=(20, 20 / 3.24 * 2), layout='tight')
-#     fig.suptitle(
-#         f'$kT={kT}$, $\\rho={set_density}$, '
-#         f'$r_\\mathrm{{cut}}={jobs[0].statepoint.r_cut}$, '
-#         f'$N={num_particles}$'
-#     )
-
-#     ke_means_expected = collections.defaultdict(list)
-#     ke_sigmas_expected = collections.defaultdict(list)
-#     ke_samples = collections.defaultdict(list)
-#     potential_energy_samples = collections.defaultdict(list)
-#     density_samples = collections.defaultdict(list)
-#     pressure_samples = collections.defaultdict(list)
-
-#     for job in jobs:
-#         for sim_mode in sim_modes:
-#             if sim_mode.startswith('nvt_langevin'):
-#                 n_dof = num_particles * 3
-#             else:
-#                 n_dof = num_particles * 3 - 3
-
-#             print('Reading' + job.fn(sim_mode + '_quantities.h5'))
-#             log_traj = util.read_log(job.fn(sim_mode + '_quantities.h5'))
-
-#             if 'md' in sim_mode:
-#                 ke = log_traj[
-#                     'hoomd-data/md/compute/ThermodynamicQuantities/kinetic_energy'
-#                 ]
-#                 ke_means_expected[sim_mode].append(numpy.mean(ke) - 1 / 2 * n_dof * kT)
-#                 ke_sigmas_expected[sim_mode].append(
-#                     numpy.std(ke) - 1 / math.sqrt(2) * math.sqrt(n_dof) * kT
-#                 )
-
-#                 ke_samples[sim_mode].extend(ke)
-#             else:
-#                 ke_samples[sim_mode].extend(
-#                     [
-#                         3
-#                         / 2
-#                         * job.cached_statepoint['num_particles']
-#                         * job.cached_statepoint['kT']
-#                     ]
-#                 )
-
-#             if 'md' in sim_mode:
-#                 potential_energy_samples[sim_mode].extend(
-#                     list(
-#                         log_traj[
-#                             'hoomd-data/md/compute/ThermodynamicQuantities'
-#                             '/potential_energy'
-#                         ]
-#                     )
-#                 )
-#             else:
-#                 potential_energy_samples[sim_mode].extend(
-#                     list(
-#                         log_traj['hoomd-data/hpmc/pair/LennardJones/energy']
-#                         * job.cached_statepoint['kT']
-#                     )
-#                 )
-
-#             if 'md' in sim_mode:
-#                 pressure_samples[sim_mode].extend(
-#                     list(
-#                         log_traj[
-#                             'hoomd-data/md/compute/ThermodynamicQuantities/pressure'
-#                         ]
-#                     )
-#                 )
-#             else:
-#                 pressure_samples[sim_mode].extend(
-#                     list(log_traj['hoomd-data/custom/virial_pressure'])
-#                 )
-
-#             density_samples[sim_mode].extend(
-#                 list(log_traj['hoomd-data/custom_actions/ComputeDensity/density'])
-#             )
-
-#     ax = fig.add_subplot(2, 2, 1)
-#     util.plot_vs_expected(ax, ke_means_expected, '$<K> - 1/2 N_{dof} k T$')
-
-#     ax = fig.add_subplot(2, 2, 2)
-#     # https://doi.org/10.1371/journal.pone.0202764
-#     util.plot_vs_expected(
-#         ax, ke_sigmas_expected, r'$\Delta K - 1/\sqrt{2} \sqrt{N_{dof}} k T$'
-#     )
-
-#     ax = fig.add_subplot(2, 4, 5)
-#     rv = scipy.stats.gamma(
-#         3 * job.cached_statepoint['num_particles'] / 2,
-#         scale=job.cached_statepoint['kT'],
-#     )
-#     util.plot_distribution(ax, ke_samples, 'K', expected=rv.pdf)
-#     ax.legend(loc='upper right', fontsize='xx-small')
-
-#     ax = fig.add_subplot(2, 4, 6)
-#     util.plot_distribution(ax, potential_energy_samples, 'U')
-
-#     ax = fig.add_subplot(2, 4, 7)
-#     util.plot_distribution(
-#         ax, density_samples, r'$\rho$', expected=job.cached_statepoint['density']
-#     )
-
-#     ax = fig.add_subplot(2, 4, 8)
-#     util.plot_distribution(
-#         ax, pressure_samples, 'P', expected=job.cached_statepoint['pressure']
-#     )
-
-#     filename = (
-#         f'lj_fluid_distribution_analyze_kT{kT}'
-#         f'_density{round(set_density, 2)}_'
-#         f'r_cut{round(jobs[0].statepoint.r_cut, 2)}_'
-#         f'N{num_particles}.svg'
-#     )
-#     fig.savefig(os.path.join(jobs[0]._project.path, filename), bbox_inches='tight')
-
-#     for job in jobs:
-#         job.document['lj_fluid_distribution_analyze_complete'] = True
-
+ValidationWorkflow.add_action(f'{__name__}.distribution_analyze', Action(method = distribution_analyze,
+configuration = {
+'previous_actions': [f'{__name__}.analyze'],
+'group': _group_compare,
+'resources': {'processes': {'per_submission': 1}, 'walltime': {'per_directory': '00:02:00'}}}))
 
 # #################################
 # # MD conservation simulations
