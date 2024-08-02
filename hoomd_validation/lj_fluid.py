@@ -766,7 +766,7 @@ def analyze(*jobs):
     matplotlib.style.use('fivethirtyeight')
 
     for job in jobs:
-        print('starting lj_fluid_analyze:', job)
+        print(f'starting {__name__}.analyze:', job)
 
         sim_modes = [
             'nvt_langevin_md_cpu',
@@ -892,22 +892,130 @@ def analyze(*jobs):
 ValidationWorkflow.add_action(f'{__name__}.analyze', Action(method = analyze,
 configuration = {'products': ['nvt_npt_plots.svg'],
 'previous_actions': md_sampling_jobs + mc_sampling_jobs,
-'group': _group | {'submit_whole': True},
+'group': _group,
 'resources': {'processes': {'per_submission': 1}, 'walltime': {'per_directory': '00:01:00'}}}))
 
-# @Project.pre(is_lj_fluid)
-# @Project.pre.after(*md_sampling_jobs)
-# @Project.pre.after(*mc_sampling_jobs)
-# @Project.post.true('lj_fluid_analysis_complete')
-# @Project.operation(
-#     directives=dict(walltime=CONFIG['short_walltime'], executable=CONFIG['executable'])
-# )
 
-# analysis_aggregator = aggregator.groupby(
-#     key=['kT', 'density', 'num_particles', 'r_cut'],
-#     sort_by='replicate_idx',
-#     select=is_lj_fluid,
-# )
+def compare_modes(*jobs):
+    """Compares the tested simulation modes."""
+    matplotlib.style.use('fivethirtyeight')
+
+    print(f'starting {__name__}.compare_modes:', jobs[0])
+
+    sim_modes = [
+        'nvt_langevin_md_cpu',
+        'nvt_mttk_md_cpu',
+        'nvt_bussi_md_cpu',
+        'npt_bussi_md_cpu',
+    ]
+
+    if os.path.exists(jobs[0].fn('nvt_langevin_md_gpu_quantities.h5')):
+        sim_modes.extend(
+            [
+                'nvt_langevin_md_gpu',
+                'nvt_mttk_md_gpu',
+                'nvt_bussi_md_gpu',
+                'npt_bussi_md_gpu',
+            ]
+        )
+
+    if os.path.exists(jobs[0].fn('nvt_mc_cpu_quantities.h5')):
+        sim_modes.extend(['nvt_mc_cpu', 'npt_mc_cpu'])
+
+    util._sort_sim_modes(sim_modes)
+
+    quantity_names = ['density', 'pressure', 'potential_energy']
+    labels = {
+        'density': r'$\frac{\rho_\mathrm{sample} - \rho}{\rho} \cdot 1000$',
+        'pressure': r'$\frac{P_\mathrm{sample} - P}{P} \cdot 1000$',
+        'potential_energy': r'$\frac{U_\mathrm{sample} - <U>}{<U>} \cdot 1000$',
+    }
+
+    # grab the common statepoint parameters
+    kT = jobs[0].sp.kT
+    set_density = jobs[0].sp.density
+    set_pressure = jobs[0].sp.pressure
+    num_particles = jobs[0].sp.num_particles
+
+    quantity_reference = dict(
+        density=set_density, pressure=set_pressure, potential_energy=None
+    )
+
+    fig = matplotlib.figure.Figure(figsize=(10, 10 / 1.618 * 3), layout='tight')
+    fig.suptitle(
+        f'$kT={kT}$, $\\rho={set_density}$, '
+        f'$r_\\mathrm{{cut}}={jobs[0].statepoint.r_cut}$, '
+        f'$N={num_particles}$'
+    )
+
+    for i, quantity_name in enumerate(quantity_names):
+        ax = fig.add_subplot(3, 1, i + 1)
+
+        # organize data from jobs
+        quantities = {mode: [] for mode in sim_modes}
+        for jb in jobs:
+            for mode in sim_modes:
+                quantities[mode].append(getattr(getattr(jb.doc, mode), quantity_name))
+
+        if quantity_reference[quantity_name] is not None:
+            reference = quantity_reference[quantity_name]
+        else:
+            avg_value = {mode: numpy.mean(quantities[mode]) for mode in sim_modes}
+            reference = numpy.mean([avg_value[mode] for mode in sim_modes])
+
+        avg_quantity, stderr_quantity = util.plot_vs_expected(
+            ax=ax,
+            values=quantities,
+            ylabel=labels[quantity_name],
+            expected=reference,
+            relative_scale=1000,
+            separate_nvt_npt=True,
+        )
+
+        if quantity_name == 'density':
+            if 'npt_mc_cpu' in avg_quantity:
+                print(
+                    f'Average npt_mc_cpu density {num_particles}:',
+                    avg_quantity['npt_mc_cpu'],
+                    '+/-',
+                    stderr_quantity['npt_mc_cpu'],
+                )
+            print(
+                f'Average npt_md_cpu density {num_particles}:',
+                avg_quantity['npt_bussi_md_cpu'],
+                '+/-',
+                stderr_quantity['npt_bussi_md_cpu'],
+            )
+        if quantity_name == 'pressure':
+            if 'nvt_mc_cpu' in avg_quantity:
+                print(
+                    f'Average nvt_mc_cpu pressure {num_particles}:',
+                    avg_quantity['nvt_mc_cpu'],
+                    '+/-',
+                    stderr_quantity['nvt_mc_cpu'],
+                )
+            if 'npt_mc_cpu' in avg_quantity:
+                print(
+                    f'Average npt_mc_cpu pressure {num_particles}:',
+                    avg_quantity['npt_mc_cpu'],
+                    '+/-',
+                    stderr_quantity['npt_mc_cpu'],
+                )
+
+    filename = (
+        f'lj_fluid_compare_kT{kT}_density{round(set_density, 2)}_'
+        f'r_cut{round(jobs[0].statepoint.r_cut, 2)}_'
+        f'N{num_particles}.svg'
+    )
+
+    fig.savefig(os.path.join(jobs[0]._project.path, filename), bbox_inches='tight')
+
+
+ValidationWorkflow.add_action(f'{__name__}.compare_modes', Action(method = compare_modes,
+configuration = {
+'previous_actions': [f'{__name__}.analyze'],
+'group': _group | {'sort_by': ['/kT', '/density', '/num_particles', '/r_cut'], 'split_by_sort_key': True, 'submit_whole': True},
+'resources': {'processes': {'per_submission': 1}, 'walltime': {'per_directory': '00:02:00'}}}))
 
 
 # @Project.pre(lambda *jobs: util.true_all(*jobs, key='lj_fluid_analysis_complete'))
@@ -916,127 +1024,6 @@ configuration = {'products': ['nvt_npt_plots.svg'],
 #     directives=dict(walltime=CONFIG['short_walltime'], executable=CONFIG['executable']),
 #     aggregator=analysis_aggregator,
 # )
-# def lj_fluid_compare_modes(*jobs):
-#     """Compares the tested simulation modes."""
-#     import matplotlib
-#     import matplotlib.figure
-#     import matplotlib.style
-#     import numpy
-
-#     matplotlib.style.use('fivethirtyeight')
-
-#     print('starting lj_fluid_compare_modes:', jobs[0])
-
-#     sim_modes = [
-#         'nvt_langevin_md_cpu',
-#         'nvt_mttk_md_cpu',
-#         'nvt_bussi_md_cpu',
-#         'npt_bussi_md_cpu',
-#     ]
-
-#     if os.path.exists(jobs[0].fn('nvt_langevin_md_gpu_quantities.h5')):
-#         sim_modes.extend(
-#             [
-#                 'nvt_langevin_md_gpu',
-#                 'nvt_mttk_md_gpu',
-#                 'nvt_bussi_md_gpu',
-#                 'npt_bussi_md_gpu',
-#             ]
-#         )
-
-#     if os.path.exists(jobs[0].fn('nvt_mc_cpu_quantities.h5')):
-#         sim_modes.extend(['nvt_mc_cpu', 'npt_mc_cpu'])
-
-#     util._sort_sim_modes(sim_modes)
-
-#     quantity_names = ['density', 'pressure', 'potential_energy']
-#     labels = {
-#         'density': r'$\frac{\rho_\mathrm{sample} - \rho}{\rho} \cdot 1000$',
-#         'pressure': r'$\frac{P_\mathrm{sample} - P}{P} \cdot 1000$',
-#         'potential_energy': r'$\frac{U_\mathrm{sample} - <U>}{<U>} \cdot 1000$',
-#     }
-
-#     # grab the common statepoint parameters
-#     kT = jobs[0].sp.kT
-#     set_density = jobs[0].sp.density
-#     set_pressure = jobs[0].sp.pressure
-#     num_particles = jobs[0].sp.num_particles
-
-#     quantity_reference = dict(
-#         density=set_density, pressure=set_pressure, potential_energy=None
-#     )
-
-#     fig = matplotlib.figure.Figure(figsize=(10, 10 / 1.618 * 3), layout='tight')
-#     fig.suptitle(
-#         f'$kT={kT}$, $\\rho={set_density}$, '
-#         f'$r_\\mathrm{{cut}}={jobs[0].statepoint.r_cut}$, '
-#         f'$N={num_particles}$'
-#     )
-
-#     for i, quantity_name in enumerate(quantity_names):
-#         ax = fig.add_subplot(3, 1, i + 1)
-
-#         # organize data from jobs
-#         quantities = {mode: [] for mode in sim_modes}
-#         for jb in jobs:
-#             for mode in sim_modes:
-#                 quantities[mode].append(getattr(getattr(jb.doc, mode), quantity_name))
-
-#         if quantity_reference[quantity_name] is not None:
-#             reference = quantity_reference[quantity_name]
-#         else:
-#             avg_value = {mode: numpy.mean(quantities[mode]) for mode in sim_modes}
-#             reference = numpy.mean([avg_value[mode] for mode in sim_modes])
-
-#         avg_quantity, stderr_quantity = util.plot_vs_expected(
-#             ax=ax,
-#             values=quantities,
-#             ylabel=labels[quantity_name],
-#             expected=reference,
-#             relative_scale=1000,
-#             separate_nvt_npt=True,
-#         )
-
-#         if quantity_name == 'density':
-#             if 'npt_mc_cpu' in avg_quantity:
-#                 print(
-#                     f'Average npt_mc_cpu density {num_particles}:',
-#                     avg_quantity['npt_mc_cpu'],
-#                     '+/-',
-#                     stderr_quantity['npt_mc_cpu'],
-#                 )
-#             print(
-#                 f'Average npt_md_cpu density {num_particles}:',
-#                 avg_quantity['npt_bussi_md_cpu'],
-#                 '+/-',
-#                 stderr_quantity['npt_bussi_md_cpu'],
-#             )
-#         if quantity_name == 'pressure':
-#             if 'nvt_mc_cpu' in avg_quantity:
-#                 print(
-#                     f'Average nvt_mc_cpu pressure {num_particles}:',
-#                     avg_quantity['nvt_mc_cpu'],
-#                     '+/-',
-#                     stderr_quantity['nvt_mc_cpu'],
-#                 )
-#             if 'npt_mc_cpu' in avg_quantity:
-#                 print(
-#                     f'Average npt_mc_cpu pressure {num_particles}:',
-#                     avg_quantity['npt_mc_cpu'],
-#                     '+/-',
-#                     stderr_quantity['npt_mc_cpu'],
-#                 )
-
-#     filename = (
-#         f'lj_fluid_compare_kT{kT}_density{round(set_density, 2)}_'
-#         f'r_cut{round(jobs[0].statepoint.r_cut, 2)}_'
-#         f'N{num_particles}.svg'
-#     )
-
-#     fig.savefig(os.path.join(jobs[0]._project.path, filename), bbox_inches='tight')
-
-#     for job in jobs:
-#         job.document['lj_fluid_compare_modes_complete'] = True
 
 
 # @Project.pre.after(*md_sampling_jobs)
