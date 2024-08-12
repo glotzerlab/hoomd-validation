@@ -4,15 +4,22 @@
 """Lennard Jones phase behavior validation test (union particles)."""
 
 import collections
+import itertools
 import json
 import math
 import os
-import pathlib
 
+import hoomd
+import matplotlib
+import matplotlib.figure
+import matplotlib.style
+import numpy
+import scipy
 import util
 from config import CONFIG
-from flow import aggregator
-from project_class import Project
+from custom_actions import ComputeDensity
+from workflow import Action
+from workflow_class import ValidationWorkflow
 
 # Run parameters shared between simulations.
 # Step counts must be even and a multiple of the log quantity period.
@@ -37,7 +44,9 @@ CUBE_VERTS = [
     (0.5, 0.5, 0.5),
 ]
 
-WALLTIME_STOP_SECONDS = CONFIG['max_walltime'] * 3600 - 10 * 60
+WALLTIME_STOP_SECONDS = (
+    int(os.environ.get('ACTION_WALLTIME_IN_MINUTES', 10)) - 10
+) * 60
 
 # Limit the number of long NVE runs to reduce the number of CPU hours needed.
 NUM_NVE_RUNS = 2
@@ -62,47 +71,51 @@ def job_statepoints():
             )
 
 
-def is_lj_union(job):
-    """Test if a given job is part of the lj_union subproject."""
-    return job.cached_statepoint['subproject'] == 'lj_union'
+_group = {
+    'sort_by': ['/density'],
+    'include': [{'condition': ['/subproject', '==', __name__]}],
+}
+_resources = {'walltime': {'per_submission': CONFIG['max_walltime']}}
+_resources_cpu = _resources | {'processes': {'per_directory': NUM_CPU_RANKS}}
+_group_cpu = _group | {
+    'maximum_size': min(
+        CONFIG['replicates'], CONFIG['max_cores_submission'] // NUM_CPU_RANKS
+    )
+}
+_resources_gpu = _resources | {'processes': {'per_directory': 1}, 'gpus_per_process': 1}
+_group_gpu = _group | {'maximum_size': CONFIG['max_gpus_submission']}
+_group_compare = _group | {
+    'sort_by': ['/kT', '/density', '/num_particles'],
+    'split_by_sort_key': True,
+    'submit_whole': True,
+}
+
+_include_nve = {
+    'include': [
+        {
+            'all': [
+                ['/subproject', '==', __name__],
+                ['/replicate_idx', '<', NUM_NVE_RUNS],
+            ]
+        }
+    ]
+}
+_group_nve_cpu = _group_cpu | _include_nve
+_group_nve_gpu = _group_gpu | _include_nve
 
 
-partition_jobs_cpu_mpi = aggregator.groupsof(
-    num=min(CONFIG['replicates'], CONFIG['max_cores_submission'] // NUM_CPU_RANKS),
-    sort_by='density',
-    select=is_lj_union,
-)
-
-partition_jobs_gpu = aggregator.groupsof(
-    num=min(CONFIG['replicates'], CONFIG['max_gpus_submission']),
-    sort_by='density',
-    select=is_lj_union,
-)
-
-
-@Project.post.isfile('lj_union_initial_state_md.gsd')
-@Project.operation(
-    directives=dict(
-        executable=CONFIG['executable'],
-        nranks=util.total_ranks_function(NUM_CPU_RANKS),
-        walltime=CONFIG['short_walltime'],
-    ),
-    aggregator=partition_jobs_cpu_mpi,
-)
-def lj_union_create_initial_state(*jobs):
+def create_initial_state(*jobs):
     """Create initial system configuration."""
-    import itertools
-
-    import hoomd
-    import numpy
-
     min_spacing = math.sqrt(3) + 1
 
     communicator = hoomd.communicator.Communicator(ranks_per_partition=NUM_CPU_RANKS)
     job = jobs[communicator.partition]
 
+    if job.isfile('initial_state.gsd') and job.isfile('initial_state_md.gsd'):
+        return
+
     if communicator.rank == 0:
-        print('starting lj_union_create_initial_state:', job)
+        print(f'starting {__name__}.create_initial_state:', job)
 
     sp = job.sp
     device = hoomd.device.CPU(
@@ -148,7 +161,7 @@ def lj_union_create_initial_state(*jobs):
     device.notice('Done.')
 
     hoomd.write.GSD.write(
-        state=sim.state, filename=job.fn('lj_union_initial_state.gsd'), mode='wb'
+        state=sim.state, filename=job.fn('initial_state.gsd'), mode='wb'
     )
 
     # Create rigid bodies for MD
@@ -163,12 +176,26 @@ def lj_union_create_initial_state(*jobs):
     rigid.create_bodies(sim.state)
 
     hoomd.write.GSD.write(
-        state=sim.state, filename=job.fn('lj_union_initial_state_md.gsd'), mode='wb'
+        state=sim.state, filename=job.fn('initial_state_md.gsd'), mode='wb'
     )
 
     if communicator.rank == 0:
-        print(f'completed lj_union_create_initial_state: {job}')
+        print(f'completed {__name__}.create_initial_state: {job}')
 
+
+ValidationWorkflow.add_action(
+    f'{__name__}.create_initial_state',
+    Action(
+        method=create_initial_state,
+        configuration={
+            'products': ['initial_state.gsd', 'initial_state_md.gsd'],
+            'launchers': ['mpi'],
+            'group': _group_cpu,
+            'resources': _resources_cpu
+            | {'walltime': {'per_submission': CONFIG['short_walltime']}},
+        },
+    ),
+)
 
 #################################
 # MD ensemble simulations
@@ -205,15 +232,12 @@ def make_md_simulation(
 
         period_multiplier (int): Factor to multiply the GSD file periods by.
     """
-    import hoomd
-    from hoomd import md
-
     if extra_loggables is None:
         extra_loggables = []
 
     # pair force
-    nlist = md.nlist.Cell(buffer=0.4, exclusions=('body',))
-    lj = md.pair.LJ(
+    nlist = hoomd.md.nlist.Cell(buffer=0.4, exclusions=('body',))
+    lj = hoomd.md.pair.LJ(
         default_r_cut=LJ_PARAMS['r_cut'], default_r_on=LJ_PARAMS['r_on'], nlist=nlist
     )
     lj.params[('A', 'A')] = dict(sigma=LJ_PARAMS['sigma'], epsilon=LJ_PARAMS['epsilon'])
@@ -227,7 +251,7 @@ def make_md_simulation(
     lj.mode = 'xplor'
 
     # integrator
-    integrator = md.Integrator(
+    integrator = hoomd.md.Integrator(
         dt=0.0005, methods=[method], forces=[lj], integrate_rotational_dof=True
     )
 
@@ -241,7 +265,7 @@ def make_md_simulation(
     integrator.rigid = rigid
 
     # compute thermo
-    thermo = md.compute.ThermodynamicQuantities(hoomd.filter.All())
+    thermo = hoomd.md.compute.ThermodynamicQuantities(hoomd.filter.All())
 
     # add gsd log quantities
     logger = hoomd.logging.Logger(categories=['scalar', 'sequence'])
@@ -283,29 +307,25 @@ def make_md_simulation(
     return sim
 
 
-def run_md_sim(job, device, ensemble, thermostat, complete_filename):
+def run_md_sim(job, device, ensemble, thermostat):
     """Run the MD simulation with the given ensemble and thermostat."""
-    import hoomd
-    from custom_actions import ComputeDensity
-    from hoomd import md
-
-    initial_state = job.fn('lj_union_initial_state_md.gsd')
+    initial_state = job.fn('initial_state_md.gsd')
 
     integrate_filter = hoomd.filter.Rigid(flags=('center',))
 
     if ensemble == 'nvt':
         if thermostat == 'langevin':
-            method = md.methods.Langevin(
+            method = hoomd.md.methods.Langevin(
                 filter=integrate_filter, kT=job.cached_statepoint['kT']
             )
             method.gamma.default = 1.0
         elif thermostat == 'mttk':
-            method = md.methods.ConstantVolume(filter=integrate_filter)
+            method = hoomd.md.methods.ConstantVolume(filter=integrate_filter)
             method.thermostat = hoomd.md.methods.thermostats.MTTK(
                 kT=job.cached_statepoint['kT'], tau=0.25
             )
         elif thermostat == 'bussi':
-            method = md.methods.ConstantVolume(filter=integrate_filter)
+            method = hoomd.md.methods.ConstantVolume(filter=integrate_filter)
             method.thermostat = hoomd.md.methods.thermostats.Bussi(
                 kT=job.cached_statepoint['kT']
             )
@@ -313,7 +333,7 @@ def run_md_sim(job, device, ensemble, thermostat, complete_filename):
             raise ValueError(f'Unsupported thermostat {thermostat}')
     elif ensemble == 'npt':
         p = job.cached_statepoint['pressure']
-        method = md.methods.ConstantPressure(
+        method = hoomd.md.methods.ConstantPressure(
             integrate_filter, S=[p, p, p, 0, 0, 0], tauS=3, couple='xyz'
         )
         if thermostat == 'bussi':
@@ -324,6 +344,9 @@ def run_md_sim(job, device, ensemble, thermostat, complete_filename):
             raise ValueError(f'Unsupported thermostat {thermostat}')
 
     sim_mode = f'{ensemble}_{thermostat}_md'
+
+    if util.is_simulation_complete(job, device, sim_mode):
+        return
 
     density_compute = ComputeDensity(job.cached_statepoint['num_particles'])
     sim = make_md_simulation(
@@ -337,7 +360,9 @@ def run_md_sim(job, device, ensemble, thermostat, complete_filename):
 
     # thermalize the thermostat (if applicable)
     if (
-        isinstance(method, (md.methods.ConstantPressure, md.methods.ConstantVolume))
+        isinstance(
+            method, (hoomd.md.methods.ConstantPressure, hoomd.md.methods.ConstantVolume)
+        )
     ) and hasattr(method.thermostat, 'thermalize_dof'):
         sim.run(0)
         method.thermostat.thermalize_dof()
@@ -352,7 +377,7 @@ def run_md_sim(job, device, ensemble, thermostat, complete_filename):
     sim.run(RUN_STEPS)
     device.notice('Done.')
 
-    pathlib.Path(job.fn(complete_filename)).touch()
+    util.mark_simulation_complete(job, device, sim_mode)
 
 
 md_sampling_jobs = []
@@ -361,29 +386,21 @@ md_job_definitions = [
         'ensemble': 'nvt',
         'thermostat': 'langevin',
         'device_name': 'cpu',
-        'ranks_per_partition': NUM_CPU_RANKS,
-        'aggregator': partition_jobs_cpu_mpi,
     },
     {
         'ensemble': 'nvt',
         'thermostat': 'mttk',
         'device_name': 'cpu',
-        'ranks_per_partition': NUM_CPU_RANKS,
-        'aggregator': partition_jobs_cpu_mpi,
     },
     {
         'ensemble': 'nvt',
         'thermostat': 'bussi',
         'device_name': 'cpu',
-        'ranks_per_partition': NUM_CPU_RANKS,
-        'aggregator': partition_jobs_cpu_mpi,
     },
     {
         'ensemble': 'npt',
         'thermostat': 'bussi',
         'device_name': 'cpu',
-        'ranks_per_partition': NUM_CPU_RANKS,
-        'aggregator': partition_jobs_cpu_mpi,
     },
 ]
 
@@ -394,67 +411,40 @@ if CONFIG['enable_gpu']:
                 'ensemble': 'nvt',
                 'thermostat': 'langevin',
                 'device_name': 'gpu',
-                'ranks_per_partition': 1,
-                'aggregator': partition_jobs_gpu,
             },
             {
                 'ensemble': 'nvt',
                 'thermostat': 'mttk',
                 'device_name': 'gpu',
-                'ranks_per_partition': 1,
-                'aggregator': partition_jobs_gpu,
             },
             {
                 'ensemble': 'nvt',
                 'thermostat': 'bussi',
                 'device_name': 'gpu',
-                'ranks_per_partition': 1,
-                'aggregator': partition_jobs_gpu,
             },
             {
                 'ensemble': 'npt',
                 'thermostat': 'bussi',
                 'device_name': 'gpu',
-                'ranks_per_partition': 1,
-                'aggregator': partition_jobs_gpu,
             },
         ]
     )
 
 
-def add_md_sampling_job(
-    ensemble, thermostat, device_name, ranks_per_partition, aggregator
-):
+def add_md_sampling_job(ensemble, thermostat, device_name):
     """Add a MD sampling job to the workflow."""
     sim_mode = f'{ensemble}_{thermostat}_md'
+    action_name = f'{__name__}.{sim_mode}_{device_name}'
 
-    directives = dict(
-        walltime=CONFIG['max_walltime'],
-        executable=CONFIG['executable'],
-        nranks=util.total_ranks_function(ranks_per_partition),
-    )
-
-    if device_name == 'gpu':
-        directives['ngpu'] = util.total_ranks_function(ranks_per_partition)
-
-    @Project.pre.after(lj_union_create_initial_state)
-    @Project.post.isfile(f'{sim_mode}_{device_name}_complete')
-    @Project.operation(
-        name=f'lj_union_{sim_mode}_{device_name}',
-        directives=directives,
-        aggregator=aggregator,
-    )
     def md_sampling_operation(*jobs):
         """Perform sampling simulation given the definition."""
-        import hoomd
-
         communicator = hoomd.communicator.Communicator(
-            ranks_per_partition=ranks_per_partition
+            ranks_per_partition=int(os.environ['ACTION_PROCESSES_PER_DIRECTORY'])
         )
         job = jobs[communicator.partition]
 
         if communicator.rank == 0:
-            print(f'starting lj_union_{sim_mode}_{device_name}:', job)
+            print(f'starting {action_name}:', job)
 
         if device_name == 'gpu':
             device_cls = hoomd.device.GPU
@@ -473,13 +463,29 @@ def add_md_sampling_job(
             device,
             ensemble,
             thermostat,
-            complete_filename=f'{sim_mode}_{device_name}_complete',
         )
 
         if communicator.rank == 0:
-            print(f'completed lj_union_{sim_mode}_{device_name}: {job}')
+            print(f'completed {action_name}: {job}')
 
-    md_sampling_jobs.append(md_sampling_operation)
+    md_sampling_jobs.append(action_name)
+
+    ValidationWorkflow.add_action(
+        action_name,
+        Action(
+            method=md_sampling_operation,
+            configuration={
+                'products': [
+                    util.get_job_filename(sim_mode, device_name, 'trajectory', 'gsd'),
+                    util.get_job_filename(sim_mode, device_name, 'quantities', 'h5'),
+                ],
+                'launchers': ['mpi'],
+                'group': globals().get(f'_group_{device_name}'),
+                'resources': globals().get(f'_resources_{device_name}'),
+                'previous_actions': [f'{__name__}.create_initial_state'],
+            },
+        ),
+    )
 
 
 for definition in md_job_definitions:
@@ -502,20 +508,16 @@ def make_mc_simulation(job, device, initial_state, sim_mode, extra_loggables=Non
         extra_loggables (list): List of extra loggables to log to gsd files.
         Patch energies are logged by default.
     """
-    import hoomd
-    from custom_actions import ComputeDensity
-    from hoomd import hpmc
-
     if extra_loggables is None:
         extra_loggables = []
 
     # integrator
-    mc = hpmc.integrate.Sphere(nselect=1)
+    mc = hoomd.hpmc.integrate.Sphere(nselect=1)
     mc.shape['A'] = dict(diameter=0.0)
     mc.shape['R'] = dict(diameter=0.0, orientable=True)
 
     # pair potential
-    lennard_jones = hpmc.pair.LennardJones()
+    lennard_jones = hoomd.hpmc.pair.LennardJones()
     lennard_jones.params[('A', 'A')] = dict(
         epsilon=LJ_PARAMS['epsilon'] / job.cached_statepoint['kT'],
         sigma=LJ_PARAMS['sigma'],
@@ -527,7 +529,7 @@ def make_mc_simulation(job, device, initial_state, sim_mode, extra_loggables=Non
 
     lennard_jones.mode = 'xplor'
 
-    lj_union = hpmc.pair.Union(constituent_potential=lennard_jones)
+    lj_union = hoomd.hpmc.pair.Union(constituent_potential=lennard_jones)
     lj_union.body['A'] = dict(positions=[], types=[])
     lj_union.body['R'] = dict(positions=CUBE_VERTS, types=['A'] * len(CUBE_VERTS))
 
@@ -565,7 +567,7 @@ def make_mc_simulation(job, device, initial_state, sim_mode, extra_loggables=Non
     compute_density.attach(sim)
 
     # move size tuner
-    mstuner = hpmc.tune.MoveSize.scale_solver(
+    mstuner = hoomd.hpmc.tune.MoveSize.scale_solver(
         moves=['a', 'd'],
         types=['R'],
         target=0.2,
@@ -585,17 +587,19 @@ def make_mc_simulation(job, device, initial_state, sim_mode, extra_loggables=Non
 
 def run_nvt_mc_sim(job, device, complete_filename):
     """Run MC sim in NVT."""
-    import hoomd
-
     # simulation
 
     sim_mode = 'nvt_mc'
+
+    if util.is_simulation_complete(job, device, sim_mode):
+        return
+
     restart_filename = util.get_job_filename(sim_mode, device, 'restart', 'gsd')
     if job.isfile(restart_filename):
         initial_state = job.fn(restart_filename)
         restart = True
     else:
-        initial_state = job.fn('lj_union_initial_state.gsd')
+        initial_state = job.fn('initial_state.gsd')
         restart = False
 
     sim = make_mc_simulation(job, device, initial_state, sim_mode)
@@ -656,7 +660,7 @@ def run_nvt_mc_sim(job, device, complete_filename):
     hoomd.write.GSD.write(state=sim.state, filename=job.fn(restart_filename), mode='wb')
 
     if sim.timestep == TOTAL_STEPS:
-        pathlib.Path(job.fn(complete_filename)).touch()
+        util.mark_simulation_complete(job, device, sim_mode)
         device.notice('Done.')
     else:
         device.notice(
@@ -667,21 +671,21 @@ def run_nvt_mc_sim(job, device, complete_filename):
 
 def run_npt_mc_sim(job, device, complete_filename):
     """Run MC sim in NPT."""
-    import hoomd
-    from hoomd import hpmc
-
     sim_mode = 'npt_mc'
+
+    if util.is_simulation_complete(job, device, sim_mode):
+        return
 
     restart_filename = util.get_job_filename(sim_mode, device, 'restart', 'gsd')
     if job.isfile(restart_filename):
         initial_state = job.fn(restart_filename)
         restart = True
     else:
-        initial_state = job.fn('lj_union_initial_state.gsd')
+        initial_state = job.fn('initial_state.gsd')
         restart = False
 
     # box updates
-    boxmc = hpmc.update.BoxMC(
+    boxmc = hoomd.hpmc.update.BoxMC(
         betaP=job.cached_statepoint['pressure'] / job.cached_statepoint['kT'],
         trigger=hoomd.trigger.Periodic(1),
     )
@@ -694,7 +698,7 @@ def run_npt_mc_sim(job, device, complete_filename):
 
     sim.operations.add(boxmc)
 
-    boxmc_tuner = hpmc.tune.BoxMCMoveSize.scale_solver(
+    boxmc_tuner = hoomd.hpmc.tune.BoxMCMoveSize.scale_solver(
         trigger=hoomd.trigger.And(
             [
                 hoomd.trigger.Periodic(400),
@@ -771,7 +775,7 @@ def run_npt_mc_sim(job, device, complete_filename):
     hoomd.write.GSD.write(state=sim.state, filename=job.fn(restart_filename), mode='wb')
 
     if sim.timestep == TOTAL_STEPS:
-        pathlib.Path(job.fn(complete_filename)).touch()
+        util.mark_simulation_complete(job, device, sim_mode)
         device.notice('Done.')
     else:
         device.notice(
@@ -785,47 +789,27 @@ mc_job_definitions = [
     {
         'mode': 'nvt',
         'device_name': 'cpu',
-        'ranks_per_partition': NUM_CPU_RANKS,
-        'aggregator': partition_jobs_cpu_mpi,
     },
     {
         'mode': 'npt',
         'device_name': 'cpu',
-        'ranks_per_partition': NUM_CPU_RANKS,
-        'aggregator': partition_jobs_cpu_mpi,
     },
 ]
 
 
-def add_mc_sampling_job(mode, device_name, ranks_per_partition, aggregator):
+def add_mc_sampling_job(mode, device_name):
     """Add a MC sampling job to the workflow."""
-    directives = dict(
-        walltime=CONFIG['max_walltime'],
-        executable=CONFIG['executable'],
-        nranks=util.total_ranks_function(ranks_per_partition),
-    )
+    action_name = f'{__name__}.{mode}_mc_{device_name}'
 
-    if device_name == 'gpu':
-        directives['ngpu'] = util.total_ranks_function(ranks_per_partition)
-
-    @Project.pre.after(lj_union_create_initial_state)
-    @Project.post.isfile(f'{mode}_mc_{device_name}_complete')
-    @Project.operation(
-        name=f'lj_union_{mode}_mc_{device_name}',
-        directives=directives,
-        aggregator=aggregator,
-    )
     def sampling_operation(*jobs):
         """Perform sampling simulation given the definition."""
-        import hoomd
-
         communicator = hoomd.communicator.Communicator(
-            ranks_per_partition=ranks_per_partition
+            ranks_per_partition=int(os.environ['ACTION_PROCESSES_PER_DIRECTORY'])
         )
         job = jobs[communicator.partition]
 
         if communicator.rank == 0:
-            print(f'starting lj_union_{mode}_mc_{device_name}:', job)
+            print(f'starting {action_name}:', job)
 
         if device_name == 'gpu':
             device_cls = hoomd.device.GPU
@@ -846,178 +830,183 @@ def add_mc_sampling_job(mode, device_name, ranks_per_partition, aggregator):
         )
 
         if communicator.rank == 0:
-            print(f'completed lj_union_{mode}_mc_{device_name} {job}')
+            print(f'completed {action_name}: {job}')
 
-    mc_sampling_jobs.append(sampling_operation)
+    mc_sampling_jobs.append(action_name)
+
+    sim_mode = mode + '_mc'
+    ValidationWorkflow.add_action(
+        action_name,
+        Action(
+            method=sampling_operation,
+            configuration={
+                'products': [
+                    util.get_job_filename(sim_mode, device_name, 'trajectory', 'gsd'),
+                    util.get_job_filename(sim_mode, device_name, 'quantities', 'h5'),
+                ],
+                'launchers': ['mpi'],
+                'group': globals().get(f'_group_{device_name}'),
+                'resources': globals().get(f'_resources_{device_name}'),
+                'previous_actions': [f'{__name__}.create_initial_state'],
+            },
+        ),
+    )
 
 
 for definition in mc_job_definitions:
     add_mc_sampling_job(**definition)
 
 
-@Project.pre(is_lj_union)
-@Project.pre.after(*md_sampling_jobs)
-@Project.pre.after(*mc_sampling_jobs)
-@Project.post.true('lj_union_analysis_complete')
-@Project.operation(
-    directives=dict(walltime=CONFIG['short_walltime'], executable=CONFIG['executable'])
-)
-def lj_union_analyze(job):
+def analyze(*jobs):
     """Analyze the output of all simulation modes."""
-    import math
-
-    import matplotlib
-    import matplotlib.figure
-    import matplotlib.style
-    import numpy
-
     matplotlib.style.use('fivethirtyeight')
 
-    print('starting lj_union_analyze:', job)
+    for job in jobs:
+        print(f'starting {__name__}.analyze:', job)
 
-    sim_modes = [
-        'nvt_langevin_md_cpu',
-        'nvt_mttk_md_cpu',
-        'nvt_bussi_md_cpu',
-        'npt_bussi_md_cpu',
-    ]
-
-    if os.path.exists(job.fn('nvt_langevin_md_gpu_quantities.h5')):
-        sim_modes.extend(
-            [
-                'nvt_langevin_md_gpu',
-                'nvt_mttk_md_gpu',
-                'nvt_bussi_md_gpu',
-                'npt_bussi_md_gpu',
-            ]
-        )
-
-    if os.path.exists(job.fn('nvt_mc_cpu_quantities.h5')):
-        sim_modes.extend(['nvt_mc_cpu', 'npt_mc_cpu'])
-
-    util._sort_sim_modes(sim_modes)
-
-    timesteps = {}
-    energies = {}
-    pressures = {}
-    densities = {}
-    linear_momentum = {}
-
-    for sim_mode in sim_modes:
-        log_traj = util.read_log(job.fn(sim_mode + '_quantities.h5'))
-
-        timesteps[sim_mode] = log_traj['hoomd-data/Simulation/timestep']
-
-        if 'md' in sim_mode:
-            energies[sim_mode] = log_traj[
-                'hoomd-data/md/compute/ThermodynamicQuantities/potential_energy'
-            ]
-        else:
-            energies[sim_mode] = (
-                log_traj['hoomd-data/hpmc/pair/Union/energy']
-                * job.cached_statepoint['kT']
-            )
-
-        energies[sim_mode] /= job.cached_statepoint['num_particles']
-
-        if 'md' in sim_mode:
-            pressures[sim_mode] = log_traj[
-                'hoomd-data/md/compute/ThermodynamicQuantities/pressure'
-            ]
-        else:
-            pressures[sim_mode] = numpy.full(len(energies[sim_mode]), numpy.nan)
-
-        densities[sim_mode] = log_traj[
-            'hoomd-data/custom_actions/ComputeDensity/density'
+        sim_modes = [
+            'nvt_langevin_md_cpu',
+            'nvt_mttk_md_cpu',
+            'nvt_bussi_md_cpu',
+            'npt_bussi_md_cpu',
         ]
 
-        if 'md' in sim_mode and 'langevin' not in sim_mode:
-            momentum_vector = log_traj['hoomd-data/md/Integrator/linear_momentum']
-            linear_momentum[sim_mode] = [
-                math.sqrt(v[0] ** 2 + v[1] ** 2 + v[2] ** 2) for v in momentum_vector
-            ]
-        else:
-            linear_momentum[sim_mode] = numpy.zeros(len(energies[sim_mode]))
+        if os.path.exists(job.fn('nvt_langevin_md_gpu_quantities.h5')):
+            sim_modes.extend(
+                [
+                    'nvt_langevin_md_gpu',
+                    'nvt_mttk_md_gpu',
+                    'nvt_bussi_md_gpu',
+                    'npt_bussi_md_gpu',
+                ]
+            )
 
-    # save averages
-    for mode in sim_modes:
-        job.document[mode] = dict(
-            pressure=float(numpy.mean(pressures[mode])),
-            potential_energy=float(numpy.mean(energies[mode])),
-            density=float(numpy.mean(densities[mode])),
+        if os.path.exists(job.fn('nvt_mc_cpu_quantities.h5')):
+            sim_modes.extend(['nvt_mc_cpu', 'npt_mc_cpu'])
+
+        util._sort_sim_modes(sim_modes)
+
+        timesteps = {}
+        energies = {}
+        pressures = {}
+        densities = {}
+        linear_momentum = {}
+
+        for sim_mode in sim_modes:
+            log_traj = util.read_log(job.fn(sim_mode + '_quantities.h5'))
+
+            timesteps[sim_mode] = log_traj['hoomd-data/Simulation/timestep']
+
+            if 'md' in sim_mode:
+                energies[sim_mode] = log_traj[
+                    'hoomd-data/md/compute/ThermodynamicQuantities/potential_energy'
+                ]
+            else:
+                energies[sim_mode] = (
+                    log_traj['hoomd-data/hpmc/pair/Union/energy']
+                    * job.cached_statepoint['kT']
+                )
+
+            energies[sim_mode] /= job.cached_statepoint['num_particles']
+
+            if 'md' in sim_mode:
+                pressures[sim_mode] = log_traj[
+                    'hoomd-data/md/compute/ThermodynamicQuantities/pressure'
+                ]
+            else:
+                pressures[sim_mode] = numpy.full(len(energies[sim_mode]), numpy.nan)
+
+            densities[sim_mode] = log_traj[
+                'hoomd-data/custom_actions/ComputeDensity/density'
+            ]
+
+            if 'md' in sim_mode and 'langevin' not in sim_mode:
+                momentum_vector = log_traj['hoomd-data/md/Integrator/linear_momentum']
+                linear_momentum[sim_mode] = [
+                    math.sqrt(v[0] ** 2 + v[1] ** 2 + v[2] ** 2)
+                    for v in momentum_vector
+                ]
+            else:
+                linear_momentum[sim_mode] = numpy.zeros(len(energies[sim_mode]))
+
+        # save averages
+        for mode in sim_modes:
+            job.document[mode] = dict(
+                pressure=float(numpy.mean(pressures[mode])),
+                potential_energy=float(numpy.mean(energies[mode])),
+                density=float(numpy.mean(densities[mode])),
+            )
+
+        fig = matplotlib.figure.Figure(figsize=(20, 20 / 3.24 * 2), layout='tight')
+        ax = fig.add_subplot(2, 2, 1)
+        util.plot_timeseries(
+            ax=ax,
+            timesteps=timesteps,
+            data=densities,
+            ylabel=r'$\rho$',
+            expected=job.cached_statepoint['density'],
+            max_points=500,
+        )
+        ax.legend()
+
+        ax = fig.add_subplot(2, 2, 2)
+        util.plot_timeseries(
+            ax=ax,
+            timesteps=timesteps,
+            data=pressures,
+            ylabel=r'$P$',
+            expected=job.cached_statepoint['pressure'],
+            max_points=500,
         )
 
-    fig = matplotlib.figure.Figure(figsize=(20, 20 / 3.24 * 2), layout='tight')
-    ax = fig.add_subplot(2, 2, 1)
-    util.plot_timeseries(
-        ax=ax,
-        timesteps=timesteps,
-        data=densities,
-        ylabel=r'$\rho$',
-        expected=job.cached_statepoint['density'],
-        max_points=500,
-    )
-    ax.legend()
+        ax = fig.add_subplot(2, 2, 3)
+        util.plot_timeseries(
+            ax=ax, timesteps=timesteps, data=energies, ylabel='$U / N$', max_points=500
+        )
 
-    ax = fig.add_subplot(2, 2, 2)
-    util.plot_timeseries(
-        ax=ax,
-        timesteps=timesteps,
-        data=pressures,
-        ylabel=r'$P$',
-        expected=job.cached_statepoint['pressure'],
-        max_points=500,
-    )
+        ax = fig.add_subplot(2, 2, 4)
+        util.plot_timeseries(
+            ax=ax,
+            timesteps=timesteps,
+            data={
+                mode: numpy.asarray(lm) / job.cached_statepoint['num_particles']
+                for mode, lm in linear_momentum.items()
+            },
+            ylabel=r'$|\vec{p}| / N$',
+            max_points=500,
+        )
 
-    ax = fig.add_subplot(2, 2, 3)
-    util.plot_timeseries(
-        ax=ax, timesteps=timesteps, data=energies, ylabel='$U / N$', max_points=500
-    )
+        fig.suptitle(
+            f'$kT={job.cached_statepoint["kT"]}$, '
+            f'$\\rho={job.cached_statepoint["density"]}$, '
+            f'$N={job.cached_statepoint["num_particles"]}$, '
+            f'replicate={job.cached_statepoint["replicate_idx"]}'
+        )
+        fig.savefig(job.fn('nvt_npt_plots.svg'), bbox_inches='tight')
 
-    ax = fig.add_subplot(2, 2, 4)
-    util.plot_timeseries(
-        ax=ax,
-        timesteps=timesteps,
-        data={
-            mode: numpy.asarray(lm) / job.cached_statepoint['num_particles']
-            for mode, lm in linear_momentum.items()
+
+ValidationWorkflow.add_action(
+    f'{__name__}.analyze',
+    Action(
+        method=analyze,
+        configuration={
+            'products': ['nvt_npt_plots.svg'],
+            'previous_actions': md_sampling_jobs + mc_sampling_jobs,
+            'group': _group,
+            'resources': {
+                'processes': {'per_submission': 1},
+                'walltime': {'per_directory': '00:01:00'},
+            },
         },
-        ylabel=r'$|\vec{p}| / N$',
-        max_points=500,
-    )
-
-    fig.suptitle(
-        f'$kT={job.cached_statepoint["kT"]}$, '
-        f'$\\rho={job.cached_statepoint["density"]}$, '
-        f'$N={job.cached_statepoint["num_particles"]}$, '
-        f'replicate={job.cached_statepoint["replicate_idx"]}'
-    )
-    fig.savefig(job.fn('nvt_npt_plots.svg'), bbox_inches='tight')
-
-    job.document['lj_union_analysis_complete'] = True
-
-
-analysis_aggregator = aggregator.groupby(
-    key=['kT', 'density', 'num_particles'], sort_by='replicate_idx', select=is_lj_union
+    ),
 )
 
 
-@Project.pre(lambda *jobs: util.true_all(*jobs, key='lj_union_analysis_complete'))
-@Project.post(lambda *jobs: util.true_all(*jobs, key='lj_union_compare_modes_complete'))
-@Project.operation(
-    directives=dict(walltime=CONFIG['short_walltime'], executable=CONFIG['executable']),
-    aggregator=analysis_aggregator,
-)
-def lj_union_compare_modes(*jobs):
+def compare_modes(*jobs):
     """Compares the tested simulation modes."""
-    import matplotlib
-    import matplotlib.figure
-    import matplotlib.style
-    import numpy
-
     matplotlib.style.use('fivethirtyeight')
 
-    print('starting lj_union_compare_modes:', jobs[0])
+    print(f'starting {__name__}.compare_modes:', jobs[0])
 
     sim_modes = [
         'nvt_langevin_md_cpu',
@@ -1104,29 +1093,28 @@ def lj_union_compare_modes(*jobs):
     filename = f'lj_union_compare_kT{kT}_density{round(set_density, 2)}.svg'
     fig.savefig(os.path.join(jobs[0]._project.path, filename), bbox_inches='tight')
 
-    for job in jobs:
-        job.document['lj_union_compare_modes_complete'] = True
+
+ValidationWorkflow.add_action(
+    f'{__name__}.compare_modes',
+    Action(
+        method=compare_modes,
+        configuration={
+            'previous_actions': [f'{__name__}.analyze'],
+            'group': _group_compare,
+            'resources': {
+                'processes': {'per_submission': 1},
+                'walltime': {'per_directory': '00:02:00'},
+            },
+        },
+    ),
+)
 
 
-@Project.pre.after(*md_sampling_jobs)
-@Project.post(
-    lambda *jobs: util.true_all(*jobs, key='lj_union_distribution_analyze_complete')
-)
-@Project.operation(
-    directives=dict(walltime=CONFIG['short_walltime'], executable=CONFIG['executable']),
-    aggregator=analysis_aggregator,
-)
-def lj_union_distribution_analyze(*jobs):
+def distribution_analyze(*jobs):
     """Checks that MD follows the correct KE distribution."""
-    import matplotlib
-    import matplotlib.figure
-    import matplotlib.style
-    import numpy
-    import scipy
-
     matplotlib.style.use('fivethirtyeight')
 
-    print('starting lj_union_distribution_analyze:', jobs[0])
+    print(f'starting {__name__}.distribution_analyze:', jobs[0])
 
     sim_modes = [
         'nvt_langevin_md_cpu',
@@ -1183,7 +1171,6 @@ def lj_union_distribution_analyze(*jobs):
 
             n_rotate_dof = num_particles * 3
 
-            print('Reading' + job.fn(sim_mode + '_quantities.h5'))
             log_traj = util.read_log(job.fn(sim_mode + '_quantities.h5'))
 
             if 'md' in sim_mode:
@@ -1312,8 +1299,21 @@ def lj_union_distribution_analyze(*jobs):
     )
     fig.savefig(os.path.join(jobs[0]._project.path, filename), bbox_inches='tight')
 
-    for job in jobs:
-        job.document['lj_union_distribution_analyze_complete'] = True
+
+ValidationWorkflow.add_action(
+    f'{__name__}.distribution_analyze',
+    Action(
+        method=distribution_analyze,
+        configuration={
+            'previous_actions': [f'{__name__}.analyze'],
+            'group': _group_compare,
+            'resources': {
+                'processes': {'per_submission': 1},
+                'walltime': {'per_directory': '00:02:00'},
+            },
+        },
+    ),
+)
 
 
 #################################
@@ -1323,16 +1323,18 @@ def lj_union_distribution_analyze(*jobs):
 
 def run_nve_md_sim(job, device, run_length, complete_filename):
     """Run the MD simulation in NVE."""
-    import hoomd
-
     sim_mode = 'nve_md'
+
+    if util.is_simulation_complete(job, device, sim_mode):
+        return
+
     restart_filename = util.get_job_filename(sim_mode, device, 'restart', 'gsd')
     is_restarting = job.isfile(restart_filename)
 
     if is_restarting:
         initial_state = job.fn(restart_filename)
     else:
-        initial_state = job.fn('lj_union_initial_state_md.gsd')
+        initial_state = job.fn('initial_state_md.gsd')
 
     nve = hoomd.md.methods.ConstantVolume(hoomd.filter.Rigid(flags=('center',)))
 
@@ -1356,7 +1358,7 @@ def run_nve_md_sim(job, device, run_length, complete_filename):
     )
 
     if sim.timestep == RANDOMIZE_STEPS + EQUILIBRATE_STEPS + run_length:
-        pathlib.Path(job.fn(complete_filename)).touch()
+        util.mark_simulation_complete(job, device, sim_mode)
         device.notice('Done.')
     else:
         device.notice(
@@ -1367,32 +1369,10 @@ def run_nve_md_sim(job, device, run_length, complete_filename):
     hoomd.write.GSD.write(state=sim.state, filename=job.fn(restart_filename), mode='wb')
 
 
-def is_lj_union_nve(job):
-    """Test if a given job should be run for NVE conservation."""
-    return (
-        job.cached_statepoint['subproject'] == 'lj_union'
-        and job.cached_statepoint['replicate_idx'] < NUM_NVE_RUNS
-    )
-
-
-partition_jobs_cpu_mpi_nve = aggregator.groupsof(
-    num=min(CONFIG['replicates'], CONFIG['max_cores_submission'] // NUM_CPU_RANKS),
-    sort_by='density',
-    select=is_lj_union_nve,
-)
-
-partition_jobs_gpu_nve = aggregator.groupsof(
-    num=min(CONFIG['replicates'], CONFIG['max_gpus_submission']),
-    sort_by='density',
-    select=is_lj_union_nve,
-)
-
 nve_md_sampling_jobs = []
 nve_md_job_definitions = [
     {
         'device_name': 'cpu',
-        'ranks_per_partition': NUM_CPU_RANKS,
-        'aggregator': partition_jobs_cpu_mpi_nve,
         'run_length': 10_000_000,
     },
 ]
@@ -1402,45 +1382,26 @@ if CONFIG['enable_gpu']:
         [
             {
                 'device_name': 'gpu',
-                'ranks_per_partition': 1,
-                'aggregator': partition_jobs_gpu_nve,
                 'run_length': 100_000_000,
             },
         ]
     )
 
 
-def add_nve_md_job(device_name, ranks_per_partition, aggregator, run_length):
+def add_nve_md_job(device_name, run_length):
     """Add a MD NVE conservation job to the workflow."""
     sim_mode = 'nve_md'
+    action_name = f'{__name__}.{sim_mode}_{device_name}'
 
-    directives = dict(
-        walltime=CONFIG['max_walltime'],
-        executable=CONFIG['executable'],
-        nranks=util.total_ranks_function(ranks_per_partition),
-    )
-
-    if device_name == 'gpu':
-        directives['ngpu'] = util.total_ranks_function(ranks_per_partition)
-
-    @Project.pre.after(lj_union_create_initial_state)
-    @Project.post.isfile(f'{sim_mode}_{device_name}_complete')
-    @Project.operation(
-        name=f'lj_union_{sim_mode}_{device_name}',
-        directives=directives,
-        aggregator=aggregator,
-    )
-    def lj_union_nve_md_job(*jobs):
+    def nve_action(*jobs):
         """Run NVE MD."""
-        import hoomd
-
         communicator = hoomd.communicator.Communicator(
-            ranks_per_partition=ranks_per_partition
+            ranks_per_partition=int(os.environ['ACTION_PROCESSES_PER_DIRECTORY'])
         )
         job = jobs[communicator.partition]
 
         if communicator.rank == 0:
-            print(f'starting lj_union_{sim_mode}_{device_name}:', job)
+            print(f'starting {action_name}:', job)
 
         if device_name == 'gpu':
             device_cls = hoomd.device.GPU
@@ -1461,40 +1422,37 @@ def add_nve_md_job(device_name, ranks_per_partition, aggregator, run_length):
         )
 
         if communicator.rank == 0:
-            print(f'completed lj_union_{sim_mode}_{device_name} {job}')
+            print(f'completed {action_name} {job}')
 
-    nve_md_sampling_jobs.append(lj_union_nve_md_job)
+    nve_md_sampling_jobs.append(action_name)
+
+    ValidationWorkflow.add_action(
+        action_name,
+        Action(
+            method=nve_action,
+            configuration={
+                'products': [
+                    util.get_job_filename(sim_mode, device_name, 'trajectory', 'gsd'),
+                    util.get_job_filename(sim_mode, device_name, 'quantities', 'h5'),
+                ],
+                'launchers': ['mpi'],
+                'group': globals().get(f'_group_nve_{device_name}'),
+                'resources': globals().get(f'_resources_{device_name}'),
+                'previous_actions': [f'{__name__}.create_initial_state'],
+            },
+        ),
+    )
 
 
 for definition in nve_md_job_definitions:
     add_nve_md_job(**definition)
 
-nve_analysis_aggregator = aggregator.groupby(
-    key=['kT', 'density', 'num_particles'],
-    sort_by='replicate_idx',
-    select=is_lj_union_nve,
-)
 
-
-@Project.pre.after(*nve_md_sampling_jobs)
-@Project.post(
-    lambda *jobs: util.true_all(*jobs, key='lj_union_conservation_analysis_complete')
-)
-@Project.operation(
-    directives=dict(walltime=CONFIG['short_walltime'], executable=CONFIG['executable']),
-    aggregator=nve_analysis_aggregator,
-)
-def lj_union_conservation_analyze(*jobs):
+def conservation_analyze(*jobs):
     """Analyze the output of NVE simulations and inspect conservation."""
-    import math
-
-    import matplotlib
-    import matplotlib.figure
-    import matplotlib.style
-
     matplotlib.style.use('fivethirtyeight')
 
-    print('starting lj_union_conservation_analyze:', jobs[0])
+    print(f'starting {__name__}.conservation_analyze:', jobs[0])
 
     sim_modes = ['nve_md_cpu']
     if os.path.exists(jobs[0].fn('nve_md_gpu_quantities.h5')):
@@ -1573,5 +1531,18 @@ def lj_union_conservation_analyze(*jobs):
 
     fig.savefig(os.path.join(jobs[0]._project.path, filename), bbox_inches='tight')
 
-    for job in jobs:
-        job.document['lj_union_conservation_analysis_complete'] = True
+
+ValidationWorkflow.add_action(
+    f'{__name__}.conservation_analyze',
+    Action(
+        method=conservation_analyze,
+        configuration={
+            'previous_actions': nve_md_sampling_jobs,
+            'group': _group_compare | _include_nve,
+            'resources': {
+                'processes': {'per_submission': 1},
+                'walltime': {'per_directory': '00:02:00'},
+            },
+        },
+    ),
+)

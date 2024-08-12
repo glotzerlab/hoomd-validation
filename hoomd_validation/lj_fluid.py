@@ -1305,14 +1305,6 @@ def run_nve_md_sim(job, device, run_length):
     hoomd.write.GSD.write(state=sim.state, filename=job.fn(restart_filename), mode='wb')
 
 
-def is_lj_fluid_nve(job):
-    """Test if a given job should be run for NVE conservation."""
-    return (
-        job.cached_statepoint['subproject'] == 'lj_fluid'
-        and job.cached_statepoint['replicate_idx'] < NUM_NVE_RUNS
-    )
-
-
 nve_md_sampling_jobs = []
 nve_md_job_definitions = [
     {
