@@ -8,7 +8,7 @@ import alj_2d
 import config
 import hard_disk
 
-# import hard_sphere
+import hard_sphere
 import lj_fluid
 import lj_union
 import signac
@@ -22,7 +22,7 @@ all_subprojects = [
     lj_fluid,
     lj_union,
     hard_disk,
-    # 'hard_sphere',
+    hard_sphere,
     # 'simple_polygon',
     # 'patchy_particle_pressure',
 ]

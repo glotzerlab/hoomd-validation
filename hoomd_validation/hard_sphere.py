@@ -8,8 +8,19 @@ import pathlib
 
 import util
 from config import CONFIG
-from flow import aggregator
-from project_class import Project
+import itertools
+
+import hoomd
+import numpy
+from workflow import Action
+from workflow_class import ValidationWorkflow
+from custom_actions import ComputeDensity
+import matplotlib
+import matplotlib.figure
+import matplotlib.style
+import numpy
+
+
 
 # Run parameters shared between simulations.
 # Step counts must be even and a multiple of the log quantity period.
@@ -42,51 +53,46 @@ def job_statepoints():
             )
 
 
-def is_hard_sphere(job):
-    """Test if a given job is part of the hard_sphere subproject."""
-    return job.cached_statepoint['subproject'] == 'hard_sphere'
+_group = {
+    'sort_by': ['/density'],
+    'include': [{'condition': ['/subproject', '==', __name__]}],
+}
+_resources = {'walltime': {'per_submission': CONFIG['max_walltime']}}
+_resources_serial = _resources | {'processes': {'per_directory': 1}}
+_group_serial = _group | {
+    'maximum_size': min(CONFIG['replicates'], CONFIG['max_cores_submission'])
+}
+_resources_cpu = _resources | {'processes': {'per_directory': NUM_CPU_RANKS}}
+_group_cpu = _group | {
+    'maximum_size': min(
+        CONFIG['replicates'], CONFIG['max_cores_submission'] // NUM_CPU_RANKS
+    )
+}
+_resources_gpu = _resources | {'processes': {'per_directory': 1}, 'gpus_per_process': 1}
+_group_gpu = _group | {'maximum_size': CONFIG['max_gpus_submission']}
+_group_compare = _group | {
+    'sort_by': ['/kT', '/density', '/num_particles'],
+    'split_by_sort_key': True,
+    'submit_whole': True,
+}
+
+_group_compare = _group | {
+    'sort_by': ['/density', '/num_particles'],
+    'split_by_sort_key': True,
+    'submit_whole': True,
+}
 
 
-partition_jobs_cpu_serial = aggregator.groupsof(
-    num=min(CONFIG['replicates'], CONFIG['max_cores_submission']),
-    sort_by='density',
-    select=is_hard_sphere,
-)
-
-partition_jobs_cpu_mpi = aggregator.groupsof(
-    num=min(CONFIG['replicates'], CONFIG['max_cores_submission'] // NUM_CPU_RANKS),
-    sort_by='density',
-    select=is_hard_sphere,
-)
-
-partition_jobs_gpu = aggregator.groupsof(
-    num=min(CONFIG['replicates'], CONFIG['max_gpus_submission']),
-    sort_by='density',
-    select=is_hard_sphere,
-)
-
-
-@Project.post.isfile('hard_sphere_initial_state.gsd')
-@Project.operation(
-    directives=dict(
-        executable=CONFIG['executable'],
-        nranks=util.total_ranks_function(NUM_CPU_RANKS),
-        walltime=1,
-    ),
-    aggregator=partition_jobs_cpu_mpi,
-)
-def hard_sphere_create_initial_state(*jobs):
+def create_initial_state(*jobs):
     """Create initial system configuration."""
-    import itertools
-
-    import hoomd
-    import numpy
-
     communicator = hoomd.communicator.Communicator(ranks_per_partition=NUM_CPU_RANKS)
     job = jobs[communicator.partition]
 
+    if job.isfile('initial_state.gsd'):
+        return
+
     if communicator.rank == 0:
-        print('starting hard_sphere_create_initial_state:', job)
+        print(f'starting {__name__}.create_initial_state:', job)
 
     num_particles = job.cached_statepoint['num_particles']
     density = job.cached_statepoint['density']
@@ -131,12 +137,26 @@ def hard_sphere_create_initial_state(*jobs):
     device.notice('Done.')
 
     hoomd.write.GSD.write(
-        state=sim.state, filename=job.fn('hard_sphere_initial_state.gsd'), mode='wb'
+        state=sim.state, filename=job.fn('initial_state.gsd'), mode='wb'
     )
 
     if communicator.rank == 0:
-        print(f'completed hard_sphere_create_initial_state: {job}')
+        print(f'completed {__name__}.create_initial_state: {job}')
 
+
+ValidationWorkflow.add_action(
+    f'{__name__}.create_initial_state',
+    Action(
+        method=create_initial_state,
+        configuration={
+            'products': ['initial_state.gsd'],
+            'launchers': ['mpi'],
+            'group': _group_cpu,
+            'resources': _resources_cpu
+            | {'walltime': {'per_submission': CONFIG['short_walltime']}},
+        },
+    ),
+)
 
 def make_mc_simulation(job, device, initial_state, sim_mode, extra_loggables=None):
     """Make a hard sphere MC Simulation.
@@ -155,9 +175,6 @@ def make_mc_simulation(job, device, initial_state, sim_mode, extra_loggables=Non
             files. Each tuple is a pair of the instance and the loggable
             quantity name.
     """
-    import hoomd
-    from custom_actions import ComputeDensity
-
     if extra_loggables is None:
         extra_loggables = []
 
@@ -216,11 +233,14 @@ def make_mc_simulation(job, device, initial_state, sim_mode, extra_loggables=Non
     return sim
 
 
-def run_nvt_sim(job, device, complete_filename):
+def run_nvt_sim(job, device):
     """Run MC sim in NVT."""
-    initial_state = job.fn('hard_sphere_initial_state.gsd')
     sim_mode = 'nvt'
 
+    if util.is_simulation_complete(job, device, sim_mode):
+        return
+
+    initial_state = job.fn('initial_state.gsd')
     sim = make_mc_simulation(job, device, initial_state, sim_mode, extra_loggables=[])
 
     # equilibrate
@@ -241,17 +261,18 @@ def run_nvt_sim(job, device, complete_filename):
     sim.run(RUN_STEPS)
     device.notice('Done.')
 
-    pathlib.Path(job.fn(complete_filename)).touch()
+    util.mark_simulation_complete(job, device, sim_mode)
 
 
-def run_npt_sim(job, device, complete_filename):
+def run_npt_sim(job, device):
     """Run MC sim in NPT."""
-    import hoomd
-
     # device
-    initial_state = job.fn('hard_sphere_initial_state.gsd')
     sim_mode = 'npt'
 
+    if util.is_simulation_complete(job, device, sim_mode):
+        return
+
+    initial_state = job.fn('initial_state.gsd')
     # box updates
     boxmc = hoomd.hpmc.update.BoxMC(
         betaP=job.cached_statepoint['pressure'], trigger=hoomd.trigger.Periodic(1)
@@ -301,16 +322,17 @@ def run_npt_sim(job, device, complete_filename):
     sim.run(RUN_STEPS)
     device.notice('Done.')
 
-    pathlib.Path(job.fn(complete_filename)).touch()
+    util.mark_simulation_complete(job, device, sim_mode)
 
 
-def run_nec_sim(job, device, complete_filename):
+def run_nec_sim(job, device):
     """Run MC sim in NVT with NEC."""
-    import hoomd
-    from custom_actions import ComputeDensity
-
-    initial_state = job.fn('hard_sphere_initial_state.gsd')
     sim_mode = 'nec'
+
+    if util.is_simulation_complete(job, device, sim_mode):
+        return
+
+    initial_state = job.fn('initial_state.gsd')
 
     mc = hoomd.hpmc.nec.integrate.Sphere(
         default_d=0.05, update_fraction=0.01, nselect=1
@@ -389,7 +411,7 @@ def run_nec_sim(job, device, complete_filename):
     sim.run(RUN_STEPS)
     device.notice('Done.')
 
-    pathlib.Path(job.fn(complete_filename)).touch()
+    util.mark_simulation_complete(job, device, sim_mode)
 
 
 sampling_jobs = []
@@ -397,22 +419,23 @@ job_definitions = [
     {
         'mode': 'nvt',
         'device_name': 'cpu',
-        'ranks_per_partition': NUM_CPU_RANKS,
-        'aggregator': partition_jobs_cpu_mpi,
+        'resources': _resources_cpu,
+        'group': _group_cpu,
     },
     {
         'mode': 'npt',
         'device_name': 'cpu',
-        'ranks_per_partition': NUM_CPU_RANKS,
-        'aggregator': partition_jobs_cpu_mpi,
+        'resources': _resources_cpu,
+        'group': _group_cpu,
     },
     {
         'mode': 'nec',
         'device_name': 'cpu',
-        'ranks_per_partition': 1,
-        'aggregator': partition_jobs_cpu_serial,
+        'resources': _resources_serial,
+        'group': _group_serial,
     },
 ]
+
 
 if CONFIG['enable_gpu']:
     job_definitions.extend(
@@ -420,42 +443,26 @@ if CONFIG['enable_gpu']:
             {
                 'mode': 'nvt',
                 'device_name': 'gpu',
-                'ranks_per_partition': 1,
-                'aggregator': partition_jobs_gpu,
+                'resources': _resources_gpu,
+                'group': _group_gpu,
             },
         ]
     )
 
 
-def add_sampling_job(mode, device_name, ranks_per_partition, aggregator):
+def add_sampling_job(mode, device_name, group, resources):
     """Add a sampling job to the workflow."""
-    directives = dict(
-        walltime=CONFIG['max_walltime'],
-        executable=CONFIG['executable'],
-        nranks=util.total_ranks_function(ranks_per_partition),
-    )
+    action_name = f'{__name__}.{mode}_{device_name}'
 
-    if device_name == 'gpu':
-        directives['ngpu'] = directives['nranks']
-
-    @Project.pre.after(hard_sphere_create_initial_state)
-    @Project.post.isfile(f'{mode}_{device_name}_complete')
-    @Project.operation(
-        name=f'hard_sphere_{mode}_{device_name}',
-        directives=directives,
-        aggregator=aggregator,
-    )
     def sampling_operation(*jobs):
         """Perform sampling simulation given the definition."""
-        import hoomd
-
         communicator = hoomd.communicator.Communicator(
-            ranks_per_partition=ranks_per_partition
+            ranks_per_partition=int(os.environ['ACTION_PROCESSES_PER_DIRECTORY'])
         )
         job = jobs[communicator.partition]
 
         if communicator.rank == 0:
-            print(f'starting hard_sphere_{mode}_{device_name}', job)
+            print(f'starting {action_name}:', job)
 
         if device_name == 'gpu':
             device_cls = hoomd.device.GPU
@@ -470,125 +477,132 @@ def add_sampling_job(mode, device_name, ranks_per_partition, aggregator):
         )
 
         globals().get(f'run_{mode}_sim')(
-            job, device, complete_filename=f'{mode}_{device_name}_complete'
+            job, device
         )
 
         if communicator.rank == 0:
-            print(f'completed hard_sphere_{mode}_{device_name}: {job}')
+            print(f'completed {action_name}: {job}')
 
-    sampling_jobs.append(sampling_operation)
+    sampling_jobs.append(action_name)
+
+    ValidationWorkflow.add_action(
+        action_name,
+        Action(
+            method=sampling_operation,
+            configuration={
+                'products': [
+                    util.get_job_filename(mode, device_name, 'trajectory', 'gsd'),
+                    util.get_job_filename(mode, device_name, 'quantities', 'h5'),
+                ],
+                'launchers': ['mpi'],
+                'group': group,
+                'resources': resources,
+                'previous_actions': [f'{__name__}.create_initial_state'],
+            },
+        ),
+    )
 
 
 for definition in job_definitions:
     add_sampling_job(**definition)
 
 
-@Project.pre(is_hard_sphere)
-@Project.pre.after(*sampling_jobs)
-@Project.post.true('hard_sphere_analysis_complete')
-@Project.operation(
-    directives=dict(walltime=CONFIG['short_walltime'], executable=CONFIG['executable'])
-)
-def hard_sphere_analyze(job):
+def analyze(*jobs):
     """Analyze the output of all simulation modes."""
-    import matplotlib
-    import matplotlib.figure
-    import matplotlib.style
-    import numpy
-
     matplotlib.style.use('fivethirtyeight')
 
-    print('starting hard_sphere_analyze:', job)
+    for job in jobs:
+        print(f'starting {__name__}.analyze:', job)
 
-    sim_modes = [
-        'nvt_cpu',
-        'nec_cpu',
-        'npt_cpu',
-    ]
-
-    if os.path.exists(job.fn('nvt_gpu_quantities.h5')):
-        sim_modes.extend(['nvt_gpu'])
-
-    util._sort_sim_modes(sim_modes)
-
-    timesteps = {}
-    pressures = {}
-    densities = {}
-
-    for sim_mode in sim_modes:
-        log_traj = util.read_log(job.fn(sim_mode + '_quantities.h5'))
-        timesteps[sim_mode] = log_traj['hoomd-data/Simulation/timestep']
-
-        if 'nec' in sim_mode:
-            pressures[sim_mode] = log_traj[
-                'hoomd-data/hpmc/nec/integrate/Sphere/virial_pressure'
-            ]
-        else:
-            pressures[sim_mode] = log_traj['hoomd-data/hpmc/compute/SDF/betaP']
-
-        densities[sim_mode] = log_traj[
-            'hoomd-data/custom_actions/ComputeDensity/density'
+        sim_modes = [
+            'nvt_cpu',
+            'nec_cpu',
+            'npt_cpu',
         ]
 
-    # save averages
-    for mode in sim_modes:
-        job.document[mode] = dict(
-            pressure=float(numpy.mean(pressures[mode])),
-            density=float(numpy.mean(densities[mode])),
+        if os.path.exists(job.fn('nvt_gpu_quantities.h5')):
+            sim_modes.extend(['nvt_gpu'])
+
+        util._sort_sim_modes(sim_modes)
+
+        timesteps = {}
+        pressures = {}
+        densities = {}
+
+        for sim_mode in sim_modes:
+            log_traj = util.read_log(job.fn(sim_mode + '_quantities.h5'))
+            timesteps[sim_mode] = log_traj['hoomd-data/Simulation/timestep']
+
+            if 'nec' in sim_mode:
+                pressures[sim_mode] = log_traj[
+                    'hoomd-data/hpmc/nec/integrate/Sphere/virial_pressure'
+                ]
+            else:
+                pressures[sim_mode] = log_traj['hoomd-data/hpmc/compute/SDF/betaP']
+
+            densities[sim_mode] = log_traj[
+                'hoomd-data/custom_actions/ComputeDensity/density'
+            ]
+
+        # save averages
+        for mode in sim_modes:
+            job.document[mode] = dict(
+                pressure=float(numpy.mean(pressures[mode])),
+                density=float(numpy.mean(densities[mode])),
+            )
+
+        fig = matplotlib.figure.Figure(figsize=(10, 10 / 1.618 * 2), layout='tight')
+        ax = fig.add_subplot(2, 1, 1)
+        util.plot_timeseries(
+            ax=ax,
+            timesteps=timesteps,
+            data=densities,
+            ylabel=r'$\rho$',
+            expected=job.cached_statepoint['density'],
+            max_points=500,
+        )
+        ax.legend()
+
+        ax = fig.add_subplot(2, 1, 2)
+        util.plot_timeseries(
+            ax=ax,
+            timesteps=timesteps,
+            data=pressures,
+            ylabel=r'$\beta P$',
+            expected=job.cached_statepoint['pressure'],
+            max_points=500,
         )
 
-    fig = matplotlib.figure.Figure(figsize=(10, 10 / 1.618 * 2), layout='tight')
-    ax = fig.add_subplot(2, 1, 1)
-    util.plot_timeseries(
-        ax=ax,
-        timesteps=timesteps,
-        data=densities,
-        ylabel=r'$\rho$',
-        expected=job.cached_statepoint['density'],
-        max_points=500,
-    )
-    ax.legend()
-
-    ax = fig.add_subplot(2, 1, 2)
-    util.plot_timeseries(
-        ax=ax,
-        timesteps=timesteps,
-        data=pressures,
-        ylabel=r'$\beta P$',
-        expected=job.cached_statepoint['pressure'],
-        max_points=500,
-    )
-
-    fig.suptitle(
-        f'$\\rho={job.cached_statepoint["density"]}$, '
-        f'$N={job.cached_statepoint["num_particles"]}$, '
-        f'replicate={job.cached_statepoint["replicate_idx"]}'
-    )
-    fig.savefig(job.fn('nvt_npt_plots.svg'), bbox_inches='tight')
-
-    job.document['hard_sphere_analysis_complete'] = True
+        fig.suptitle(
+            f'$\\rho={job.cached_statepoint["density"]}$, '
+            f'$N={job.cached_statepoint["num_particles"]}$, '
+            f'replicate={job.cached_statepoint["replicate_idx"]}'
+        )
+        fig.savefig(job.fn('nvt_npt_plots.svg'), bbox_inches='tight')
 
 
-@Project.pre(lambda *jobs: util.true_all(*jobs, key='hard_sphere_analysis_complete'))
-@Project.post(
-    lambda *jobs: util.true_all(*jobs, key='hard_sphere_compare_modes_complete')
-)
-@Project.operation(
-    directives=dict(executable=CONFIG['executable']),
-    aggregator=aggregator.groupby(
-        key=['density', 'num_particles'], sort_by='replicate_idx', select=is_hard_sphere
+ValidationWorkflow.add_action(
+    f'{__name__}.analyze',
+    Action(
+        method=analyze,
+        configuration={
+            'products': ['nvt_npt_plots.svg'],
+            'previous_actions': sampling_jobs,
+            'group': _group,
+            'resources': {
+                'processes': {'per_submission': 1},
+                'walltime': {'per_directory': '00:01:00'},
+            },
+        },
     ),
 )
-def hard_sphere_compare_modes(*jobs):
-    """Compares the tested simulation modes."""
-    import matplotlib
-    import matplotlib.figure
-    import matplotlib.style
-    import numpy
 
+
+def compare_modes(*jobs):
+    """Compares the tested simulation modes."""
     matplotlib.style.use('fivethirtyeight')
 
-    print('starting hard_sphere_compare_modes:', jobs[0])
+    print(f'starting {__name__}.compare_modes:', jobs[0])
 
     sim_modes = [
         'nvt_cpu',
@@ -633,7 +647,7 @@ def hard_sphere_compare_modes(*jobs):
             avg_value = {mode: numpy.mean(quantities[mode]) for mode in sim_modes}
             reference = numpy.mean([avg_value[mode] for mode in sim_modes])
 
-        avg_quantity, stderr_quantity = util.plot_vs_expected(
+        util.plot_vs_expected(
             ax=ax,
             values=quantities,
             ylabel=labels[quantity_name],
@@ -645,5 +659,18 @@ def hard_sphere_compare_modes(*jobs):
     filename = f'hard_sphere_compare_density{round(set_density, 2)}.svg'
     fig.savefig(os.path.join(jobs[0]._project.path, filename), bbox_inches='tight')
 
-    for job in jobs:
-        job.document['hard_sphere_compare_modes_complete'] = True
+
+ValidationWorkflow.add_action(
+    f'{__name__}.compare_modes',
+    Action(
+        method=compare_modes,
+        configuration={
+            'previous_actions': [f'{__name__}.analyze'],
+            'group': _group_compare,
+            'resources': {
+                'processes': {'per_submission': 1},
+                'walltime': {'per_directory': '00:02:00'},
+            },
+        },
+    ),
+)
