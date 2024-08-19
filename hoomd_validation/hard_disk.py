@@ -415,7 +415,7 @@ def run_npt_sim(job, device):
         )
 
 
-def run_nec_sim(job, device, complete_filename):
+def run_nec_sim(job, device):
     """Run MC sim in NVT with NEC."""
     sim_mode = 'nec'
 
@@ -637,79 +637,80 @@ for definition in job_definitions:
     add_sampling_job(**definition)
 
 
-def analyze(job):
+def analyze(*jobs):
     """Analyze the output of all simulation modes."""
     matplotlib.style.use('fivethirtyeight')
 
-    print('starting hard_disk_analyze:', job)
+    for job in jobs:
+        print(f'starting {__name__}.analyze:', job)
 
-    sim_modes = [
-        'nvt_cpu',
-        'nec_cpu',
-        'npt_cpu',
-    ]
-
-    if os.path.exists(job.fn('nvt_gpu_quantities.h5')):
-        sim_modes.extend(['nvt_gpu'])
-
-    util._sort_sim_modes(sim_modes)
-
-    timesteps = {}
-    pressures = {}
-    densities = {}
-
-    for sim_mode in sim_modes:
-        log_traj = util.read_log(job.fn(sim_mode + '_quantities.h5'))
-
-        timesteps[sim_mode] = log_traj['hoomd-data/Simulation/timestep']
-
-        if 'nec' in sim_mode:
-            pressures[sim_mode] = log_traj[
-                'hoomd-data/hpmc/nec/integrate/Sphere/virial_pressure'
-            ]
-        else:
-            pressures[sim_mode] = log_traj['hoomd-data/hpmc/compute/SDF/betaP']
-
-        densities[sim_mode] = log_traj[
-            'hoomd-data/custom_actions/ComputeDensity/density'
+        sim_modes = [
+            'nvt_cpu',
+            'nec_cpu',
+            'npt_cpu',
         ]
 
-    # save averages
-    for mode in sim_modes:
-        job.document[mode] = dict(
-            pressure=float(numpy.mean(pressures[mode])),
-            density=float(numpy.mean(densities[mode])),
+        if os.path.exists(job.fn('nvt_gpu_quantities.h5')):
+            sim_modes.extend(['nvt_gpu'])
+
+        util._sort_sim_modes(sim_modes)
+
+        timesteps = {}
+        pressures = {}
+        densities = {}
+
+        for sim_mode in sim_modes:
+            log_traj = util.read_log(job.fn(sim_mode + '_quantities.h5'))
+
+            timesteps[sim_mode] = log_traj['hoomd-data/Simulation/timestep']
+
+            if 'nec' in sim_mode:
+                pressures[sim_mode] = log_traj[
+                    'hoomd-data/hpmc/nec/integrate/Sphere/virial_pressure'
+                ]
+            else:
+                pressures[sim_mode] = log_traj['hoomd-data/hpmc/compute/SDF/betaP']
+
+            densities[sim_mode] = log_traj[
+                'hoomd-data/custom_actions/ComputeDensity/density'
+            ]
+
+        # save averages
+        for mode in sim_modes:
+            job.document[mode] = dict(
+                pressure=float(numpy.mean(pressures[mode])),
+                density=float(numpy.mean(densities[mode])),
+            )
+
+        # Plot results
+        fig = matplotlib.figure.Figure(figsize=(10, 10 / 1.618 * 2), layout='tight')
+        ax = fig.add_subplot(2, 1, 1)
+        util.plot_timeseries(
+            ax=ax,
+            timesteps=timesteps,
+            data=densities,
+            ylabel=r'$\rho$',
+            expected=job.cached_statepoint['density'],
+            max_points=500,
+        )
+        ax.legend()
+
+        ax = fig.add_subplot(2, 1, 2)
+        util.plot_timeseries(
+            ax=ax,
+            timesteps=timesteps,
+            data=pressures,
+            ylabel=r'$\beta P$',
+            expected=job.cached_statepoint['pressure'],
+            max_points=500,
         )
 
-    # Plot results
-    fig = matplotlib.figure.Figure(figsize=(10, 10 / 1.618 * 2), layout='tight')
-    ax = fig.add_subplot(2, 1, 1)
-    util.plot_timeseries(
-        ax=ax,
-        timesteps=timesteps,
-        data=densities,
-        ylabel=r'$\rho$',
-        expected=job.cached_statepoint['density'],
-        max_points=500,
-    )
-    ax.legend()
-
-    ax = fig.add_subplot(2, 1, 2)
-    util.plot_timeseries(
-        ax=ax,
-        timesteps=timesteps,
-        data=pressures,
-        ylabel=r'$\beta P$',
-        expected=job.cached_statepoint['pressure'],
-        max_points=500,
-    )
-
-    fig.suptitle(
-        f'$\\rho={job.cached_statepoint["density"]}$, '
-        f'$N={job.cached_statepoint["num_particles"]}$, '
-        f'replicate={job.cached_statepoint["replicate_idx"]}'
-    )
-    fig.savefig(job.fn('nvt_npt_plots.svg'), bbox_inches='tight')
+        fig.suptitle(
+            f'$\\rho={job.cached_statepoint["density"]}$, '
+            f'$N={job.cached_statepoint["num_particles"]}$, '
+            f'replicate={job.cached_statepoint["replicate_idx"]}'
+        )
+        fig.savefig(job.fn('nvt_npt_plots.svg'), bbox_inches='tight')
 
 
 ValidationWorkflow.add_action(
@@ -733,7 +734,7 @@ def compare_modes(*jobs):
     """Compares the tested simulation modes."""
     matplotlib.style.use('fivethirtyeight')
 
-    print('starting hard_disk_compare_modes:', jobs[0])
+    print(f'starting {__name__}.compare_modes:', jobs[0])
 
     sim_modes = [
         'nvt_cpu',
