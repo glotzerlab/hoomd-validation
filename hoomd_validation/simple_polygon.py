@@ -3,31 +3,26 @@
 
 """Simple polygon equation of state validation test."""
 
+import itertools
 import json
 import os
-import pathlib
-
-import util
-from config import CONFIG
-import itertools
 
 import hoomd
-import numpy
-from workflow import Action
-from workflow_class import ValidationWorkflow
-import hoomd
-import numpy
-from custom_actions import ComputeDensity
 import matplotlib
 import matplotlib.figure
 import matplotlib.style
 import numpy
+import util
+from config import CONFIG
+from custom_actions import ComputeDensity
+from workflow import Action
+from workflow_class import ValidationWorkflow
 
 # Run parameters shared between simulations.
 # Step counts must be even and a multiple of the log quantity period.
 RANDOMIZE_STEPS = 20_000
 EQUILIBRATE_STEPS = 100_000
-RUN_STEPS = 100_000
+RUN_STEPS = 500_000
 RESTART_STEPS = RUN_STEPS // 10
 TOTAL_STEPS = RANDOMIZE_STEPS + EQUILIBRATE_STEPS + RUN_STEPS
 SHAPE_VERTICES = [
@@ -71,7 +66,6 @@ def job_statepoints():
             )
 
 
-
 _group = {
     'sort_by': ['/density'],
     'include': [{'condition': ['/subproject', '==', __name__]}],
@@ -88,6 +82,7 @@ _group_compare = _group | {
     'split_by_sort_key': True,
     'submit_whole': True,
 }
+
 
 def create_initial_state(*jobs):
     """Create initial system configuration."""
@@ -472,7 +467,7 @@ job_definitions = [
 def add_sampling_job(mode, device_name, resources, group):
     """Add a sampling job to the workflow."""
     action_name = f'{__name__}.{mode}_{device_name}'
-    
+
     def sampling_operation(*jobs):
         """Perform sampling simulation given the definition."""
         communicator = hoomd.communicator.Communicator(
@@ -490,9 +485,7 @@ def add_sampling_job(mode, device_name, resources, group):
             ),
         )
 
-        globals().get(f'run_{mode}_sim')(
-            job, device
-        )
+        globals().get(f'run_{mode}_sim')(job, device)
 
         if communicator.rank == 0:
             print(f'completed {action_name}: {job}')
@@ -603,6 +596,7 @@ ValidationWorkflow.add_action(
         },
     ),
 )
+
 
 def compare_modes(*jobs):
     """Compares the tested simulation modes."""

@@ -825,9 +825,7 @@ def add_mc_sampling_job(mode, device_name):
             ),
         )
 
-        globals().get(f'run_{mode}_mc_sim')(
-            job, device
-        )
+        globals().get(f'run_{mode}_mc_sim')(job, device)
 
         if communicator.rank == 0:
             print(f'completed {action_name}: {job}')
@@ -1414,11 +1412,7 @@ def add_nve_md_job(device_name, run_length):
                 job, f'{sim_mode}_{device_name}.log'
             ),
         )
-        run_nve_md_sim(
-            job,
-            device,
-            run_length=run_length
-        )
+        run_nve_md_sim(job, device, run_length=run_length)
 
         if communicator.rank == 0:
             print(f'completed {action_name}: {job}')

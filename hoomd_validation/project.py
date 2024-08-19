@@ -7,13 +7,11 @@
 import alj_2d
 import config
 import hard_disk
-
 import hard_sphere
 import lj_fluid
 import lj_union
 import signac
-
-# import patchy_particle_pressure
+import patchy_particle_pressure
 import simple_polygon
 from workflow_class import ValidationWorkflow
 
@@ -24,7 +22,7 @@ all_subprojects = [
     hard_disk,
     hard_sphere,
     simple_polygon,
-    # 'patchy_particle_pressure',
+    patchy_particle_pressure,
 ]
 
 

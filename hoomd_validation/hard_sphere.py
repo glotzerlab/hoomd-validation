@@ -3,24 +3,19 @@
 
 """Hard sphere equation of state validation test."""
 
-import os
-import pathlib
-
-import util
-from config import CONFIG
 import itertools
+import os
 
 import hoomd
-import numpy
-from workflow import Action
-from workflow_class import ValidationWorkflow
-from custom_actions import ComputeDensity
 import matplotlib
 import matplotlib.figure
 import matplotlib.style
 import numpy
-
-
+import util
+from config import CONFIG
+from custom_actions import ComputeDensity
+from workflow import Action
+from workflow_class import ValidationWorkflow
 
 # Run parameters shared between simulations.
 # Step counts must be even and a multiple of the log quantity period.
@@ -71,17 +66,10 @@ _group_cpu = _group | {
 _resources_gpu = _resources | {'processes': {'per_directory': 1}, 'gpus_per_process': 1}
 _group_gpu = _group | {'maximum_size': CONFIG['max_gpus_submission']}
 _group_compare = _group | {
-    'sort_by': ['/kT', '/density', '/num_particles'],
-    'split_by_sort_key': True,
-    'submit_whole': True,
-}
-
-_group_compare = _group | {
     'sort_by': ['/density', '/num_particles'],
     'split_by_sort_key': True,
     'submit_whole': True,
 }
-
 
 def create_initial_state(*jobs):
     """Create initial system configuration."""
@@ -157,6 +145,7 @@ ValidationWorkflow.add_action(
         },
     ),
 )
+
 
 def make_mc_simulation(job, device, initial_state, sim_mode, extra_loggables=None):
     """Make a hard sphere MC Simulation.
@@ -476,9 +465,7 @@ def add_sampling_job(mode, device_name, group, resources):
             ),
         )
 
-        globals().get(f'run_{mode}_sim')(
-            job, device
-        )
+        globals().get(f'run_{mode}_sim')(job, device)
 
         if communicator.rank == 0:
             print(f'completed {action_name}: {job}')
