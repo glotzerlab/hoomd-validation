@@ -4,7 +4,7 @@
 """Project workflow entry point."""
 
 # Define subproject flow operations
-# import alj_2d
+import alj_2d
 import config
 
 # import hard_disk
@@ -18,7 +18,7 @@ import signac
 from workflow_class import ValidationWorkflow
 
 all_subprojects = [
-    # 'alj_2d',
+    alj_2d,
     lj_fluid,
     lj_union,
     # 'hard_disk',

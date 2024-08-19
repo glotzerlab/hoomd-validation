@@ -1422,7 +1422,7 @@ def add_nve_md_job(device_name, run_length):
         )
 
         if communicator.rank == 0:
-            print(f'completed {action_name} {job}')
+            print(f'completed {action_name}: {job}')
 
     nve_md_sampling_jobs.append(action_name)
 
