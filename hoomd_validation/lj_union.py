@@ -585,7 +585,7 @@ def make_mc_simulation(job, device, initial_state, sim_mode, extra_loggables=Non
     return sim
 
 
-def run_nvt_mc_sim(job, device, complete_filename):
+def run_nvt_mc_sim(job, device):
     """Run MC sim in NVT."""
     # simulation
 
@@ -669,7 +669,7 @@ def run_nvt_mc_sim(job, device, complete_filename):
         )
 
 
-def run_npt_mc_sim(job, device, complete_filename):
+def run_npt_mc_sim(job, device):
     """Run MC sim in NPT."""
     sim_mode = 'npt_mc'
 
@@ -826,7 +826,7 @@ def add_mc_sampling_job(mode, device_name):
         )
 
         globals().get(f'run_{mode}_mc_sim')(
-            job, device, complete_filename=f'{mode}_mc_{device_name}_complete'
+            job, device
         )
 
         if communicator.rank == 0:
@@ -1321,7 +1321,7 @@ ValidationWorkflow.add_action(
 #################################
 
 
-def run_nve_md_sim(job, device, run_length, complete_filename):
+def run_nve_md_sim(job, device, run_length):
     """Run the MD simulation in NVE."""
     sim_mode = 'nve_md'
 
@@ -1417,8 +1417,7 @@ def add_nve_md_job(device_name, run_length):
         run_nve_md_sim(
             job,
             device,
-            run_length=run_length,
-            complete_filename=f'{sim_mode}_{device_name}_complete',
+            run_length=run_length
         )
 
         if communicator.rank == 0:
