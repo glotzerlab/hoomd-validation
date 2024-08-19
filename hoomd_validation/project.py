@@ -14,7 +14,7 @@ import lj_union
 import signac
 
 # import patchy_particle_pressure
-# import simple_polygon
+import simple_polygon
 from workflow_class import ValidationWorkflow
 
 all_subprojects = [
@@ -23,7 +23,7 @@ all_subprojects = [
     lj_union,
     hard_disk,
     hard_sphere,
-    # 'simple_polygon',
+    simple_polygon,
     # 'patchy_particle_pressure',
 ]
 

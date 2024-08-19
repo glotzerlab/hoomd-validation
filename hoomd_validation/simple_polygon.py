@@ -9,14 +9,25 @@ import pathlib
 
 import util
 from config import CONFIG
-from flow import aggregator
-from project_class import Project
+import itertools
+
+import hoomd
+import numpy
+from workflow import Action
+from workflow_class import ValidationWorkflow
+import hoomd
+import numpy
+from custom_actions import ComputeDensity
+import matplotlib
+import matplotlib.figure
+import matplotlib.style
+import numpy
 
 # Run parameters shared between simulations.
 # Step counts must be even and a multiple of the log quantity period.
 RANDOMIZE_STEPS = 20_000
 EQUILIBRATE_STEPS = 100_000
-RUN_STEPS = 500_000
+RUN_STEPS = 100_000
 RESTART_STEPS = RUN_STEPS // 10
 TOTAL_STEPS = RANDOMIZE_STEPS + EQUILIBRATE_STEPS + RUN_STEPS
 SHAPE_VERTICES = [
@@ -34,7 +45,9 @@ WRITE_PERIOD = 1_000
 LOG_PERIOD = {'trajectory': 50_000, 'quantities': 100}
 NUM_CPU_RANKS = min(8, CONFIG['max_cores_sim'])
 
-WALLTIME_STOP_SECONDS = CONFIG['max_walltime'] * 3600 - 10 * 60
+WALLTIME_STOP_SECONDS = (
+    int(os.environ.get('ACTION_WALLTIME_IN_MINUTES', 10)) - 10
+) * 60
 
 
 def job_statepoints():
@@ -58,45 +71,34 @@ def job_statepoints():
             )
 
 
-def is_simple_polygon(job):
-    """Test if a given job is part of the simple_polygon subproject."""
-    return job.cached_statepoint['subproject'] == 'simple_polygon'
 
+_group = {
+    'sort_by': ['/density'],
+    'include': [{'condition': ['/subproject', '==', __name__]}],
+}
+_resources = {'walltime': {'per_submission': CONFIG['max_walltime']}}
+_resources_cpu = _resources | {'processes': {'per_directory': NUM_CPU_RANKS}}
+_group_cpu = _group | {
+    'maximum_size': min(
+        CONFIG['replicates'], CONFIG['max_cores_submission'] // NUM_CPU_RANKS
+    )
+}
+_group_compare = _group | {
+    'sort_by': ['/density', '/num_particles'],
+    'split_by_sort_key': True,
+    'submit_whole': True,
+}
 
-partition_jobs_cpu_serial = aggregator.groupsof(
-    num=min(CONFIG['replicates'], CONFIG['max_cores_submission']),
-    sort_by='density',
-    select=is_simple_polygon,
-)
-
-partition_jobs_cpu_mpi = aggregator.groupsof(
-    num=min(CONFIG['replicates'], CONFIG['max_cores_submission'] // NUM_CPU_RANKS),
-    sort_by='density',
-    select=is_simple_polygon,
-)
-
-
-@Project.post.isfile('simple_polygon_initial_state.gsd')
-@Project.operation(
-    directives=dict(
-        executable=CONFIG['executable'],
-        nranks=util.total_ranks_function(NUM_CPU_RANKS),
-        walltime=1,
-    ),
-    aggregator=partition_jobs_cpu_mpi,
-)
-def simple_polygon_create_initial_state(*jobs):
+def create_initial_state(*jobs):
     """Create initial system configuration."""
-    import itertools
-
-    import hoomd
-    import numpy
-
     communicator = hoomd.communicator.Communicator(ranks_per_partition=NUM_CPU_RANKS)
     job = jobs[communicator.partition]
 
+    if job.isfile('initial_state.gsd'):
+        return
+
     if communicator.rank == 0:
-        print('starting simple_polygon_create_initial_state:', job)
+        print(f'starting {__name__}.create_initial_state:', job)
 
     num_particles = job.cached_statepoint['num_particles']
     density = job.cached_statepoint['density']
@@ -145,13 +147,28 @@ def simple_polygon_create_initial_state(*jobs):
 
     hoomd.write.GSD.write(
         state=sim.state,
-        filename=job.fn('simple_polygon_initial_state.gsd'),
+        filename=job.fn('initial_state.gsd'),
         mode='wb',
         logger=trajectory_logger,
     )
 
     if communicator.rank == 0:
-        print(f'completed simple_polygon_create_initial_state: {job}')
+        print(f'completed {__name__}.create_initial_state: {job}')
+
+
+ValidationWorkflow.add_action(
+    f'{__name__}.create_initial_state',
+    Action(
+        method=create_initial_state,
+        configuration={
+            'products': ['initial_state.gsd'],
+            'launchers': ['mpi'],
+            'group': _group_cpu,
+            'resources': _resources_cpu
+            | {'walltime': {'per_submission': CONFIG['short_walltime']}},
+        },
+    ),
+)
 
 
 def make_mc_simulation(job, device, initial_state, sim_mode, extra_loggables=None):
@@ -171,10 +188,6 @@ def make_mc_simulation(job, device, initial_state, sim_mode, extra_loggables=Non
             files. Each tuple is a pair of the instance and the loggable
             quantity name.
     """
-    import hoomd
-    import numpy
-    from custom_actions import ComputeDensity
-
     if extra_loggables is None:
         extra_loggables = []
 
@@ -238,17 +251,19 @@ def make_mc_simulation(job, device, initial_state, sim_mode, extra_loggables=Non
     return sim
 
 
-def run_nvt_sim(job, device, complete_filename):
+def run_nvt_sim(job, device):
     """Run MC sim in NVT."""
-    import hoomd
-
     sim_mode = 'nvt'
+
+    if util.is_simulation_complete(job, device, sim_mode):
+        return
+
     restart_filename = util.get_job_filename(sim_mode, device, 'restart', 'gsd')
     if job.isfile(restart_filename):
         initial_state = job.fn(restart_filename)
         restart = True
     else:
-        initial_state = job.fn('simple_polygon_initial_state.gsd')
+        initial_state = job.fn('initial_state.gsd')
         restart = False
 
     sim = make_mc_simulation(job, device, initial_state, sim_mode, extra_loggables=[])
@@ -309,7 +324,7 @@ def run_nvt_sim(job, device, complete_filename):
     hoomd.write.GSD.write(state=sim.state, filename=job.fn(restart_filename), mode='wb')
 
     if sim.timestep == TOTAL_STEPS:
-        pathlib.Path(job.fn(complete_filename)).touch()
+        util.mark_simulation_complete(job, device, sim_mode)
         device.notice('Done.')
     else:
         device.notice(
@@ -318,18 +333,19 @@ def run_nvt_sim(job, device, complete_filename):
         )
 
 
-def run_npt_sim(job, device, complete_filename):
+def run_npt_sim(job, device):
     """Run MC sim in NPT."""
-    import hoomd
-
-    # device
     sim_mode = 'npt'
+
+    if util.is_simulation_complete(job, device, sim_mode):
+        return
+
     restart_filename = util.get_job_filename(sim_mode, device, 'restart', 'gsd')
     if job.isfile(restart_filename):
         initial_state = job.fn(restart_filename)
         restart = True
     else:
-        initial_state = job.fn('simple_polygon_initial_state.gsd')
+        initial_state = job.fn('initial_state.gsd')
         restart = False
 
     # box updates
@@ -427,7 +443,7 @@ def run_npt_sim(job, device, complete_filename):
     hoomd.write.GSD.write(state=sim.state, filename=job.fn(restart_filename), mode='wb')
 
     if sim.timestep == TOTAL_STEPS:
-        pathlib.Path(job.fn(complete_filename)).touch()
+        util.mark_simulation_complete(job, device, sim_mode)
         device.notice('Done.')
     else:
         device.notice(
@@ -441,39 +457,26 @@ job_definitions = [
     {
         'mode': 'nvt',
         'device_name': 'cpu',
-        'ranks_per_partition': NUM_CPU_RANKS,
-        'aggregator': partition_jobs_cpu_mpi,
+        'resources': _resources_cpu,
+        'group': _group_cpu,
     },
     {
         'mode': 'npt',
         'device_name': 'cpu',
-        'ranks_per_partition': NUM_CPU_RANKS,
-        'aggregator': partition_jobs_cpu_mpi,
+        'resources': _resources_cpu,
+        'group': _group_cpu,
     },
 ]
 
 
-def add_sampling_job(mode, device_name, ranks_per_partition, aggregator):
+def add_sampling_job(mode, device_name, resources, group):
     """Add a sampling job to the workflow."""
-    directives = dict(
-        walltime=CONFIG['max_walltime'],
-        executable=CONFIG['executable'],
-        nranks=util.total_ranks_function(ranks_per_partition),
-    )
-
-    @Project.pre.after(simple_polygon_create_initial_state)
-    @Project.post.isfile(f'{mode}_{device_name}_complete')
-    @Project.operation(
-        name=f'simple_polygon_{mode}_{device_name}',
-        directives=directives,
-        aggregator=aggregator,
-    )
+    action_name = f'{__name__}.{mode}_{device_name}'
+    
     def sampling_operation(*jobs):
         """Perform sampling simulation given the definition."""
-        import hoomd
-
         communicator = hoomd.communicator.Communicator(
-            ranks_per_partition=ranks_per_partition
+            ranks_per_partition=int(os.environ['ACTION_PROCESSES_PER_DIRECTORY'])
         )
         job = jobs[communicator.partition]
 
@@ -488,120 +491,124 @@ def add_sampling_job(mode, device_name, ranks_per_partition, aggregator):
         )
 
         globals().get(f'run_{mode}_sim')(
-            job, device, complete_filename=f'{mode}_{device_name}_complete'
+            job, device
         )
 
         if communicator.rank == 0:
-            print(f'completed simple_polygon_{mode}_{device_name} {job}')
+            print(f'completed {action_name}: {job}')
 
-    sampling_jobs.append(sampling_operation)
+    sampling_jobs.append(action_name)
+
+    ValidationWorkflow.add_action(
+        action_name,
+        Action(
+            method=sampling_operation,
+            configuration={
+                'products': [
+                    util.get_job_filename(mode, device_name, 'trajectory', 'gsd'),
+                    util.get_job_filename(mode, device_name, 'quantities', 'h5'),
+                ],
+                'launchers': ['mpi'],
+                'group': group,
+                'resources': resources,
+                'previous_actions': [f'{__name__}.create_initial_state'],
+            },
+        ),
+    )
 
 
 for definition in job_definitions:
     add_sampling_job(**definition)
 
 
-@Project.pre(is_simple_polygon)
-@Project.pre.after(*sampling_jobs)
-@Project.post.true('simple_polygon_analysis_complete')
-@Project.operation(
-    directives=dict(walltime=CONFIG['short_walltime'], executable=CONFIG['executable'])
-)
-def simple_polygon_analyze(job):
+def analyze(*jobs):
     """Analyze the output of all simulation modes."""
-    import matplotlib
-    import matplotlib.figure
-    import matplotlib.style
-    import numpy
-
     matplotlib.style.use('fivethirtyeight')
 
-    print('starting simple_polygon_analyze:', job)
+    for job in jobs:
+        print(f'starting {__name__}.analyze:', job)
 
-    sim_modes = []
-    for _ensemble in ['nvt', 'npt']:
-        if job.isfile(f'{_ensemble}_cpu_quantities.h5'):
-            sim_modes.append(f'{_ensemble}_cpu')
+        sim_modes = []
+        for _ensemble in ['nvt', 'npt']:
+            if job.isfile(f'{_ensemble}_cpu_quantities.h5'):
+                sim_modes.append(f'{_ensemble}_cpu')
 
-    util._sort_sim_modes(sim_modes)
+        util._sort_sim_modes(sim_modes)
 
-    timesteps = {}
-    pressures = {}
-    densities = {}
+        timesteps = {}
+        pressures = {}
+        densities = {}
 
-    for sim_mode in sim_modes:
-        log_traj = util.read_log(job.fn(sim_mode + '_quantities.h5'))
+        for sim_mode in sim_modes:
+            log_traj = util.read_log(job.fn(sim_mode + '_quantities.h5'))
 
-        timesteps[sim_mode] = log_traj['hoomd-data/Simulation/timestep']
+            timesteps[sim_mode] = log_traj['hoomd-data/Simulation/timestep']
 
-        pressures[sim_mode] = log_traj['hoomd-data/hpmc/compute/SDF/betaP']
+            pressures[sim_mode] = log_traj['hoomd-data/hpmc/compute/SDF/betaP']
 
-        densities[sim_mode] = log_traj[
-            'hoomd-data/custom_actions/ComputeDensity/density'
-        ]
+            densities[sim_mode] = log_traj[
+                'hoomd-data/custom_actions/ComputeDensity/density'
+            ]
 
-    # save averages
-    for mode in sim_modes:
-        job.document[mode] = dict(
-            pressure=float(numpy.mean(pressures[mode])),
-            density=float(numpy.mean(densities[mode])),
+        # save averages
+        for mode in sim_modes:
+            job.document[mode] = dict(
+                pressure=float(numpy.mean(pressures[mode])),
+                density=float(numpy.mean(densities[mode])),
+            )
+
+        # Plot results
+        fig = matplotlib.figure.Figure(figsize=(10, 10 / 1.618 * 2), layout='tight')
+        ax = fig.add_subplot(2, 1, 1)
+        util.plot_timeseries(
+            ax=ax,
+            timesteps=timesteps,
+            data=densities,
+            ylabel=r'$\rho$',
+            expected=job.cached_statepoint['density'],
+            max_points=500,
+        )
+        ax.legend()
+
+        ax = fig.add_subplot(2, 1, 2)
+        util.plot_timeseries(
+            ax=ax,
+            timesteps=timesteps,
+            data=pressures,
+            ylabel=r'$\beta P$',
+            expected=job.cached_statepoint['pressure'],
+            max_points=500,
         )
 
-    # Plot results
-    fig = matplotlib.figure.Figure(figsize=(10, 10 / 1.618 * 2), layout='tight')
-    ax = fig.add_subplot(2, 1, 1)
-    util.plot_timeseries(
-        ax=ax,
-        timesteps=timesteps,
-        data=densities,
-        ylabel=r'$\rho$',
-        expected=job.cached_statepoint['density'],
-        max_points=500,
-    )
-    ax.legend()
-
-    ax = fig.add_subplot(2, 1, 2)
-    util.plot_timeseries(
-        ax=ax,
-        timesteps=timesteps,
-        data=pressures,
-        ylabel=r'$\beta P$',
-        expected=job.cached_statepoint['pressure'],
-        max_points=500,
-    )
-
-    fig.suptitle(
-        f'$\\rho={job.cached_statepoint["density"]}$, '
-        f'$N={job.cached_statepoint["num_particles"]}$, '
-        f'replicate={job.cached_statepoint["replicate_idx"]}'
-    )
-    fig.savefig(job.fn('nvt_npt_plots.svg'), bbox_inches='tight')
-
-    job.document['simple_polygon_analysis_complete'] = True
+        fig.suptitle(
+            f'$\\rho={job.cached_statepoint["density"]}$, '
+            f'$N={job.cached_statepoint["num_particles"]}$, '
+            f'replicate={job.cached_statepoint["replicate_idx"]}'
+        )
+        fig.savefig(job.fn('nvt_npt_plots.svg'), bbox_inches='tight')
 
 
-@Project.pre(lambda *jobs: util.true_all(*jobs, key='simple_polygon_analysis_complete'))
-@Project.post(
-    lambda *jobs: util.true_all(*jobs, key='simple_polygon_compare_modes_complete')
-)
-@Project.operation(
-    directives=dict(executable=CONFIG['executable']),
-    aggregator=aggregator.groupby(
-        key=['density', 'num_particles'],
-        sort_by='replicate_idx',
-        select=is_simple_polygon,
+ValidationWorkflow.add_action(
+    f'{__name__}.analyze',
+    Action(
+        method=analyze,
+        configuration={
+            'products': ['nvt_npt_plots.svg'],
+            'previous_actions': sampling_jobs,
+            'group': _group,
+            'resources': {
+                'processes': {'per_submission': 1},
+                'walltime': {'per_directory': '00:01:00'},
+            },
+        },
     ),
 )
-def simple_polygon_compare_modes(*jobs):
-    """Compares the tested simulation modes."""
-    import matplotlib
-    import matplotlib.figure
-    import matplotlib.style
-    import numpy
 
+def compare_modes(*jobs):
+    """Compares the tested simulation modes."""
     matplotlib.style.use('fivethirtyeight')
 
-    print('starting simple_polygon_compare_modes:', jobs[0])
+    print(f'starting {__name__}.compare_modes:', jobs[0])
 
     sim_modes = []
     for _ensemble in ['nvt', 'npt']:
@@ -642,7 +649,7 @@ def simple_polygon_compare_modes(*jobs):
             avg_value = {mode: numpy.mean(quantities[mode]) for mode in sim_modes}
             reference = numpy.mean([avg_value[mode] for mode in sim_modes])
 
-        avg_quantity, stderr_quantity = util.plot_vs_expected(
+        util.plot_vs_expected(
             ax=ax,
             values=quantities,
             ylabel=labels[quantity_name],
@@ -654,5 +661,18 @@ def simple_polygon_compare_modes(*jobs):
     filename = f'simple_polygon_compare_density{round(set_density, 2)}.svg'
     fig.savefig(os.path.join(jobs[0]._project.path, filename), bbox_inches='tight')
 
-    for job in jobs:
-        job.document['simple_polygon_compare_modes_complete'] = True
+
+ValidationWorkflow.add_action(
+    f'{__name__}.compare_modes',
+    Action(
+        method=compare_modes,
+        configuration={
+            'previous_actions': [f'{__name__}.analyze'],
+            'group': _group_compare,
+            'resources': {
+                'processes': {'per_submission': 1},
+                'walltime': {'per_directory': '00:02:00'},
+            },
+        },
+    ),
+)
