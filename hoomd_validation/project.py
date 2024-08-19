@@ -6,8 +6,8 @@
 # Define subproject flow operations
 import alj_2d
 import config
+import hard_disk
 
-# import hard_disk
 # import hard_sphere
 import lj_fluid
 import lj_union
@@ -21,7 +21,7 @@ all_subprojects = [
     alj_2d,
     lj_fluid,
     lj_union,
-    # 'hard_disk',
+    hard_disk,
     # 'hard_sphere',
     # 'simple_polygon',
     # 'patchy_particle_pressure',

@@ -3,14 +3,20 @@
 
 """Hard disk equation of state validation test."""
 
+import itertools
 import json
 import os
-import pathlib
 
+import hoomd
+import matplotlib
+import matplotlib.figure
+import matplotlib.style
+import numpy
 import util
 from config import CONFIG
-from flow import aggregator
-from project_class import Project
+from custom_actions import ComputeDensity
+from workflow import Action
+from workflow_class import ValidationWorkflow
 
 # Run parameters shared between simulations.
 # Step counts must be even and a multiple of the log quantity period.
@@ -24,7 +30,9 @@ WRITE_PERIOD = 1_000
 LOG_PERIOD = {'trajectory': 50_000, 'quantities': 100}
 NUM_CPU_RANKS = min(64, CONFIG['max_cores_sim'])
 
-WALLTIME_STOP_SECONDS = CONFIG['max_walltime'] * 3600 - 10 * 60
+WALLTIME_STOP_SECONDS = (
+    int(os.environ.get('ACTION_WALLTIME_IN_MINUTES', 10)) - 10
+) * 60
 
 
 def job_statepoints():
@@ -47,51 +55,46 @@ def job_statepoints():
             )
 
 
-def is_hard_disk(job):
-    """Test if a given job is part of the hard_disk subproject."""
-    return job.cached_statepoint['subproject'] == 'hard_disk'
+_group = {
+    'sort_by': ['/density'],
+    'include': [{'condition': ['/subproject', '==', __name__]}],
+}
+_resources = {'walltime': {'per_submission': CONFIG['max_walltime']}}
+_resources_serial = _resources | {'processes': {'per_directory': 1}}
+_group_serial = _group | {
+    'maximum_size': min(CONFIG['replicates'], CONFIG['max_cores_submission'])
+}
+_resources_cpu = _resources | {'processes': {'per_directory': NUM_CPU_RANKS}}
+_group_cpu = _group | {
+    'maximum_size': min(
+        CONFIG['replicates'], CONFIG['max_cores_submission'] // NUM_CPU_RANKS
+    )
+}
+_resources_gpu = _resources | {'processes': {'per_directory': 1}, 'gpus_per_process': 1}
+_group_gpu = _group | {'maximum_size': CONFIG['max_gpus_submission']}
+_group_compare = _group | {
+    'sort_by': ['/kT', '/density', '/num_particles'],
+    'split_by_sort_key': True,
+    'submit_whole': True,
+}
+
+_group_compare = _group | {
+    'sort_by': ['/density', '/num_particles'],
+    'split_by_sort_key': True,
+    'submit_whole': True,
+}
 
 
-partition_jobs_cpu_serial = aggregator.groupsof(
-    num=min(CONFIG['replicates'], CONFIG['max_cores_submission']),
-    sort_by='density',
-    select=is_hard_disk,
-)
-
-partition_jobs_cpu_mpi = aggregator.groupsof(
-    num=min(CONFIG['replicates'], CONFIG['max_cores_submission'] // NUM_CPU_RANKS),
-    sort_by='density',
-    select=is_hard_disk,
-)
-
-partition_jobs_gpu = aggregator.groupsof(
-    num=min(CONFIG['replicates'], CONFIG['max_gpus_submission']),
-    sort_by='density',
-    select=is_hard_disk,
-)
-
-
-@Project.post.isfile('hard_disk_initial_state.gsd')
-@Project.operation(
-    directives=dict(
-        executable=CONFIG['executable'],
-        nranks=util.total_ranks_function(NUM_CPU_RANKS),
-        walltime=1,
-    ),
-    aggregator=partition_jobs_cpu_mpi,
-)
-def hard_disk_create_initial_state(*jobs):
+def create_initial_state(*jobs):
     """Create initial system configuration."""
-    import itertools
-
-    import hoomd
-    import numpy
-
     communicator = hoomd.communicator.Communicator(ranks_per_partition=NUM_CPU_RANKS)
     job = jobs[communicator.partition]
 
+    if job.isfile('initial_state.gsd'):
+        return
+
     if communicator.rank == 0:
-        print('starting hard_disk_create_initial_state:', job)
+        print(f'starting {__name__}.create_initial_state:', job)
 
     num_particles = job.cached_statepoint['num_particles']
     density = job.cached_statepoint['density']
@@ -136,11 +139,26 @@ def hard_disk_create_initial_state(*jobs):
     device.notice('Done.')
 
     hoomd.write.GSD.write(
-        state=sim.state, filename=job.fn('hard_disk_initial_state.gsd'), mode='wb'
+        state=sim.state, filename=job.fn('initial_state.gsd'), mode='wb'
     )
 
     if communicator.rank == 0:
-        print(f'completed hard_disk_create_initial_state: {job}')
+        print(f'completed {__name__}.create_initial_state: {job}')
+
+
+ValidationWorkflow.add_action(
+    f'{__name__}.create_initial_state',
+    Action(
+        method=create_initial_state,
+        configuration={
+            'products': ['initial_state.gsd'],
+            'launchers': ['mpi'],
+            'group': _group_cpu,
+            'resources': _resources_cpu
+            | {'walltime': {'per_submission': CONFIG['short_walltime']}},
+        },
+    ),
+)
 
 
 def make_mc_simulation(job, device, initial_state, sim_mode, extra_loggables=None):
@@ -160,9 +178,6 @@ def make_mc_simulation(job, device, initial_state, sim_mode, extra_loggables=Non
             files. Each tuple is a pair of the instance and the loggable
             quantity name.
     """
-    import hoomd
-    from custom_actions import ComputeDensity
-
     if extra_loggables is None:
         extra_loggables = []
 
@@ -221,17 +236,19 @@ def make_mc_simulation(job, device, initial_state, sim_mode, extra_loggables=Non
     return sim
 
 
-def run_nvt_sim(job, device, complete_filename):
+def run_nvt_sim(job, device):
     """Run MC sim in NVT."""
-    import hoomd
-
     sim_mode = 'nvt'
+
+    if util.is_simulation_complete(job, device, sim_mode):
+        return
+
     restart_filename = util.get_job_filename(sim_mode, device, 'restart', 'gsd')
     if job.isfile(restart_filename):
         initial_state = job.fn(restart_filename)
         restart = True
     else:
-        initial_state = job.fn('hard_disk_initial_state.gsd')
+        initial_state = job.fn('initial_state.gsd')
         restart = False
 
     sim = make_mc_simulation(job, device, initial_state, sim_mode, extra_loggables=[])
@@ -278,7 +295,7 @@ def run_nvt_sim(job, device, complete_filename):
     hoomd.write.GSD.write(state=sim.state, filename=job.fn(restart_filename), mode='wb')
 
     if sim.timestep == TOTAL_STEPS:
-        pathlib.Path(job.fn(complete_filename)).touch()
+        util.mark_simulation_complete(job, device, sim_mode)
         device.notice('Done.')
     else:
         device.notice(
@@ -287,18 +304,20 @@ def run_nvt_sim(job, device, complete_filename):
         )
 
 
-def run_npt_sim(job, device, complete_filename):
+def run_npt_sim(job, device):
     """Run MC sim in NPT."""
-    import hoomd
-
     # device
     sim_mode = 'npt'
+
+    if util.is_simulation_complete(job, device, sim_mode):
+        return
+
     restart_filename = util.get_job_filename(sim_mode, device, 'restart', 'gsd')
     if job.isfile(restart_filename):
         initial_state = job.fn(restart_filename)
         restart = True
     else:
-        initial_state = job.fn('hard_disk_initial_state.gsd')
+        initial_state = job.fn('initial_state.gsd')
         restart = False
 
     # box updates
@@ -387,7 +406,7 @@ def run_npt_sim(job, device, complete_filename):
     hoomd.write.GSD.write(state=sim.state, filename=job.fn(restart_filename), mode='wb')
 
     if sim.timestep == TOTAL_STEPS:
-        pathlib.Path(job.fn(complete_filename)).touch()
+        util.mark_simulation_complete(job, device, sim_mode)
         device.notice('Done.')
     else:
         device.notice(
@@ -398,16 +417,17 @@ def run_npt_sim(job, device, complete_filename):
 
 def run_nec_sim(job, device, complete_filename):
     """Run MC sim in NVT with NEC."""
-    import hoomd
-    from custom_actions import ComputeDensity
-
     sim_mode = 'nec'
+
+    if util.is_simulation_complete(job, device, sim_mode):
+        return
+
     restart_filename = util.get_job_filename(sim_mode, device, 'restart', 'gsd')
     if job.isfile(restart_filename):
         initial_state = job.fn(restart_filename)
         restart = True
     else:
-        initial_state = job.fn('hard_disk_initial_state.gsd')
+        initial_state = job.fn('initial_state.gsd')
         restart = False
 
     mc = hoomd.hpmc.nec.integrate.Sphere(
@@ -518,7 +538,7 @@ def run_nec_sim(job, device, complete_filename):
     hoomd.write.GSD.write(state=sim.state, filename=job.fn(restart_filename), mode='wb')
 
     if sim.timestep == TOTAL_STEPS:
-        pathlib.Path(job.fn(complete_filename)).touch()
+        util.mark_simulation_complete(job, device, sim_mode)
         device.notice('Done.')
     else:
         device.notice(
@@ -532,20 +552,20 @@ job_definitions = [
     {
         'mode': 'nvt',
         'device_name': 'cpu',
-        'ranks_per_partition': NUM_CPU_RANKS,
-        'aggregator': partition_jobs_cpu_mpi,
+        'resources': _resources_cpu,
+        'group': _group_cpu,
     },
     {
         'mode': 'npt',
         'device_name': 'cpu',
-        'ranks_per_partition': NUM_CPU_RANKS,
-        'aggregator': partition_jobs_cpu_mpi,
+        'resources': _resources_cpu,
+        'group': _group_cpu,
     },
     {
         'mode': 'nec',
         'device_name': 'cpu',
-        'ranks_per_partition': 1,
-        'aggregator': partition_jobs_cpu_serial,
+        'resources': _resources_serial,
+        'group': _group_serial,
     },
 ]
 
@@ -555,42 +575,26 @@ if CONFIG['enable_gpu']:
             {
                 'mode': 'nvt',
                 'device_name': 'gpu',
-                'ranks_per_partition': 1,
-                'aggregator': partition_jobs_gpu,
+                'resources': _resources_gpu,
+                'group': _group_gpu,
             },
         ]
     )
 
 
-def add_sampling_job(mode, device_name, ranks_per_partition, aggregator):
+def add_sampling_job(mode, device_name, resources, group):
     """Add a sampling job to the workflow."""
-    directives = dict(
-        walltime=CONFIG['max_walltime'],
-        executable=CONFIG['executable'],
-        nranks=util.total_ranks_function(ranks_per_partition),
-    )
+    action_name = f'{__name__}.{mode}_{device_name}'
 
-    if device_name == 'gpu':
-        directives['ngpu'] = directives['nranks']
-
-    @Project.pre.after(hard_disk_create_initial_state)
-    @Project.post.isfile(f'{mode}_{device_name}_complete')
-    @Project.operation(
-        name=f'hard_disk_{mode}_{device_name}',
-        directives=directives,
-        aggregator=aggregator,
-    )
     def sampling_operation(*jobs):
         """Perform sampling simulation given the definition."""
-        import hoomd
-
         communicator = hoomd.communicator.Communicator(
-            ranks_per_partition=ranks_per_partition
+            ranks_per_partition=int(os.environ['ACTION_PROCESSES_PER_DIRECTORY'])
         )
         job = jobs[communicator.partition]
 
         if communicator.rank == 0:
-            print(f'starting hard_disk_{mode}_{device_name}:', job)
+            print(f'starting {action_name}:', job)
 
         if device_name == 'gpu':
             device_cls = hoomd.device.GPU
@@ -604,33 +608,37 @@ def add_sampling_job(mode, device_name, ranks_per_partition, aggregator):
             ),
         )
 
-        globals().get(f'run_{mode}_sim')(
-            job, device, complete_filename=f'{mode}_{device_name}_complete'
-        )
+        globals().get(f'run_{mode}_sim')(job, device)
 
         if communicator.rank == 0:
-            print(f'completed hard_disk_{mode}_{device_name}: {job}')
+            print(f'completed {action_name}: {job}')
 
-    sampling_jobs.append(sampling_operation)
+    sampling_jobs.append(action_name)
+
+    ValidationWorkflow.add_action(
+        action_name,
+        Action(
+            method=sampling_operation,
+            configuration={
+                'products': [
+                    util.get_job_filename(mode, device_name, 'trajectory', 'gsd'),
+                    util.get_job_filename(mode, device_name, 'quantities', 'h5'),
+                ],
+                'launchers': ['mpi'],
+                'group': group,
+                'resources': resources,
+                'previous_actions': [f'{__name__}.create_initial_state'],
+            },
+        ),
+    )
 
 
 for definition in job_definitions:
     add_sampling_job(**definition)
 
 
-@Project.pre(is_hard_disk)
-@Project.pre.after(*sampling_jobs)
-@Project.post.true('hard_disk_analysis_complete')
-@Project.operation(
-    directives=dict(walltime=CONFIG['short_walltime'], executable=CONFIG['executable'])
-)
-def hard_disk_analyze(job):
+def analyze(job):
     """Analyze the output of all simulation modes."""
-    import matplotlib
-    import matplotlib.figure
-    import matplotlib.style
-    import numpy
-
     matplotlib.style.use('fivethirtyeight')
 
     print('starting hard_disk_analyze:', job)
@@ -703,26 +711,26 @@ def hard_disk_analyze(job):
     )
     fig.savefig(job.fn('nvt_npt_plots.svg'), bbox_inches='tight')
 
-    job.document['hard_disk_analysis_complete'] = True
 
-
-@Project.pre(lambda *jobs: util.true_all(*jobs, key='hard_disk_analysis_complete'))
-@Project.post(
-    lambda *jobs: util.true_all(*jobs, key='hard_disk_compare_modes_complete')
-)
-@Project.operation(
-    directives=dict(executable=CONFIG['executable']),
-    aggregator=aggregator.groupby(
-        key=['density', 'num_particles'], sort_by='replicate_idx', select=is_hard_disk
+ValidationWorkflow.add_action(
+    f'{__name__}.analyze',
+    Action(
+        method=analyze,
+        configuration={
+            'products': ['nvt_npt_plots.svg'],
+            'previous_actions': sampling_jobs,
+            'group': _group,
+            'resources': {
+                'processes': {'per_submission': 1},
+                'walltime': {'per_directory': '00:01:00'},
+            },
+        },
     ),
 )
-def hard_disk_compare_modes(*jobs):
-    """Compares the tested simulation modes."""
-    import matplotlib
-    import matplotlib.figure
-    import matplotlib.style
-    import numpy
 
+
+def compare_modes(*jobs):
+    """Compares the tested simulation modes."""
     matplotlib.style.use('fivethirtyeight')
 
     print('starting hard_disk_compare_modes:', jobs[0])
@@ -770,7 +778,7 @@ def hard_disk_compare_modes(*jobs):
             avg_value = {mode: numpy.mean(quantities[mode]) for mode in sim_modes}
             reference = numpy.mean([avg_value[mode] for mode in sim_modes])
 
-        avg_quantity, stderr_quantity = util.plot_vs_expected(
+        util.plot_vs_expected(
             ax=ax,
             values=quantities,
             ylabel=labels[quantity_name],
@@ -782,5 +790,18 @@ def hard_disk_compare_modes(*jobs):
     filename = f'hard_disk_compare_density{round(set_density, 2)}.svg'
     fig.savefig(os.path.join(jobs[0]._project.path, filename), bbox_inches='tight')
 
-    for job in jobs:
-        job.document['hard_disk_compare_modes_complete'] = True
+
+ValidationWorkflow.add_action(
+    f'{__name__}.compare_modes',
+    Action(
+        method=compare_modes,
+        configuration={
+            'previous_actions': [f'{__name__}.analyze'],
+            'group': _group_compare,
+            'resources': {
+                'processes': {'per_submission': 1},
+                'walltime': {'per_directory': '00:02:00'},
+            },
+        },
+    ),
+)
