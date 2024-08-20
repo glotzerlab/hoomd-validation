@@ -1,0 +1,36 @@
+name: test
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+on:
+  pull_request:
+
+  push:
+    branches:
+    - "main"
+
+  workflow_dispatch:
+
+jobs:
+  status:
+    name: Initialize and show status
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v4.1.6
+    - name: Set up Python
+      uses: actions/setup-python@82c7e631bb3cdc910f68e0081d67478d79c6982d # v5.1.0
+      with:
+        python-version: "3.12"
+    - name: Set up Python environment
+      uses: glotzerlab/workflows/setup-uv@ea2e25d07af862a1c696a932c2bd6b242d142049 # 0.2.0
+      with:
+        lockfile: ".github/workflows/requirements-test.txt"
+    - name: Initialize workspace
+      run: python3 hoomd_validation/project.py init
+    - name: Set up row
+      uses: glotzerlab/workflows/setup-row@eb2fa7acfe52cc995a323bce2e26c763a9dee632 # 0.3.0
+    - name: Show project status
+      run: row show status
