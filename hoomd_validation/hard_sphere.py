@@ -71,6 +71,7 @@ _group_compare = _group | {
     'submit_whole': True,
 }
 
+
 def create_initial_state(*jobs):
     """Create initial system configuration."""
     communicator = hoomd.communicator.Communicator(ranks_per_partition=NUM_CPU_RANKS)

@@ -10,8 +10,8 @@ import hard_disk
 import hard_sphere
 import lj_fluid
 import lj_union
-import signac
 import patchy_particle_pressure
+import signac
 import simple_polygon
 from workflow_class import ValidationWorkflow
 

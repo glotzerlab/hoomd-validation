@@ -3,24 +3,20 @@
 
 """Test for consistency between NVT and NPT simulations of patchy particles."""
 
+import itertools
 import json
 import os
-import pathlib
 
 import hoomd
-import itertools
-
-import numpy
-import util
-from config import CONFIG
-from workflow import Action
-from workflow_class import ValidationWorkflow
-from custom_actions import ComputeDensity
 import matplotlib
 import matplotlib.figure
 import matplotlib.style
 import numpy
-
+import util
+from config import CONFIG
+from custom_actions import ComputeDensity
+from workflow import Action
+from workflow_class import ValidationWorkflow
 
 # Run parameters shared between simulations.
 # Step counts must be even and a multiple of the log quantity period.
@@ -86,13 +82,23 @@ _group_cpu = _group | {
         CONFIG['replicates'], CONFIG['max_cores_submission'] // NUM_CPU_RANKS
     )
 }
-_group_cpu_postive_pressure = _group_cpu | {'include': [{'all': [['/subproject', '==', __name__], ['/pressure', '>', 0]]}]}
+_group_cpu_postive_pressure = _group_cpu | {
+    'include': [{'all': [['/subproject', '==', __name__], ['/pressure', '>', 0]]}]
+}
 
 _group_compare = _group | {
-    'sort_by': ['/pressure', '/density', '/temperature', '/chi', '/num_particles', '/long_range_interaction_scale_factor'],
+    'sort_by': [
+        '/pressure',
+        '/density',
+        '/temperature',
+        '/chi',
+        '/num_particles',
+        '/long_range_interaction_scale_factor',
+    ],
     'split_by_sort_key': True,
     'submit_whole': True,
 }
+
 
 def make_potential(
     delta_rad, sq_well_lambda, sigma, kT, long_range_interaction_scale_factor
@@ -544,7 +550,7 @@ job_definitions = [
 def add_sampling_job(mode, device_name, resources, group):
     """Add a sampling job to the workflow."""
     action_name = f'{__name__}.{mode}_{device_name}'
- 
+
     def sampling_operation(*jobs):
         """Perform sampling simulation given the definition."""
         communicator = hoomd.communicator.Communicator(
@@ -562,9 +568,7 @@ def add_sampling_job(mode, device_name, resources, group):
             ),
         )
 
-        globals().get(f'run_{mode}_sim')(
-            job, device
-        )
+        globals().get(f'run_{mode}_sim')(job, device)
 
         if communicator.rank == 0:
             print(f'completed {action_name}: {job}')
@@ -591,7 +595,6 @@ def add_sampling_job(mode, device_name, resources, group):
 
 for definition in job_definitions:
     add_sampling_job(**definition)
-
 
 
 def analyze(*jobs):
@@ -700,6 +703,7 @@ ValidationWorkflow.add_action(
     ),
 )
 
+
 def compare_modes(*jobs):
     """Compares the tested simulation modes."""
     matplotlib.style.use('fivethirtyeight')
@@ -801,6 +805,7 @@ def compare_modes(*jobs):
         bbox_inches='tight',
         transparent=False,
     )
+
 
 ValidationWorkflow.add_action(
     f'{__name__}.compare_modes',
