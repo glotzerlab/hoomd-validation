@@ -328,7 +328,7 @@ def make_mc_simulation(job, device, initial_state, sim_mode, extra_loggables=Non
     return sim
 
 
-def run_nvt_sim(job, device, complete_filename):
+def run_nvt_sim(job, device):
     """Run MC sim in NVT."""
     sim_mode = 'nvt'
 
@@ -407,7 +407,7 @@ def run_nvt_sim(job, device, complete_filename):
         device.notice(f'Ending {job} run early due to walltime limits.')
 
 
-def run_npt_sim(job, device, complete_filename):
+def run_npt_sim(job, device):
     """Run MC sim in NPT."""
     # device
     sim_mode = 'npt'
@@ -594,7 +594,7 @@ for definition in job_definitions:
 
 
 
-def analyze(*job):
+def analyze(*jobs):
     """Analyze the output of all simulation modes."""
     matplotlib.style.use('fivethirtyeight')
 
