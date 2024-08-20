@@ -7,7 +7,11 @@ import itertools
 import json
 import os
 
-import hoomd
+try:
+    import hoomd
+except ModuleNotFoundError as e:
+    print(f"Warning: {e}")
+
 import matplotlib
 import matplotlib.figure
 import matplotlib.style

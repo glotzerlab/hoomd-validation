@@ -3,8 +3,10 @@
 
 """This file contains all custom actions needed for this project."""
 
-import hoomd
-
+try:
+    import hoomd
+except ModuleNotFoundError as e:
+    print(f"Warning: {e}")
 
 class ComputeDensity(hoomd.custom.Action):
     """Compute the density of particles in the system.
