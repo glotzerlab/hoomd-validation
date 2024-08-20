@@ -21,11 +21,8 @@ from workflow_class import ValidationWorkflow
 # Run parameters shared between simulations.
 # Step counts must be even and a multiple of the log quantity period.
 RANDOMIZE_STEPS = 20_000
-EQUILIBRATE_STEPS = 50_000
-RUN_STEPS = 100_00
-# TODO: restore
-# EQUILIBRATE_STEPS = 200_000
-# RUN_STEPS = 500_000
+EQUILIBRATE_STEPS = 200_000
+RUN_STEPS = 500_000
 RESTART_STEPS = RUN_STEPS // 10
 TOTAL_STEPS = RANDOMIZE_STEPS + EQUILIBRATE_STEPS + RUN_STEPS
 
