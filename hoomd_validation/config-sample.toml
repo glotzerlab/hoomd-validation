@@ -11,7 +11,7 @@
 # max_gpus_submission = 1
 
 ## Maximum wall time (in hours) that a submitted cluster job is allowed to run.
-# max_walltime = "24:00:00"
+# max_walltime = "1 day, 00:00:00"
 
 ## Wall time (in hours) To use for short, non-restartable jobs
 # short_walltime = "02:00:00"
