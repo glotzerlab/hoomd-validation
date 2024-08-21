@@ -12,7 +12,8 @@ import signac
 try:
     import hoomd
 except ModuleNotFoundError as e:
-    print(f"Warning: {e}")
+    print(f'Warning: {e}')
+
 
 def get_job_filename(sim_mode, device, name, file_type):
     """Construct a job filename."""

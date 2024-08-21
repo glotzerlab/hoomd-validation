@@ -12,7 +12,7 @@ import os
 try:
     import hoomd
 except ModuleNotFoundError as e:
-    print(f"Warning: {e}")
+    print(f'Warning: {e}')
 
 import matplotlib
 import matplotlib.figure
