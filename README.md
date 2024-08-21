@@ -19,14 +19,14 @@ cd hoomd-validation
 
 1. Install the requirements (see below) into a Python environment of your choice.
 2. Copy `hoomd_validation/config-sample.toml` to `hoomd_validation/config.toml`
-   and set the parameters as desired. Each option is documented by a comment in the 
+   and set the parameters as desired. Each option is documented by a comment in the
    sample configuration file.
 3. Initialize the signac project directories and create `workflow.toml`.
     ```bash
     python3 hoomd_validation/project.py init
     ```
 4. Configure [row] as necessary for your workstation or HPC resources.
-   > Note: `project.py init` will overwrite `workflow.toml`. 
+   > Note: `project.py init` will overwrite `workflow.toml`.
 
 [row]: https://row.readthedocs.io
 

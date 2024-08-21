@@ -36,4 +36,6 @@ except ModuleNotFoundError as e:
     # This workaround is to allow `python project.py init` to succeed in CI checks
     # without requiring a working HOOMD installation.
     class ComputeDensity:
+        """Placeholder class."""
+
         pass
