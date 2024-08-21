@@ -30,6 +30,8 @@ jobs:
         lockfile: ".github/workflows/requirements-test.txt"
     - name: Initialize workspace
       run: python3 hoomd_validation/project.py init
+    - name: Show workflow
+      run: cat --number workflow.toml
     - name: Set up row
       uses: glotzerlab/workflows/setup-row@eb2fa7acfe52cc995a323bce2e26c763a9dee632 # 0.3.0
     - name: Show project status
