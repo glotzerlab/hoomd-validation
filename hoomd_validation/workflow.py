@@ -13,10 +13,18 @@
 
 import argparse
 from pathlib import Path
+import subprocess
 
 import rtoml
 import signac
 
+
+def _get_cluster_name():
+    """Get the current cluster name."""
+    result = subprocess.run(
+        ['row', 'show', 'cluster', '--name'], capture_output=True, check=True, text=True
+    )
+    return result.stdout.strip()
 
 class Action:
     """Represent a row action.
@@ -68,7 +76,7 @@ class Workflow:
         cls._actions[name] = action
 
     @classmethod
-    def write_workflow(cls, entrypoint, path=None, default=None):
+    def write_workflow(cls, entrypoint, path=None, default=None, account=None):
         """Write the file ``workflow.toml``.
 
         ``workflow.toml`` will include the signac workspace definition, the given
@@ -82,6 +90,7 @@ class Workflow:
             entrypoint(str): Name of the python file that calls the `main` entrypoint.
             path(Path): Path to write ``workflow.toml``.
             default(dict): The ``[default]`` mapping.
+            account(str): Name of the cluster account to use.
         """
         workflow = {
             'workspace': {'path': 'workspace', 'value_file': 'signac_statepoint.json'}
@@ -92,6 +101,9 @@ class Workflow:
                 'command': f'python -u {entrypoint} action $ACTION_NAME {{directories}}'
             }
         }
+        if account is not None:
+            print(account)
+            workflow['default']['action'].update({'submit_options': {_get_cluster_name(): {'account': account}}})
 
         if default is not None:
             workflow['default'].update(default)
@@ -129,6 +141,7 @@ class Workflow:
         parser = argparse.ArgumentParser()
         command = parser.add_subparsers(dest='command', required=True)
         init_parser = command.add_parser('init')
+        init_parser.add_argument('--account')
         if init_args is not None:
             for arg in init_args:
                 init_parser.add_argument(arg)
@@ -138,12 +151,13 @@ class Workflow:
         action_parser.add_argument('directories', nargs='+')
 
         args = parser.parse_args()
+        print(args)
 
         if args.command == 'init':
             if init is not None:
                 init(args)
 
-            cls.write_workflow(**kwargs)
+            cls.write_workflow(account=args.account, **kwargs)
         elif args.command == 'action':
             project = signac.get_project()
             jobs = [project.open_job(id=directory) for directory in args.directories]

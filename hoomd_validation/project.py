@@ -35,9 +35,6 @@ def init(args):
 
     project = signac.init_project(path=config.project_root)
 
-    # TODO: Add command line arguments to limit which projects are initialized.
-    # Will need to selectively remove actions from the other projects from the workflow.
-
     # initialize jobs for validation test projects
     for subproject in all_subprojects:
         # add all the jobs to the project
