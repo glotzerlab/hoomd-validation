@@ -12,8 +12,8 @@
 """
 
 import argparse
-from pathlib import Path
 import subprocess
+from pathlib import Path
 
 import rtoml
 import signac
@@ -25,6 +25,7 @@ def _get_cluster_name():
         ['row', 'show', 'cluster', '--name'], capture_output=True, check=True, text=True
     )
     return result.stdout.strip()
+
 
 class Action:
     """Represent a row action.
@@ -103,7 +104,9 @@ class Workflow:
         }
         if account is not None:
             print(account)
-            workflow['default']['action'].update({'submit_options': {_get_cluster_name(): {'account': account}}})
+            workflow['default']['action'].update(
+                {'submit_options': {_get_cluster_name(): {'account': account}}}
+            )
 
         if default is not None:
             workflow['default'].update(default)
