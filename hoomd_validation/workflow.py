@@ -22,7 +22,10 @@ import signac
 def _get_cluster_name():
     """Get the current cluster name."""
     result = subprocess.run(
-        ['row', 'show', 'cluster', '--short'], capture_output=True, check=True, text=True
+        ['row', 'show', 'cluster', '--short'],
+        capture_output=True,
+        check=True,
+        text=True,
     )
     return result.stdout.strip()
 
