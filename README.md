@@ -1,91 +1,66 @@
 # HOOMD-blue Validation
 
-This repository contains longer running validation tests for HOOMD-blue. The
-validation test workflows in this repository are organized into signac projects.
-
-## Requirements
-
-* gsd >= 2.8.0
-* numpy
-* PyYAML
-* signac >= 2.2.0
-* signac-flow >= 0.25.1
-* signac-dashboard [optional]
-* Simulation workflow steps require either the [glotzerlab-software container]
-  or the following software:
-    * HOOMD-blue >=3.0 *(with MPI support enabled, GPU and LLVM support are optional)*,
-* Analysis workflow steps require either the [glotzerlab-software container] or
-  the following software:
-    * matplotlib
-    * numpy
-    * scipy
-* Workstation or HPC system with at least 16 CPU cores and 1 GPU supported by
-  HOOMD-blue.
+This repository contains validation tests for HOOMD-blue. The workflows are organized in
+a [signac] workspace and use [row].
 
 ## Preparation
 
 Clone this repository:
-
 ```bash
-$ git clone https://github.com/glotzerlab/hoomd-validation.git
-$ cd hoomd-validation
+git clone https://github.com/glotzerlab/hoomd-validation.git
+```
+
+Then change to the repository's directory:
+```bash
+cd hoomd-validation
 ```
 
 ## Configuration
 
-Install the prerequisites into a Python environment of your choice. To use the
-[glotzerlab-software container], copy `hoomd_validation/config-sample.yaml` to
-`hoomd_validation/config.yaml`, uncomment the executable mapping, and set
-`singularity_container` to your container image's path.
-
-`hoomd_validation/config.yaml` also controls a number of job submission
-parameters. See the commented options in `hoomd_validation/config-sample.yaml`
-for a list and their default values.
-
-## Usage
-
-1. Initialize the signac project directories, populate them with jobs and job
-documents:
+1. Install the requirements (see below) into a Python environment of your choice.
+2. Copy `hoomd_validation/config-sample.toml` to `hoomd_validation/config.toml`
+   and set the parameters as desired. Each option is documented by a comment in the
+   sample configuration file.
+3. Initialize the signac project directories and create `workflow.toml`.
     ```bash
-    python3 hoomd_validation/init.py
+    python3 hoomd_validation/project.py init
     ```
-2. Run and analyze all validation tests:
-    * On a workstation (this takes a long time to complete):
-        ```
-        $ python hoomd_validation/project.py run
-        ```
-    * On a cluster:
-        1. Populate the flow script template or your shell environment appropriately.
-            ```
-            $ flow template create
-            $ vim templates/script.sh  # make changes to e.g. load modules
-            ```
-        2. Create the simulation initial states:
-            ```
-            $ python hoomd_validation/project.py submit -o '.*create_initial_state'
-            ```
-            *(wait for all jobs to complete)*
-        3. Run the simulations (adjust partition names according to your cluster)
-            ```
-            $ python3 hoomd_validation/project.py submit -o '.*_cpu' --partition standard
-            $ python3 hoomd_validation/project.py submit -o '.*_gpu' --partition gpu
-            ```
-            *(wait for all jobs to complete)*
-        4. Run the analysis (assuming you have the analysis workflow prerequisites in your Python environment):
-            ```
-            $ python hoomd_validation/project.py run
-            ```
-            *(alternately, submit the analysis in stages until no jobs remain eligible)*
-3. Inspect the plots produced in:
-    * `workspace/*.svg`
+4. Configure [row] as necessary for your workstation or HPC resources.
+   > Note: `project.py init` will overwrite `workflow.toml`.
 
-## Dashboard
+[row]: https://row.readthedocs.io
 
-Run the provided [signac-dashboard] application to explore the results in a web browser:
+## Execute tests
 
+Run
 ```bash
-$ python3 dashboard.py run
+row submit
 ```
 
-[glotzerlab-software container]: https://glotzerlab-software.readthedocs.io/
-[signac-dashboard]: https://docs.signac.io/projects/dashboard/
+To submit the first stage of the workflow. Wait for all the jobs to complete, then run
+`row submit` again to start the second stage. Most subprojects in the validation
+workflow have 4 stages ending with `compare_modes`.
+
+> Note: You can execute a single subproject with `row submit --action 'subproject_name.*'
+
+After you execute `compare_mode`, inspect the `svg` files saved in the repository root.
+You can also run the provided [signac-dashboard] application to explore the results in a
+web browser:
+
+```bash
+python3 dashboard.py run
+```
+
+[signac]: https://signac.readthedocs.io
+[signac-dashboard]: https://signac-dashboard.readthedocs.io
+
+## Requirements
+
+* h5py
+* hoomd >= 4.6.0
+* matplotlib
+* numpy
+* rtoml
+* scipy
+* signac >= 2.2.0
+* signac-dashboard [optional]

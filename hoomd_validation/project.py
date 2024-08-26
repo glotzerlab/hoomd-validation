@@ -6,27 +6,45 @@
 # Define subproject flow operations
 import alj_2d
 import config
-import flow
 import hard_disk
 import hard_sphere
 import lj_fluid
 import lj_union
 import patchy_particle_pressure
+import signac
 import simple_polygon
-from project_class import Project
+from workflow_class import ValidationWorkflow
 
-# use srun on delta (mpiexec fails on multiple nodes)
-flow.environments.xsede.DeltaEnvironment.mpi_cmd = 'srun'
-
-__all__ = [
-    'alj_2d',
-    'lj_fluid',
-    'lj_union',
-    'hard_disk',
-    'hard_sphere',
-    'simple_polygon',
-    'patchy_particle_pressure',
+all_subprojects = [
+    alj_2d,
+    lj_fluid,
+    lj_union,
+    hard_disk,
+    hard_sphere,
+    simple_polygon,
+    patchy_particle_pressure,
 ]
 
+
+def init(args):
+    """Initialize the workspace."""
+    # TODO: uncomment
+    # if (config.project_root / 'workspace').exists():
+    #     message = "The project already initialized."
+    #     raise RuntimeError(message)
+
+    project = signac.init_project(path=config.project_root)
+
+    # initialize jobs for validation test projects
+    for subproject in all_subprojects:
+        # add all the jobs to the project
+        for job_sp in subproject.job_statepoints():
+            project.open_job(job_sp).init()
+
+
 if __name__ == '__main__':
-    Project.get_project(config.project_root).main()
+    ValidationWorkflow.main(
+        entrypoint=config.project_root / 'hoomd_validation' / 'project.py',
+        init=init,
+        path=config.project_root,
+    )

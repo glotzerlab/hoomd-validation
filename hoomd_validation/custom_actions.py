@@ -3,30 +3,39 @@
 
 """This file contains all custom actions needed for this project."""
 
-import hoomd
+try:
+    import hoomd
 
+    class ComputeDensity(hoomd.custom.Action):
+        """Compute the density of particles in the system.
 
-class ComputeDensity(hoomd.custom.Action):
-    """Compute the density of particles in the system.
+        The density computed is a number density.
 
-    The density computed is a number density.
+        Args:
+            N: When not None, Use N instead of the number of particles when
+               computing the density.
+        """
 
-    Args:
-        N: When not None, Use N instead of the number of particles when
-           computing the density.
-    """
+        def __init__(self, N=None):
+            self.N = N
 
-    def __init__(self, N=None):
-        self.N = N
+        @hoomd.logging.log
+        def density(self):
+            """float: The density of the system."""
+            if self.N is None:
+                return self._state.N_particles / self._state.box.volume
 
-    @hoomd.logging.log
-    def density(self):
-        """float: The density of the system."""
-        if self.N is None:
-            return self._state.N_particles / self._state.box.volume
+            return self.N / self._state.box.volume
 
-        return self.N / self._state.box.volume
+        def act(self, timestep):
+            """Dummy act method."""
+            pass
+except ModuleNotFoundError as e:
+    print(f'Warning: {e}')
 
-    def act(self, timestep):
-        """Dummy act method."""
+    # This workaround is to allow `python project.py init` to succeed in CI checks
+    # without requiring a working HOOMD installation.
+    class ComputeDensity:
+        """Placeholder class."""
+
         pass
