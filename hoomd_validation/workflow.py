@@ -22,7 +22,7 @@ import signac
 def _get_cluster_name():
     """Get the current cluster name."""
     result = subprocess.run(
-        ['row', 'show', 'cluster', '--name'], capture_output=True, check=True, text=True
+        ['row', 'show', 'cluster', '--short'], capture_output=True, check=True, text=True
     )
     return result.stdout.strip()
 
@@ -103,7 +103,6 @@ class Workflow:
             }
         }
         if account is not None:
-            print(account)
             workflow['default']['action'].update(
                 {'submit_options': {_get_cluster_name(): {'account': account}}}
             )
@@ -154,7 +153,6 @@ class Workflow:
         action_parser.add_argument('directories', nargs='+')
 
         args = parser.parse_args()
-        print(args)
 
         if args.command == 'init':
             if init is not None:
