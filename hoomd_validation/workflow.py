@@ -13,6 +13,7 @@
 
 import argparse
 import subprocess
+import warnings
 from pathlib import Path
 
 import rtoml
@@ -77,6 +78,9 @@ class Workflow:
             message = f'Action {name} cannot be added twice.'
             raise ValueError(message)
 
+        if 'products' not in action._configuration:
+            warnings.warn(f"Action {name} is missing products.", stacklevel=2)
+
         cls._actions[name] = action
 
     @classmethod
@@ -138,10 +142,10 @@ class Workflow:
         as options to the ``init`` subparser with ``add_argument``.
 
         Args:
-            init(callable): User-provided initializaiton routine. Must take one
+            init(callable): User-provided initialization routine. Must take one
                 argument: ``args`` - the ``argparse`` parsed arguments.
             init_args(list[str]): List of args to add to the ``init`` subparser.
-            **kwargs: Fowarded to `make_workflow`.
+            **kwargs: Forwarded to `make_workflow`.
         """
         parser = argparse.ArgumentParser()
         command = parser.add_subparsers(dest='command', required=True)

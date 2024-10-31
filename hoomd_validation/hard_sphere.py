@@ -5,6 +5,7 @@
 
 import itertools
 import os
+from pathlib import Path
 
 try:
     import hoomd
@@ -651,6 +652,10 @@ def compare_modes(*jobs):
     filename = f'hard_sphere_compare_density{round(set_density, 2)}.svg'
     fig.savefig(os.path.join(jobs[0]._project.path, filename), bbox_inches='tight')
 
+    # mark the action complete
+    for job in jobs:
+        Path(job.fn('compare_modes_complete').touch())
+
 
 ValidationWorkflow.add_action(
     f'{__name__}.compare_modes',
@@ -658,6 +663,7 @@ ValidationWorkflow.add_action(
         method=compare_modes,
         configuration={
             'previous_actions': [f'{__name__}.analyze'],
+            'products': ['compare_modes_complete'],
             'group': _group_compare,
             'resources': {
                 'processes': {'per_submission': 1},
