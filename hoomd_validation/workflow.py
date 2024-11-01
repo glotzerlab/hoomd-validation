@@ -79,7 +79,7 @@ class Workflow:
             raise ValueError(message)
 
         if 'products' not in action._configuration:
-            warnings.warn(f"Action {name} is missing products.", stacklevel=2)
+            warnings.warn(f'Action {name} is missing products.', stacklevel=2)
 
         cls._actions[name] = action
 
