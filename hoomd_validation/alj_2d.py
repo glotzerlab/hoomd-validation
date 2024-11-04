@@ -453,7 +453,7 @@ def conservation_analyze(*jobs):
 
     # mark the job complete
     for job in jobs:
-        Path(job.fn('conservation_analyze_complete').touch())
+        Path(job.fn('conservation_analyze_complete')).touch()
 
 
 ValidationWorkflow.add_action(

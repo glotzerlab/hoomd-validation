@@ -1079,7 +1079,7 @@ def compare_modes(*jobs):
 
     # mark the action complete
     for job in jobs:
-        Path(job.fn('compare_modes_complete').touch())
+        Path(job.fn('compare_modes_complete')).touch()
 
 
 ValidationWorkflow.add_action(
@@ -1249,7 +1249,7 @@ def distribution_analyze(*jobs):
 
     # mark the action complete
     for job in jobs:
-        Path(job.fn('distribution_analyze_complete').touch())
+        Path(job.fn('distribution_analyze_complete')).touch()
 
 
 ValidationWorkflow.add_action(
@@ -1485,7 +1485,7 @@ def conservation_analyze(*jobs):
 
     # mark the action complete
     for job in jobs:
-        Path(job.fn('conservation_analyze_complete').touch())
+        Path(job.fn('conservation_analyze_complete')).touch()
 
 
 ValidationWorkflow.add_action(

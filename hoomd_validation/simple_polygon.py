@@ -662,7 +662,7 @@ def compare_modes(*jobs):
 
     # mark the action complete
     for job in jobs:
-        Path(job.fn('compare_modes_complete').touch())
+        Path(job.fn('compare_modes_complete')).touch()
 
 
 ValidationWorkflow.add_action(
