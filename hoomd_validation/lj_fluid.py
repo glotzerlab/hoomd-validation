@@ -491,7 +491,7 @@ def make_mc_simulation(job, device, initial_state, sim_mode, extra_loggables=Non
     mc.shape['A'] = dict(diameter=0.0)
 
     # pair potential
-    epsilon = LJ_PARAMS['epsilon'] # noqa F841
+    epsilon = LJ_PARAMS['epsilon']  # noqa F841
     sigma = LJ_PARAMS['sigma']
     r_on = job.cached_statepoint['r_on']
     r_cut = job.cached_statepoint['r_cut']
@@ -861,9 +861,9 @@ def analyze(*jobs):
                     'hoomd-data/md/compute/ThermodynamicQuantities/potential_energy'
                 ]
             else:
-                energies[sim_mode] = (
-                    log_traj['hoomd-data/hpmc/pair/LennardJones/energy']
-                )
+                energies[sim_mode] = log_traj[
+                    'hoomd-data/hpmc/pair/LennardJones/energy'
+                ]
 
             energies[sim_mode] /= job.cached_statepoint['num_particles']
 
@@ -1185,9 +1185,7 @@ def distribution_analyze(*jobs):
                 )
             else:
                 potential_energy_samples[sim_mode].extend(
-                    list(
-                        log_traj['hoomd-data/hpmc/pair/LennardJones/energy']
-                    )
+                    list(log_traj['hoomd-data/hpmc/pair/LennardJones/energy'])
                 )
 
             if 'md' in sim_mode:

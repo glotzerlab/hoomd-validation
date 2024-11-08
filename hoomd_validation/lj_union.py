@@ -905,9 +905,7 @@ def analyze(*jobs):
                     'hoomd-data/md/compute/ThermodynamicQuantities/potential_energy'
                 ]
             else:
-                energies[sim_mode] = (
-                    log_traj['hoomd-data/hpmc/pair/Union/energy']
-                )
+                energies[sim_mode] = log_traj['hoomd-data/hpmc/pair/Union/energy']
 
             energies[sim_mode] /= job.cached_statepoint['num_particles']
 
