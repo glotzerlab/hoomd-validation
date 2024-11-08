@@ -8,6 +8,7 @@ import itertools
 import json
 import math
 import os
+from pathlib import Path
 
 try:
     import hoomd
@@ -1075,6 +1076,10 @@ def compare_modes(*jobs):
 
     fig.savefig(os.path.join(jobs[0]._project.path, filename), bbox_inches='tight')
 
+    # mark the action complete
+    for job in jobs:
+        Path(job.fn('compare_modes_complete')).touch()
+
 
 ValidationWorkflow.add_action(
     f'{__name__}.compare_modes',
@@ -1082,6 +1087,7 @@ ValidationWorkflow.add_action(
         method=compare_modes,
         configuration={
             'previous_actions': [f'{__name__}.analyze'],
+            'products': ['compare_modes_complete'],
             'group': _group_compare,
             'resources': {
                 'processes': {'per_submission': 1},
@@ -1239,6 +1245,10 @@ def distribution_analyze(*jobs):
     )
     fig.savefig(os.path.join(jobs[0]._project.path, filename), bbox_inches='tight')
 
+    # mark the action complete
+    for job in jobs:
+        Path(job.fn('distribution_analyze_complete')).touch()
+
 
 ValidationWorkflow.add_action(
     f'{__name__}.distribution_analyze',
@@ -1246,6 +1256,7 @@ ValidationWorkflow.add_action(
         method=distribution_analyze,
         configuration={
             'previous_actions': [f'{__name__}.analyze'],
+            'products': ['distribution_analyze_complete'],
             'group': _group_compare,
             'resources': {
                 'processes': {'per_submission': 1},
@@ -1470,6 +1481,10 @@ def conservation_analyze(*jobs):
 
     fig.savefig(os.path.join(jobs[0]._project.path, filename), bbox_inches='tight')
 
+    # mark the action complete
+    for job in jobs:
+        Path(job.fn('conservation_analyze_complete')).touch()
+
 
 ValidationWorkflow.add_action(
     f'{__name__}.conservation_analyze',
@@ -1477,6 +1492,7 @@ ValidationWorkflow.add_action(
         method=conservation_analyze,
         configuration={
             'previous_actions': nve_md_sampling_jobs,
+            'products': ['conservation_analyze_complete'],
             'group': _group_compare | _include_nve,
             'resources': {
                 'processes': {'per_submission': 1},

@@ -6,6 +6,7 @@
 import itertools
 import json
 import os
+from pathlib import Path
 
 try:
     import hoomd
@@ -805,6 +806,10 @@ def compare_modes(*jobs):
         transparent=False,
     )
 
+    # mark the action complete
+    for job in jobs:
+        Path(job.fn('compare_modes_complete')).touch()
+
 
 ValidationWorkflow.add_action(
     f'{__name__}.compare_modes',
@@ -812,6 +817,7 @@ ValidationWorkflow.add_action(
         method=compare_modes,
         configuration={
             'previous_actions': [f'{__name__}.analyze'],
+            'products': ['compare_modes_complete'],
             'group': _group_compare,
             'resources': {
                 'processes': {'per_submission': 1},
