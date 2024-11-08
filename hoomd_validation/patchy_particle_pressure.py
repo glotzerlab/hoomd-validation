@@ -102,7 +102,7 @@ _group_compare = _group | {
 
 
 def make_potential(
-    delta_rad, sq_well_lambda, sigma, kT, long_range_interaction_scale_factor
+    delta_rad, sq_well_lambda, sigma, long_range_interaction_scale_factor
 ):
     """Make the Kern-Frenkel pair potential.
 
@@ -128,8 +128,8 @@ def make_potential(
         sq_well_lambda * sigma,
     ]
     epsilon = [
-        -1 / kT,
-        -1 / kT * long_range_interaction_scale_factor,
+        -1,
+        -1 * long_range_interaction_scale_factor,
     ]
     step = hoomd.hpmc.pair.Step()
     step.params[('A', 'A')] = dict(epsilon=epsilon, r=r)
@@ -187,7 +187,7 @@ def create_initial_state(*jobs):
 
     # Use hard sphere + patches Monte Carlo to randomize the initial
     # configuration
-    mc = hoomd.hpmc.integrate.Sphere(default_d=0.05, default_a=0.1)
+    mc = hoomd.hpmc.integrate.Sphere(default_d=0.05, default_a=0.1, kT=temperature)
     diameter = 1.0
     mc.shape['A'] = dict(diameter=diameter, orientable=True)
     delta = 2 * numpy.arcsin(numpy.sqrt(chi))
@@ -195,7 +195,6 @@ def create_initial_state(*jobs):
         delta,
         lambda_,
         diameter,
-        temperature,
         long_range_interaction_scale_factor,
     )
     mc.pair_potentials = [angular_step]
@@ -266,14 +265,13 @@ def make_mc_simulation(job, device, initial_state, sim_mode, extra_loggables=Non
         'long_range_interaction_scale_factor'
     ]
     diameter = 1.0
-    mc = hoomd.hpmc.integrate.Sphere(default_d=0.05, default_a=0.1)
+    mc = hoomd.hpmc.integrate.Sphere(default_d=0.05, default_a=0.1, kT=temperature)
     mc.shape['A'] = dict(diameter=diameter, orientable=True)
     delta = 2 * numpy.arcsin(numpy.sqrt(chi))
     angular_step = make_potential(
         delta,
         lambda_,
         diameter,
-        temperature,
         long_range_interaction_scale_factor,
     )
     mc.pair_potentials = [angular_step]
@@ -432,7 +430,7 @@ def run_npt_sim(job, device):
 
     # box updates
     boxmc = hoomd.hpmc.update.BoxMC(
-        betaP=job.cached_statepoint['pressure'], trigger=hoomd.trigger.Periodic(1)
+        P=job.cached_statepoint['pressure']*job.cached_statepoint["temperature"], trigger=hoomd.trigger.Periodic(1)
     )
     boxmc.volume = dict(weight=1.0, mode='ln', delta=1e-6)
 
