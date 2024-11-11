@@ -283,7 +283,7 @@ def make_mc_simulation(job, device, initial_state, sim_mode, extra_loggables=Non
 
     logger = hoomd.logging.Logger(categories=['scalar', 'sequence'])
     logger.add(mc, quantities=['translate_moves'])
-    logger.add(sdf, quantities=['betaP'])
+    logger.add(sdf, quantities=['P'])
     logger.add(compute_density, quantities=['density'])
     logger.add(angular_step, quantities=['energy'])
     for loggable, quantity in extra_loggables:
@@ -621,7 +621,7 @@ def analyze(*jobs):
 
             timesteps[sim_mode] = log_traj['hoomd-data/Simulation/timestep']
 
-            pressures[sim_mode] = log_traj['hoomd-data/hpmc/compute/SDF/betaP']
+            pressures[sim_mode] = log_traj['hoomd-data/hpmc/compute/SDF/P']
 
             densities[sim_mode] = log_traj[
                 'hoomd-data/custom_actions/ComputeDensity/density'
@@ -662,7 +662,7 @@ def analyze(*jobs):
             ax=ax,
             timesteps=timesteps,
             data=pressures,
-            ylabel=r'$\beta P$',
+            ylabel=r'$\P$',
             expected=job.cached_statepoint['pressure'],
             max_points=500,
         )
