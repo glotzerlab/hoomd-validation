@@ -270,7 +270,7 @@ def run_npt_sim(job, device):
     initial_state = job.fn('initial_state.gsd')
     # box updates
     boxmc = hoomd.hpmc.update.BoxMC(
-        betaP=job.cached_statepoint['pressure'], trigger=hoomd.trigger.Periodic(1)
+        P=job.cached_statepoint['pressure'], trigger=hoomd.trigger.Periodic(1)
     )
     boxmc.volume = dict(weight=1.0, mode='ln', delta=1e-6)
 

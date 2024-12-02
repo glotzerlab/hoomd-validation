@@ -103,7 +103,7 @@ _group_compare = _group | {
 
 
 def make_potential(
-    delta_rad, sq_well_lambda, sigma, kT, long_range_interaction_scale_factor
+    delta_rad, sq_well_lambda, sigma, long_range_interaction_scale_factor
 ):
     """Make the Kern-Frenkel pair potential.
 
@@ -129,8 +129,8 @@ def make_potential(
         sq_well_lambda * sigma,
     ]
     epsilon = [
-        -1 / kT,
-        -1 / kT * long_range_interaction_scale_factor,
+        -1,
+        -1 * long_range_interaction_scale_factor,
     ]
     step = hoomd.hpmc.pair.Step()
     step.params[('A', 'A')] = dict(epsilon=epsilon, r=r)
@@ -188,7 +188,7 @@ def create_initial_state(*jobs):
 
     # Use hard sphere + patches Monte Carlo to randomize the initial
     # configuration
-    mc = hoomd.hpmc.integrate.Sphere(default_d=0.05, default_a=0.1)
+    mc = hoomd.hpmc.integrate.Sphere(default_d=0.05, default_a=0.1, kT=temperature)
     diameter = 1.0
     mc.shape['A'] = dict(diameter=diameter, orientable=True)
     delta = 2 * numpy.arcsin(numpy.sqrt(chi))
@@ -196,7 +196,6 @@ def create_initial_state(*jobs):
         delta,
         lambda_,
         diameter,
-        temperature,
         long_range_interaction_scale_factor,
     )
     mc.pair_potentials = [angular_step]
@@ -267,14 +266,13 @@ def make_mc_simulation(job, device, initial_state, sim_mode, extra_loggables=Non
         'long_range_interaction_scale_factor'
     ]
     diameter = 1.0
-    mc = hoomd.hpmc.integrate.Sphere(default_d=0.05, default_a=0.1)
+    mc = hoomd.hpmc.integrate.Sphere(default_d=0.05, default_a=0.1, kT=temperature)
     mc.shape['A'] = dict(diameter=diameter, orientable=True)
     delta = 2 * numpy.arcsin(numpy.sqrt(chi))
     angular_step = make_potential(
         delta,
         lambda_,
         diameter,
-        temperature,
         long_range_interaction_scale_factor,
     )
     mc.pair_potentials = [angular_step]
@@ -285,7 +283,7 @@ def make_mc_simulation(job, device, initial_state, sim_mode, extra_loggables=Non
 
     logger = hoomd.logging.Logger(categories=['scalar', 'sequence'])
     logger.add(mc, quantities=['translate_moves'])
-    logger.add(sdf, quantities=['betaP'])
+    logger.add(sdf, quantities=['P'])
     logger.add(compute_density, quantities=['density'])
     logger.add(angular_step, quantities=['energy'])
     for loggable, quantity in extra_loggables:
@@ -433,7 +431,8 @@ def run_npt_sim(job, device):
 
     # box updates
     boxmc = hoomd.hpmc.update.BoxMC(
-        betaP=job.cached_statepoint['pressure'], trigger=hoomd.trigger.Periodic(1)
+        P=job.cached_statepoint['pressure'] * job.cached_statepoint['temperature'],
+        trigger=hoomd.trigger.Periodic(1),
     )
     boxmc.volume = dict(weight=1.0, mode='ln', delta=1e-6)
 
@@ -622,7 +621,7 @@ def analyze(*jobs):
 
             timesteps[sim_mode] = log_traj['hoomd-data/Simulation/timestep']
 
-            pressures[sim_mode] = log_traj['hoomd-data/hpmc/compute/SDF/betaP']
+            pressures[sim_mode] = log_traj['hoomd-data/hpmc/compute/SDF/P']
 
             densities[sim_mode] = log_traj[
                 'hoomd-data/custom_actions/ComputeDensity/density'
@@ -663,7 +662,7 @@ def analyze(*jobs):
             ax=ax,
             timesteps=timesteps,
             data=pressures,
-            ylabel=r'$\beta P$',
+            ylabel=r'$\P$',
             expected=job.cached_statepoint['pressure'],
             max_points=500,
         )
