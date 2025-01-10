@@ -487,11 +487,11 @@ def make_mc_simulation(job, device, initial_state, sim_mode, extra_loggables=Non
         extra_loggables = []
 
     # integrator
-    mc = hoomd.hpmc.integrate.Sphere(nselect=1)
+    mc = hoomd.hpmc.integrate.Sphere(nselect=1, kT=job.cached_statepoint['kT'])
     mc.shape['A'] = dict(diameter=0.0)
 
     # pair potential
-    epsilon = LJ_PARAMS['epsilon'] / job.cached_statepoint['kT']  # noqa F841
+    epsilon = LJ_PARAMS['epsilon']  # noqa F841
     sigma = LJ_PARAMS['sigma']
     r_on = job.cached_statepoint['r_on']
     r_cut = job.cached_statepoint['r_cut']
@@ -659,7 +659,7 @@ def run_npt_mc_sim(job, device):
 
     # box updates
     boxmc = hoomd.hpmc.update.BoxMC(
-        betaP=job.cached_statepoint['pressure'] / job.cached_statepoint['kT'],
+        P=job.cached_statepoint['pressure'],
         trigger=hoomd.trigger.Periodic(1),
     )
     boxmc.volume = dict(weight=1.0, mode='ln', delta=0.01)
@@ -861,10 +861,9 @@ def analyze(*jobs):
                     'hoomd-data/md/compute/ThermodynamicQuantities/potential_energy'
                 ]
             else:
-                energies[sim_mode] = (
-                    log_traj['hoomd-data/hpmc/pair/LennardJones/energy']
-                    * job.cached_statepoint['kT']
-                )
+                energies[sim_mode] = log_traj[
+                    'hoomd-data/hpmc/pair/LennardJones/energy'
+                ]
 
             energies[sim_mode] /= job.cached_statepoint['num_particles']
 
@@ -1186,10 +1185,7 @@ def distribution_analyze(*jobs):
                 )
             else:
                 potential_energy_samples[sim_mode].extend(
-                    list(
-                        log_traj['hoomd-data/hpmc/pair/LennardJones/energy']
-                        * job.cached_statepoint['kT']
-                    )
+                    list(log_traj['hoomd-data/hpmc/pair/LennardJones/energy'])
                 )
 
             if 'md' in sim_mode:
