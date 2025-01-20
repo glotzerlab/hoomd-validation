@@ -733,7 +733,9 @@ def compare_modes(*jobs):
     num_particles = jobs[0].sp.num_particles
     lrisf = jobs[0].sp.long_range_interaction_scale_factor
 
-    quantity_reference = dict(density=set_density, pressure=set_pressure * set_temperature)
+    quantity_reference = dict(
+        density=set_density, pressure=set_pressure * set_temperature
+    )
 
     fig = matplotlib.figure.Figure(figsize=(10, 10 / 1.618 * 2), layout='tight')
     fig.suptitle(
