@@ -823,7 +823,6 @@ def add_mc_sampling_job(mode, device_name):
 
         device = device_cls(
             communicator=communicator,
-            num_cpu_threads=1,
             message_filename=util.get_message_filename(
                 job,
                 f'{mode}_mc_{device_name}.log',
