@@ -725,15 +725,15 @@ def compare_modes(*jobs):
         'pressure': r'$\frac{P_\mathrm{sample} - P}{P} \cdot 1000$',
     }
 
-    # grab the common statepoint parameters
+    # grab the common statepoint parameters (statepoint pressure is betaP)
     set_density = jobs[0].sp.density
-    set_pressure = jobs[0].sp.pressure
     set_temperature = jobs[0].sp.temperature
+    set_pressure = jobs[0].sp.pressure
     set_chi = jobs[0].sp.chi
     num_particles = jobs[0].sp.num_particles
     lrisf = jobs[0].sp.long_range_interaction_scale_factor
 
-    quantity_reference = dict(density=set_density, pressure=set_pressure)
+    quantity_reference = dict(density=set_density, pressure=set_pressure * set_temperature)
 
     fig = matplotlib.figure.Figure(figsize=(10, 10 / 1.618 * 2), layout='tight')
     fig.suptitle(
