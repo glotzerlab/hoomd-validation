@@ -25,7 +25,7 @@ jobs:
       with:
         python-version: "3.12"
     - name: Set up Python environment
-      uses: glotzerlab/workflows/setup-uv@a36a97114c60241b26217ce92abbb64621ac67c7 # 0.6.0
+      uses: glotzerlab/workflows/setup-uv@1855eec25e87bdbc06359aa3adc355b59272cae3 # 0.7.0
       with:
         lockfile: ".github/workflows/requirements-test.txt"
     - name: Initialize workspace
@@ -33,6 +33,6 @@ jobs:
     - name: Show workflow
       run: cat --number workflow.toml
     - name: Set up row
-      uses: glotzerlab/workflows/setup-row@a36a97114c60241b26217ce92abbb64621ac67c7 # 0.6.0
+      uses: glotzerlab/workflows/setup-row@1855eec25e87bdbc06359aa3adc355b59272cae3 # 0.7.0
     - name: Show project status
       run: row show status
