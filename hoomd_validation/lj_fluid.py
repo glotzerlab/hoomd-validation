@@ -637,8 +637,7 @@ def run_nvt_mc_sim(job, device):
         device.notice('Done.')
     else:
         device.notice(
-            'Ending run early due to walltime limits at:'
-            f'{device.communicator.walltime}'
+            f'Ending run early due to walltime limits at:{device.communicator.walltime}'
         )
 
 
@@ -742,8 +741,7 @@ def run_npt_mc_sim(job, device):
         device.notice('Done.')
     else:
         device.notice(
-            'Ending run early due to walltime limits at:'
-            f'{device.communicator.walltime}'
+            f'Ending run early due to walltime limits at:{device.communicator.walltime}'
         )
 
 
@@ -1309,8 +1307,7 @@ def run_nve_md_sim(job, device, run_length):
         device.notice('Done.')
     else:
         device.notice(
-            'Ending run early due to walltime limits at:'
-            f'{device.communicator.walltime}'
+            f'Ending run early due to walltime limits at:{device.communicator.walltime}'
         )
 
     hoomd.write.GSD.write(state=sim.state, filename=job.fn(restart_filename), mode='wb')

@@ -1,11 +1,6 @@
-ci:
-  autoupdate_schedule: quarterly
-  autoupdate_branch: 'main'
-  autofix_prs: false
-
 repos:
 - repo: https://github.com/pre-commit/pre-commit-hooks
-  rev: 'v4.4.0'
+  rev: 'v6.0.0'
   hooks:
   - id: end-of-file-fixer
   - id: trailing-whitespace
@@ -13,16 +8,13 @@ repos:
   - id: check-toml
   - id: check-yaml
   - id: check-case-conflict
-  - id: fix-encoding-pragma
-    args:
-    - --remove
   - id: mixed-line-ending
 - repo: https://github.com/rhysd/actionlint
-  rev: v1.6.27
+  rev: v1.7.7
   hooks:
     - id: actionlint
 - repo: https://github.com/glotzerlab/fix-license-header
-  rev: v0.3.2
+  rev: v0.4.1
   hooks:
   - id: fix-license-header
     name: Fix license headers (Python)
@@ -40,7 +32,7 @@ repos:
     - --keep-after=.. include
     - --comment-prefix=..
 - repo: https://github.com/astral-sh/ruff-pre-commit
-  rev: v0.2.2
+  rev: v0.13.0
   hooks:
     - id: ruff-format
-    - id: ruff
+    - id: ruff-check
