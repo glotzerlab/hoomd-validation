@@ -16,7 +16,7 @@ on:
 jobs:
   status:
     name: Initialize and show status
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
     - name: Checkout
       uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -36,3 +36,15 @@ jobs:
       uses: glotzerlab/workflows/setup-row@1855eec25e87bdbc06359aa3adc355b59272cae3 # 0.7.0
     - name: Show project status
       run: row show status
+
+  # This job is used to provide a single requirement for branch merge conditions.
+  tests_complete:
+    name: All tests
+    if: always()
+    needs: [status]
+    runs-on: ubuntu-24.04
+
+    steps:
+    - run: jq --exit-status 'all(.result == "success")' <<< '${{ toJson(needs) }}'
+    - name: Done
+      run: exit 0
