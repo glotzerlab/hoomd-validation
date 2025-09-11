@@ -46,7 +46,7 @@ LOG_PERIOD = {'trajectory': 50_000, 'quantities': 100}
 NUM_CPU_RANKS = min(8, CONFIG['max_cores_sim'])
 
 WALLTIME_STOP_SECONDS = (
-    int(os.environ.get('ACTION_WALLTIME_IN_MINUTES', 10)) - 10
+    int(os.environ.get('ACTION_WALLTIME_IN_MINUTES', '10')) - 10
 ) * 60
 
 
@@ -328,8 +328,7 @@ def run_nvt_sim(job, device):
         device.notice('Done.')
     else:
         device.notice(
-            'Ending run early due to walltime limits at:'
-            f'{device.communicator.walltime}'
+            f'Ending run early due to walltime limits at:{device.communicator.walltime}'
         )
 
 
@@ -447,8 +446,7 @@ def run_npt_sim(job, device):
         device.notice('Done.')
     else:
         device.notice(
-            'Ending run early due to walltime limits at:'
-            f'{device.communicator.walltime}'
+            f'Ending run early due to walltime limits at:{device.communicator.walltime}'
         )
 
 

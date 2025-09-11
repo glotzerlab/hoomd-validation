@@ -50,7 +50,7 @@ CUBE_VERTS = [
 ]
 
 WALLTIME_STOP_SECONDS = (
-    int(os.environ.get('ACTION_WALLTIME_IN_MINUTES', 10)) - 10
+    int(os.environ.get('ACTION_WALLTIME_IN_MINUTES', '10')) - 10
 ) * 60
 
 # Limit the number of long NVE runs to reduce the number of CPU hours needed.
@@ -669,8 +669,7 @@ def run_nvt_mc_sim(job, device):
         device.notice('Done.')
     else:
         device.notice(
-            'Ending run early due to walltime limits at:'
-            f'{device.communicator.walltime}'
+            f'Ending run early due to walltime limits at:{device.communicator.walltime}'
         )
 
 
@@ -784,8 +783,7 @@ def run_npt_mc_sim(job, device):
         device.notice('Done.')
     else:
         device.notice(
-            'Ending run early due to walltime limits at:'
-            f'{device.communicator.walltime}'
+            f'Ending run early due to walltime limits at:{device.communicator.walltime}'
         )
 
 
@@ -1225,8 +1223,7 @@ def distribution_analyze(*jobs):
             if 'md' in sim_mode:
                 potential_energy_samples[sim_mode].extend(
                     log_traj[
-                        'hoomd-data/md/compute/ThermodynamicQuantities'
-                        '/potential_energy'
+                        'hoomd-data/md/compute/ThermodynamicQuantities/potential_energy'
                     ]
                 )
             else:
@@ -1298,7 +1295,7 @@ def distribution_analyze(*jobs):
     )
 
     filename = (
-        f'lj_union_distribution_analyze_kT{kT}_' f'density{round(set_density, 2)}.svg'
+        f'lj_union_distribution_analyze_kT{kT}_density{round(set_density, 2)}.svg'
     )
     fig.savefig(os.path.join(jobs[0]._project.path, filename), bbox_inches='tight')
 
@@ -1370,8 +1367,7 @@ def run_nve_md_sim(job, device, run_length):
         device.notice('Done.')
     else:
         device.notice(
-            'Ending run early due to walltime limits at:'
-            f'{device.communicator.walltime}'
+            f'Ending run early due to walltime limits at:{device.communicator.walltime}'
         )
 
     hoomd.write.GSD.write(state=sim.state, filename=job.fn(restart_filename), mode='wb')

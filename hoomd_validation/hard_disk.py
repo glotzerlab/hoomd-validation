@@ -36,7 +36,7 @@ LOG_PERIOD = {'trajectory': 50_000, 'quantities': 100}
 NUM_CPU_RANKS = min(64, CONFIG['max_cores_sim'])
 
 WALLTIME_STOP_SECONDS = (
-    int(os.environ.get('ACTION_WALLTIME_IN_MINUTES', 10)) - 10
+    int(os.environ.get('ACTION_WALLTIME_IN_MINUTES', '10')) - 10
 ) * 60
 
 
@@ -304,8 +304,7 @@ def run_nvt_sim(job, device):
         device.notice('Done.')
     else:
         device.notice(
-            'Ending run early due to walltime limits at:'
-            f'{device.communicator.walltime}'
+            f'Ending run early due to walltime limits at:{device.communicator.walltime}'
         )
 
 
@@ -415,8 +414,7 @@ def run_npt_sim(job, device):
         device.notice('Done.')
     else:
         device.notice(
-            'Ending run early due to walltime limits at:'
-            f'{device.communicator.walltime}'
+            f'Ending run early due to walltime limits at:{device.communicator.walltime}'
         )
 
 
@@ -524,7 +522,7 @@ def run_nec_sim(job, device):
 
         sim.operations.integrator.d['A'] = data['d_A']
         device.notice(
-            'Restored collision search size: ' f'{sim.operations.integrator.d["A"]}'
+            f'Restored collision search size: {sim.operations.integrator.d["A"]}'
         )
         mc.chain_time = data['chain_time']
         device.notice(f'Restored chain time: {mc.chain_time}')
@@ -547,8 +545,7 @@ def run_nec_sim(job, device):
         device.notice('Done.')
     else:
         device.notice(
-            'Ending run early due to walltime limits at:'
-            f'{device.communicator.walltime}'
+            f'Ending run early due to walltime limits at:{device.communicator.walltime}'
         )
 
 

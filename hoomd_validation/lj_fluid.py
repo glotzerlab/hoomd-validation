@@ -40,7 +40,7 @@ LJ_PARAMS = {'epsilon': 1.0, 'sigma': 1.0}
 NUM_CPU_RANKS = min(8, CONFIG['max_cores_sim'])
 
 WALLTIME_STOP_SECONDS = (
-    int(os.environ.get('ACTION_WALLTIME_IN_MINUTES', 10)) - 10
+    int(os.environ.get('ACTION_WALLTIME_IN_MINUTES', '10')) - 10
 ) * 60
 
 # Limit the number of long NVE runs to reduce the number of CPU hours needed.
@@ -637,8 +637,7 @@ def run_nvt_mc_sim(job, device):
         device.notice('Done.')
     else:
         device.notice(
-            'Ending run early due to walltime limits at:'
-            f'{device.communicator.walltime}'
+            f'Ending run early due to walltime limits at:{device.communicator.walltime}'
         )
 
 
@@ -742,8 +741,7 @@ def run_npt_mc_sim(job, device):
         device.notice('Done.')
     else:
         device.notice(
-            'Ending run early due to walltime limits at:'
-            f'{device.communicator.walltime}'
+            f'Ending run early due to walltime limits at:{device.communicator.walltime}'
         )
 
 
@@ -1309,8 +1307,7 @@ def run_nve_md_sim(job, device, run_length):
         device.notice('Done.')
     else:
         device.notice(
-            'Ending run early due to walltime limits at:'
-            f'{device.communicator.walltime}'
+            f'Ending run early due to walltime limits at:{device.communicator.walltime}'
         )
 
     hoomd.write.GSD.write(state=sim.state, filename=job.fn(restart_filename), mode='wb')
