@@ -50,7 +50,7 @@ CUBE_VERTS = [
 ]
 
 WALLTIME_STOP_SECONDS = (
-    int(os.environ.get('ACTION_WALLTIME_IN_MINUTES', 10)) - 10
+    int(os.environ.get('ACTION_WALLTIME_IN_MINUTES', '10')) - 10
 ) * 60
 
 # Limit the number of long NVE runs to reduce the number of CPU hours needed.

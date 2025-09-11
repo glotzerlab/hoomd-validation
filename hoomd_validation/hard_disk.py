@@ -36,7 +36,7 @@ LOG_PERIOD = {'trajectory': 50_000, 'quantities': 100}
 NUM_CPU_RANKS = min(64, CONFIG['max_cores_sim'])
 
 WALLTIME_STOP_SECONDS = (
-    int(os.environ.get('ACTION_WALLTIME_IN_MINUTES', 10)) - 10
+    int(os.environ.get('ACTION_WALLTIME_IN_MINUTES', '10')) - 10
 ) * 60
 
 

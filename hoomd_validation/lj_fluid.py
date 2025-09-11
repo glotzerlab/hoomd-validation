@@ -40,7 +40,7 @@ LJ_PARAMS = {'epsilon': 1.0, 'sigma': 1.0}
 NUM_CPU_RANKS = min(8, CONFIG['max_cores_sim'])
 
 WALLTIME_STOP_SECONDS = (
-    int(os.environ.get('ACTION_WALLTIME_IN_MINUTES', 10)) - 10
+    int(os.environ.get('ACTION_WALLTIME_IN_MINUTES', '10')) - 10
 ) * 60
 
 # Limit the number of long NVE runs to reduce the number of CPU hours needed.
