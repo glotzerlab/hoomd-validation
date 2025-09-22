@@ -6,7 +6,7 @@ cycler==0.12.1
     # via matplotlib
 filelock==3.19.1
     # via signac
-fonttools==4.59.2
+fonttools==4.60.0
     # via matplotlib
 h5py==3.14.0
     # via -r requirements-test.in
@@ -27,7 +27,7 @@ packaging==25.0
     #   signac
 pillow==11.3.0
     # via matplotlib
-pyparsing==3.2.4
+pyparsing==3.2.5
     # via matplotlib
 python-dateutil==2.9.0.post0
     # via matplotlib
