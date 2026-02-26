@@ -33,7 +33,7 @@ python-dateutil==2.9.0.post0
     # via matplotlib
 rtoml==0.13.0
     # via -r .github/workflows/requirements-test.in
-scipy==1.17.0
+scipy==1.17.1
     # via -r .github/workflows/requirements-test.in
 signac==2.3.0
     # via -r .github/workflows/requirements-test.in
