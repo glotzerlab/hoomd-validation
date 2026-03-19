@@ -6,7 +6,7 @@ cycler==0.12.1
     # via matplotlib
 filelock==3.25.2
     # via signac
-fonttools==4.62.0
+fonttools==4.62.1
     # via matplotlib
 h5py==3.16.0
     # via -r .github/workflows/requirements-test.in
