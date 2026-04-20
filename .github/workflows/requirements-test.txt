@@ -4,7 +4,7 @@ contourpy==1.3.3
     # via matplotlib
 cycler==0.12.1
     # via matplotlib
-filelock==3.25.2
+filelock==3.29.0
     # via signac
 fonttools==4.62.1
     # via matplotlib
@@ -14,18 +14,18 @@ kiwisolver==1.5.0
     # via matplotlib
 matplotlib==3.10.8
     # via -r .github/workflows/requirements-test.in
-numpy==2.4.3
+numpy==2.4.4
     # via
     #   -r .github/workflows/requirements-test.in
     #   contourpy
     #   h5py
     #   matplotlib
     #   scipy
-packaging==26.0
+packaging==26.1
     # via
     #   matplotlib
     #   signac
-pillow==12.1.1
+pillow==12.2.0
     # via matplotlib
 pyparsing==3.3.2
     # via matplotlib
