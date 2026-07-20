@@ -4,28 +4,28 @@ contourpy==1.3.3
     # via matplotlib
 cycler==0.12.1
     # via matplotlib
-filelock==3.29.0
+filelock==3.31.1
     # via signac
-fonttools==4.62.1
+fonttools==4.63.0
     # via matplotlib
 h5py==3.16.0
     # via -r .github/workflows/requirements-test.in
 kiwisolver==1.5.0
     # via matplotlib
-matplotlib==3.10.8
+matplotlib==3.11.1
     # via -r .github/workflows/requirements-test.in
-numpy==2.4.4
+numpy==2.5.1
     # via
     #   -r .github/workflows/requirements-test.in
     #   contourpy
     #   h5py
     #   matplotlib
     #   scipy
-packaging==26.1
+packaging==26.2
     # via
     #   matplotlib
     #   signac
-pillow==12.2.0
+pillow==12.3.0
     # via matplotlib
 pyparsing==3.3.2
     # via matplotlib
@@ -33,13 +33,13 @@ python-dateutil==2.9.0.post0
     # via matplotlib
 rtoml==0.13.0
     # via -r .github/workflows/requirements-test.in
-scipy==1.17.1
+scipy==1.18.0
     # via -r .github/workflows/requirements-test.in
-signac==2.3.0
+signac==2.4.0
     # via -r .github/workflows/requirements-test.in
 six==1.17.0
     # via python-dateutil
-synced-collections==1.0.0
+synced-collections==1.0.1
     # via signac
-tqdm==4.67.3
+tqdm==4.69.0
     # via signac
