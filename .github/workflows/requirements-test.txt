@@ -29,7 +29,7 @@ pillow==13.0.0
     # via matplotlib
 pyparsing==3.3.3
     # via matplotlib
-python-dateutil==2.9.0.post0
+python-dateutil==3.0.0
     # via matplotlib
 rtoml==0.14.0
     # via -r .github/workflows/requirements-test.in
@@ -43,3 +43,5 @@ synced-collections==1.0.1
     # via signac
 tqdm==4.70.1
     # via signac
+tzdata==2026.5
+    # via python-dateutil
